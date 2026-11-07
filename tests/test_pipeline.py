@@ -43,7 +43,19 @@ def test_snotel_run_writes_files(cfg, tmp_path):
     fc = json.loads((tmp_path / "snotel.geojson").read_text())
     props = fc["features"][0]["properties"]
     assert props["pct_median"] == pytest.approx(125, abs=0.1)
+    assert props["median_swe_in"] == pytest.approx(6.4)
     assert (tmp_path / props["file"]).exists()
+
+
+def test_pct_median_suppressed_when_median_tiny():
+    # Wood Creek, early season: 0.7" SWE vs a 0.175" median would read 400%.
+    daily = {"WTEQ": [("2026-11-04", 0.6, 0.15), ("2026-11-05", 0.7, 0.175)]}
+    assert snotel.pct_of_median(daily) == pytest.approx(400)
+    assert snotel.pct_of_median(daily, min_median=1.0) is None
+    assert snotel.median_swe(daily) == (0.7, 0.175)
+    ok = {"WTEQ": [("2026-11-05", 8.0, 6.4)]}
+    assert snotel.pct_of_median(ok, min_median=1.0) == pytest.approx(125)
+    assert snotel.pct_of_median({"WTEQ": [("2026-11-05", 0.0, 0.0)]}, 1.0) is None
 
 
 # ---------- ASOS ----------
