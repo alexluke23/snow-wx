@@ -283,7 +283,8 @@ class Canvas:
             return None
         kw.setdefault("colors", "#111")
         kw.setdefault("linewidths", 0.9)
-        cs = ax.contour(self.xs, self.ys, data, levels=levels, transform=self.proj, zorder=4, **kw)
+        kw.setdefault("zorder", 4)
+        cs = ax.contour(self.xs, self.ys, data, levels=levels, transform=self.proj, **kw)
         if labels:
             fmt_fn = fmt if callable(fmt) else (lambda v: fmt.format(v))
             txt = ax.clabel(cs, fmt=fmt_fn, fontsize=7, inline=True, inline_spacing=2)
@@ -302,6 +303,15 @@ class Canvas:
         bx, by = self.barb_xy
         ax.barbs(bx[ok], by[ok], um, vm, length=5.0, linewidth=0.5, color="#111",
                  transform=self.proj, zorder=7, sizes={"emptybarb": 0.12})
+
+    def add_terrain(self, orog_ft: np.ndarray | None):
+        """Faint model-terrain contours, drawn once (static like the basemap)."""
+        if orog_ft is None:
+            return
+        img = self.sample(orog_ft)
+        levels = [6000] if self.dom_key == "west" else [4000, 6000, 8000, 10000, 12000]
+        for ax in self.axes:   # above shading (1), below hatching (3) and field contours (4)
+            self.contour(ax, img, levels, labels=False, colors="#8f8f8f", linewidths=0.35, zorder=2.5)
 
     def snapshot(self):
         self._base = ({ax: set(ax.get_children()) for ax in self.axes},
@@ -506,6 +516,7 @@ def save_png(fig: Figure, path: Path, colors: int = 128) -> int:
 def render_field(c: Canvas, field: str, data: dict, meta: dict, f: int, path: Path,
                  colors: int = 128) -> int:
     if c._base is None:
+        c.add_terrain(data.get("orog_ft"))
         c.snapshot()
     try:
         scale, title = DRAW[field](c, data)

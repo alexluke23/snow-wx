@@ -313,7 +313,8 @@ def build_index(cfg: dict, model: str, cycle: datetime, ok: list[dict]) -> dict:
         "generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "attribution": mcfg.get("attribution", ""),
         "path": f"{cid}/{{field}}/{{domain}}/f{{fhour}}.png",
-        "domains": {k: {"label": v["label"]} for k, v in cfg["domains"].items()},
+        "domains": {k: {"label": v["label"], "tz": v.get("tz", "America/Denver")}
+                    for k, v in cfg["domains"].items()},
         "fields": {
             name: {**FIELD_INFO[name],
                    "domains": sorted(fields[name]["domains"], key=order.index),
