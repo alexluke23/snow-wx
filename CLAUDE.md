@@ -95,6 +95,7 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 1. Observations map (done: SNOTEL, ASOS, avalanche danger)
 2. Model map pipeline with Herbie: HRRR, RRFS (operational Nov 2026, replaced
    NAM), GFS, NBM, ECMWF IFS/AIFS — western domain + subregions, loop viewer
+   (done on `dev`: HRRR, RRFS, GFS + viewer + CI; ECMWF and NBM maps not yet)
 3. Point forecasts: NBM/NDFD meteograms, ensemble plumes, elevation bands
 4. Snow-science products: SLR comparisons, snow level vs terrain, wind loading
 5. Verification vs SNOTEL/ASOS, alerts, mobile polish
@@ -102,6 +103,9 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Branch `dev` (not pushed). Plan: A1–A5 polish → HRRR end-to-end (fetch → plots →
 viewer → CI) → RRFS → GFS → NBM points → ECMWF.
+Git note: the global `user.name` in ~/.gitconfig contains pasted command text, so
+commits on `dev` were made with `git -c user.name="Alex Lukinbeal" commit ...`
+(the global config was left alone; owner to fix).
 - [x] 0. Env bootstrap (DLL path, emoji-safe stdout), this TODO list
 - [x] A1 ASOS temp rounding · A2 %-median guard · A3 label declutter · A4 smoothed depth · A5 search + URL hash
 - [x] B6+B7 HRRR fetch/derive/plots (`pipeline/models/`, `config/models.yml`, tests/test_models.py)
