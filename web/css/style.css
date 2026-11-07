@@ -157,3 +157,35 @@ main.area li { margin: 3px 0; }
 .danger-chip.expired { filter: grayscale(1); opacity: .6; }
 .area-foot { font-size: 12px; color: var(--muted); padding: 8px 16px; border-top: 1px solid var(--line); }
 @media (max-width: 600px) { .site-nav { margin-left: 8px; } header { flex-wrap: wrap; } }
+
+/* Ski-area page v1 (M3): mobile-first */
+.area-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.area-head h2 { margin: 4px 0 2px; }
+.area-head .actions { display: flex; gap: 6px; }
+.area-head button { min-width: 44px; min-height: 40px; border: 1px solid var(--line); border-radius: 6px;
+  background: #fff; font-size: 15px; cursor: pointer; color: var(--ink); }
+.area-head #fav { font-size: 20px; color: #d4a017; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+main.area .sub { margin: 0 0 10px; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.headline { font-size: 17px; line-height: 1.45; margin: 6px 0; }
+.headline strong { font-variant-numeric: tabular-nums; }
+.mixnote { display: block; font-size: 15px; color: #9a3412; margin-top: 2px; }
+.fresh { font-size: 12.5px; color: var(--muted); margin: 0 0 10px; }
+.fresh.stale { color: #b42318; filter: grayscale(.3); }
+.tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+@media (min-width: 640px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+.tile { position: relative; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px 8px 16px;
+  display: flex; flex-direction: column; font-variant-numeric: tabular-nums; }
+.tile .swatch { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; border-radius: 8px 0 0 8px; }
+.tile .label { font-size: 12px; color: var(--muted); }
+.tile strong { font-size: 26px; line-height: 1.15; }
+.tile strong small { font-size: 14px; font-weight: 400; }
+.tile .rng { font-size: 12.5px; color: var(--ink); }
+main.area section { margin-top: 14px; }
+main.area h4 { margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; background: #fff; padding: 8px 12px; min-height: 40px; font-size: 13px; cursor: pointer; color: var(--ink); }
+.seg button.on { background: #2c4a6e; color: #fff; }
+.chart { width: 100%; min-height: 200px; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+.note { font-size: 12px; color: var(--muted); margin: 4px 2px 0; }
