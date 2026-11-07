@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import multiprocessing
 import os
 import shutil
 import time
@@ -236,8 +237,11 @@ def run_model(cfg: dict, model: str, out: Path, *, fhours: list[int] | None = No
 
     n_workers = workers or max(1, min(os.cpu_count() or 2, 8) - 1)
     t_fetch = 0.0
+    # "spawn", not Linux's default "fork": download threads are already running when
+    # workers start, and forking a multi-threaded process can deadlock on held locks.
+    spawn = multiprocessing.get_context("spawn")
     with ThreadPoolExecutor(max_workers=4) as dl, \
-            ProcessPoolExecutor(max_workers=n_workers) as pool:
+            ProcessPoolExecutor(max_workers=n_workers, mp_context=spawn) as pool:
         downloads = {f: dl.submit(download_frame, mcfg, catalog, names, cycle, f, cache) for f in fh}
         for f in fh:
             t0 = time.time()
