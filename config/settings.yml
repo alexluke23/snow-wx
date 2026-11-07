@@ -20,6 +20,9 @@ snotel:
   elements: [WTEQ, SNWD, PREC, TOBS]
   # Stations per AWDB /data request (keeps responses a reasonable size).
   chunk_size: 40
+  # Hide "% of median SWE" when the median itself is below this (inches).
+  # Early-season medians are tiny, so 0.7" vs 0.175" would read as 400%.
+  min_median_swe_in: 1.0
 
 asos:
   enabled: true

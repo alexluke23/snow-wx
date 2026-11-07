@@ -11,6 +11,10 @@
 <body>
   <header>
     <h1>Snow-Wx <span>Western US</span></h1>
+    <nav class="site-nav">
+      <a href="index.html" class="active" aria-current="page">Obs map</a>
+      <a href="models.html">Model maps</a>
+    </nav>
     <div id="updated">Loading…</div>
   </header>
 
@@ -18,6 +22,14 @@
     <div id="map" aria-label="Map of stations and avalanche zones"></div>
 
     <aside id="panel">
+      <section class="search">
+        <label for="search" class="label">Find a station</label>
+        <input id="search" type="search" placeholder="Name or ID, e.g. Snowbird or KSLC"
+               autocomplete="off" spellcheck="false" role="combobox"
+               aria-autocomplete="list" aria-expanded="false" aria-controls="search-results">
+        <ul id="search-results" class="search-results" role="listbox" hidden></ul>
+      </section>
+
       <section>
         <label for="var-select" class="label">SNOTEL variable</label>
         <select id="var-select"></select>

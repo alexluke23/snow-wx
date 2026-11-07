@@ -30,6 +30,30 @@ def test_snotel_summary_detects_storm_and_drops_spike():
     assert 999 not in ts["SNWD"]
 
 
+def test_smoothed_depth_damps_noise_and_keeps_gaps():
+    times = [f"2026-11-06 {h:02d}:00" for h in range(8)]
+    depth = [30, 31, 44, 30, 31, None, 31, 30]          # in-range spike at 02:00, gap at 05:00
+    series = {"SNWD": [(t, v, None) for t, v in zip(times, depth)]}
+    ts = snotel.timeseries(series, ["SNWD"])
+    assert len(ts["SNWD_med3"]) == len(ts["SNWD"]) == len(ts["times"]) == 8
+    assert ts["SNWD"][2] == 44                          # raw kept
+    assert ts["SNWD_med3"][2] == 31                     # median of 31, 44, 30
+    assert ts["SNWD_med3"][5] is None                   # gap not bridged
+    assert ts["SNWD_med3"][0] == pytest.approx(30.5)    # edge: median of 30, 31
+
+
+def test_timeseries_handles_missing_elements():
+    # Live failure 2026-11-07: a station with no TOBS data gave the frame a
+    # non-datetime index and the time-based rolling window raised.
+    series = {"SNWD": [(v["date"], v["value"], None) for v in hourly_values("SNWD", 30)],
+              "WTEQ": [], "TOBS": []}
+    ts = snotel.timeseries(series, ["WTEQ", "SNWD", "PREC", "TOBS"])
+    assert len(ts["SNWD_med3"]) == len(ts["times"]) == 31
+    assert all(v is None for v in ts["TOBS"])
+    only_empty = snotel.timeseries({"SNWD": []}, ["SNWD"])
+    assert only_empty["times"] == [] and only_empty["SNWD_med3"] == []
+
+
 def test_change_over_needs_history():
     idx = pd.date_range("2026-11-01", periods=10, freq="h")
     s = pd.Series(range(10), index=idx, dtype=float)
@@ -43,7 +67,19 @@ def test_snotel_run_writes_files(cfg, tmp_path):
     fc = json.loads((tmp_path / "snotel.geojson").read_text())
     props = fc["features"][0]["properties"]
     assert props["pct_median"] == pytest.approx(125, abs=0.1)
+    assert props["median_swe_in"] == pytest.approx(6.4)
     assert (tmp_path / props["file"]).exists()
+
+
+def test_pct_median_suppressed_when_median_tiny():
+    # Wood Creek, early season: 0.7" SWE vs a 0.175" median would read 400%.
+    daily = {"WTEQ": [("2026-11-04", 0.6, 0.15), ("2026-11-05", 0.7, 0.175)]}
+    assert snotel.pct_of_median(daily) == pytest.approx(400)
+    assert snotel.pct_of_median(daily, min_median=1.0) is None
+    assert snotel.median_swe(daily) == (0.7, 0.175)
+    ok = {"WTEQ": [("2026-11-05", 8.0, 6.4)]}
+    assert snotel.pct_of_median(ok, min_median=1.0) == pytest.approx(125)
+    assert snotel.pct_of_median({"WTEQ": [("2026-11-05", 0.0, 0.0)]}, 1.0) is None
 
 
 # ---------- ASOS ----------

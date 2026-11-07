@@ -1,0 +1,122 @@
+# Renders model maps on their own schedule and stores each model's newest run
+# as a release asset: <model>-<YYYYMMDDHH>.tar on the "model-maps" prerelease.
+#
+# Why: a Pages deploy replaces the whole site. The hourly obs workflow
+# (update-site.yml) downloads the newest tar per model into every build, so
+# neither workflow wipes the other's output, and model images never enter git
+# history. When a model has a new run, this workflow asks update-site.yml to
+# redeploy.
+name: Model maps
+
+on:
+  schedule:
+    # 01:55, 04:55, ... UTC. HRRR's 48-h runs (00/06/12/18Z) finish ~init+1h50,
+    # RRFS 84-h ~+2h55, GFS 240-h ~+4h40, so each model gets a new cycle every
+    # 6 h. GitHub often starts cron runs 10-60 min late; the pipeline always
+    # picks the newest *complete* cycle and exits cleanly if it is already published.
+    - cron: "55 1-22/3 * * *"
+  workflow_dispatch:
+    inputs:
+      models:
+        description: "Models to run, space-separated (blank = all in the matrix)"
+        required: false
+        default: ""
+      force:
+        description: "Re-render even if the newest cycle is already published"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # create the release / upload and delete its assets
+  actions: write    # trigger update-site.yml after a new upload
+
+concurrency:
+  group: model-maps
+  cancel-in-progress: false
+
+env:
+  RELEASE: model-maps
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [hrrr, rrfs, gfs]   # one job per model; keep in sync with config/models.yml
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MODEL: ${{ matrix.model }}
+    steps:
+      - name: Selected?
+        id: sel
+        run: |
+          want="${{ github.event.inputs.models }}"
+          if [ -n "$want" ] && ! echo " $want " | grep -q " $MODEL "; then
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "skipping $MODEL"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.sel.outputs.run == 'true'
+
+      - uses: mamba-org/setup-micromamba@v2
+        if: steps.sel.outputs.run == 'true'
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: Cache Natural Earth basemap files
+        if: steps.sel.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/cartopy
+          key: cartopy-naturalearth-50m-v1
+
+      - name: Find the published cycle
+        if: steps.sel.outputs.run == 'true'
+        id: pub
+        run: |
+          cyc=$(gh release view "$RELEASE" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null \
+                | sed -n "s/^${MODEL}-\([0-9]\{10\}\)\.tar$/\1/p" | sort | tail -1 || true)
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then cyc=""; fi
+          echo "published: ${cyc:-none}"
+          echo "cycle=$cyc" >> "$GITHUB_OUTPUT"
+
+      - name: Render maps
+        if: steps.sel.outputs.run == 'true'
+        id: render
+        shell: bash -el {0}
+        # Writes new=true|false and cycle=... to $GITHUB_OUTPUT. Exit 0 with
+        # new=false when nothing newer than the published cycle is complete.
+        run: python -m pipeline models --model "$MODEL" --out out/models --published "${{ steps.pub.outputs.cycle }}"
+
+      - name: Upload to the model-maps release
+        if: steps.render.outputs.new == 'true'
+        run: |
+          set -euo pipefail
+          cyc="${{ steps.render.outputs.cycle }}"
+          asset="${MODEL}-${cyc}.tar"
+          tar -C out/models -cf "$asset" "$MODEL"
+          du -h "$asset"
+          # Matrix jobs run in parallel and may race to create the release:
+          # creation failing is fine as long as the release exists afterwards.
+          if ! gh release view "$RELEASE" >/dev/null 2>&1; then
+            gh release create "$RELEASE" --prerelease --title "Model maps (automated)" \
+              --notes "Newest model-map images per model, replaced automatically by the Model maps workflow. Not a software release." \
+              || gh release view "$RELEASE" >/dev/null
+          fi
+          # Upload the new run first, then delete only THIS model's older runs.
+          gh release upload "$RELEASE" "$asset" --clobber
+          for old in $(gh release view "$RELEASE" --json assets -q '.assets[].name' \
+                       | sed -n "s/^${MODEL}-\([0-9]\{10\}\)\.tar$/\1/p"); do
+            if [ "$old" \< "$cyc" ]; then
+              gh release delete-asset "$RELEASE" "${MODEL}-${old}.tar" -y
+            fi
+          done
+
+      - name: Redeploy the site
+        if: steps.render.outputs.new == 'true'
+        run: gh workflow run update-site.yml --ref "${{ github.event.repository.default_branch }}"

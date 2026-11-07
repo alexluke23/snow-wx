@@ -132,7 +132,8 @@ def _awdb_data(session, triplets, elements, duration, begin, end, tendency="NONE
 
 def to_series(pairs: list[tuple], element: str) -> pd.Series:
     if not pairs:
-        return pd.Series(dtype="float64")
+        # Keep a DatetimeIndex so frames built from several elements stay time-indexed.
+        return pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
     idx = pd.to_datetime([p[0] for p in pairs], errors="coerce")
     s = pd.Series([p[1] for p in pairs], index=idx, dtype="float64")
     s = s[~s.index.isna()].sort_index()
@@ -198,22 +199,48 @@ def summarize(series: dict[str, list[tuple]]) -> dict:
     }
 
 
-def timeseries(series: dict[str, list[tuple]], elements: Iterable[str]) -> dict:
-    """Aligned hourly arrays for charting."""
+def rolling_median(s: pd.Series, hours: int = 3) -> pd.Series:
+    """Centered time-based rolling median (tames ultrasonic depth-sensor noise).
+
+    Missing hours stay missing, so gaps are not bridged on the chart.
+    """
+    if s.empty or not isinstance(s.index, pd.DatetimeIndex):
+        return s
+    med = s.rolling(f"{hours}h", center=True, min_periods=1).median()
+    return med.where(s.notna())
+
+
+def timeseries(series: dict[str, list[tuple]], elements: Iterable[str],
+               smooth_hours: int = 3) -> dict:
+    """Aligned hourly arrays for charting, plus a smoothed snow depth (SNWD_med3)."""
     frame = pd.DataFrame({el: to_series(series.get(el, []), el) for el in elements})
     frame = frame.sort_index()
+    if "SNWD" in frame:
+        frame[f"SNWD_med{smooth_hours}"] = rolling_median(frame["SNWD"], smooth_hours)
     out = {"times": [t.strftime("%Y-%m-%d %H:%M") for t in frame.index]}
-    for el in elements:
-        out[el] = [None if pd.isna(v) else round(float(v), 1) for v in frame[el]]
+    for col in frame.columns:
+        out[col] = [None if pd.isna(v) else round(float(v), 1) for v in frame[col]]
     return out
 
 
-def pct_of_median(daily: dict[str, list[tuple]]) -> float | None:
-    """Percent of median SWE from the most recent daily value with a median."""
+def median_swe(daily: dict[str, list[tuple]]) -> tuple[float | None, float | None]:
+    """(latest SWE, its median) from the most recent daily value with a median."""
     for date, value, median in reversed(daily.get("WTEQ", [])):
-        if value is not None and median not in (None, 0):
-            return 100.0 * float(value) / float(median)
-    return None
+        if value is not None and median is not None:
+            return float(value), float(median)
+    return None, None
+
+
+def pct_of_median(daily: dict[str, list[tuple]], min_median: float = 0.0) -> float | None:
+    """Percent of median SWE, or None when the median is below `min_median`.
+
+    Early in the season a tiny median makes the ratio meaningless (0.7" vs a
+    0.175" median reads as 400%), so it is suppressed below the threshold.
+    """
+    value, median = median_swe(daily)
+    if value is None or not median or median < min_median:
+        return None
+    return 100.0 * value / median
 
 
 # --------------------------------------------------------------------------
@@ -228,6 +255,7 @@ def _chunks(seq: list, n: int):
 def run(cfg: dict, session, outdir: Path) -> dict:
     scfg = cfg["snotel"]
     elements = scfg["elements"]
+    min_median = float(scfg.get("min_median_swe_in", 1.0))
     stations = fetch_stations(session, cfg["region"]["states"])
     if not stations:
         raise RuntimeError("no SNOTEL stations returned")
@@ -241,7 +269,7 @@ def run(cfg: dict, session, outdir: Path) -> dict:
     d_begin = (now_pst - timedelta(days=3)).strftime("%Y-%m-%d")
 
     by_trip = {s["triplet"]: s for s in stations}
-    features, failed_chunks = [], 0
+    features, failed_chunks, failed_stations = [], 0, 0
     for chunk in _chunks(list(by_trip), scfg["chunk_size"]):
         try:
             hourly = _awdb_data(session, chunk, elements, "HOURLY", begin, end)
@@ -258,15 +286,22 @@ def run(cfg: dict, session, outdir: Path) -> dict:
         for trip in chunk:
             st = by_trip[trip]
             series = hourly.get(trip, {})
-            summary = summarize(series)
-            if summary["obs_time"] is None:
-                continue  # no usable data in the window
-            summary["pct_median"] = pct_of_median(daily.get(trip, {}))
+            try:
+                summary = summarize(series)
+                if summary["obs_time"] is None:
+                    continue  # no usable data in the window
+                st_daily = daily.get(trip, {})
+                summary["median_swe_in"] = median_swe(st_daily)[1]
+                summary["pct_median"] = pct_of_median(st_daily, min_median)
+                ts = timeseries(series, elements)
+            except Exception as exc:  # one odd station must not sink the source
+                failed_stations += 1
+                log.warning("SNOTEL %s skipped: %s", trip, exc)
+                continue
             fname = trip.replace(":", "_")
             write_json(
                 outdir / "snotel" / f"{fname}.json",
-                {"triplet": trip, "name": st["name"], "elev_ft": st["elev_ft"],
-                 **timeseries(series, elements)},
+                {"triplet": trip, "name": st["name"], "elev_ft": st["elev_ft"], **ts},
             )
             props = {k: st[k] for k in ("triplet", "id", "state", "name", "elev_ft")}
             props["file"] = f"snotel/{fname}.json"
@@ -274,7 +309,9 @@ def run(cfg: dict, session, outdir: Path) -> dict:
             features.append(feature(st["lon"], st["lat"], props))
 
     write_json(outdir / "snotel.geojson", feature_collection(features))
-    log.info("SNOTEL: wrote %d stations (%d failed chunks)", len(features), failed_chunks)
+    log.info("SNOTEL: wrote %d stations (%d failed chunks, %d stations skipped)",
+             len(features), failed_chunks, failed_stations)
     if not features:
         raise RuntimeError("SNOTEL returned no usable data")
-    return {"count": len(features), "failed_chunks": failed_chunks}
+    return {"count": len(features), "failed_chunks": failed_chunks,
+            "skipped_stations": failed_stations}
