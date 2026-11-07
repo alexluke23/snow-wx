@@ -1,0 +1,39 @@
+# Central configuration for the snow-wx pipeline.
+# Most changes (adding states, tweaking windows, turning sources on/off)
+# should only require editing this file.
+
+region:
+  name: Western US
+  # Two-letter state codes used to select SNOTEL, ASOS and avalanche zones.
+  states: [WA, OR, CA, NV, ID, MT, WY, UT, CO, AZ, NM]
+  # [west, south, east, north] in degrees
+  bbox: [-125.0, 31.0, -102.0, 49.5]
+  map_center: [41.5, -113.0]   # [lat, lon]
+  map_zoom: 5
+
+snotel:
+  enabled: true
+  # Hours of hourly data to pull for charts and 24/72-hr change metrics.
+  hours: 168
+  # WTEQ = snow water equivalent, SNWD = snow depth, PREC = accumulated
+  # water-year precip, TOBS = observed air temperature.
+  elements: [WTEQ, SNWD, PREC, TOBS]
+  # Stations per AWDB /data request (keeps responses a reasonable size).
+  chunk_size: 40
+
+asos:
+  enabled: true
+  # Observations older than this are flagged as stale on the map.
+  stale_minutes: 180
+
+avalanche:
+  enabled: true
+  # Decimal places kept for zone polygon coordinates (4 ~ 10 m). Smaller
+  # numbers make the GeoJSON file smaller.
+  coord_precision: 4
+
+http:
+  # Data providers appreciate a descriptive User-Agent. Replace with your
+  # repo URL once it exists.
+  user_agent: "snow-wx/0.1 (+https://github.com/YOUR_USERNAME/snow-wx)"
+  timeout: 60

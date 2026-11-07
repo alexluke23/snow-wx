@@ -1,0 +1,20 @@
+# Generated site and data (published by GitHub Actions, never committed)
+build/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Model data downloads (Herbie default cache and stray files)
+data_cache/
+*.grib2
+*.grib2.*.idx
+*.idx
+*.nc
+
+# Editors / OS
+.vscode/settings.json
+.DS_Store
+Thumbs.db

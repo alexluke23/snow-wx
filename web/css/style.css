@@ -1,0 +1,82 @@
+:root {
+  --bg: #f6f7f9;
+  --ink: #1d2733;
+  --muted: #5b6878;
+  --line: #d9dee5;
+  --accent: #1f5fa8;
+  --panel-w: 340px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; color: var(--ink); background: var(--bg); }
+body { display: flex; flex-direction: column; }
+
+header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 8px 14px; background: #14202e; color: #fff;
+}
+header h1 { margin: 0; font-size: 18px; letter-spacing: .3px; }
+header h1 span { font-weight: 400; color: #9fb3c8; margin-left: 6px; }
+#updated { font-size: 13px; color: #c9d6e3; }
+
+main { flex: 1; display: flex; min-height: 0; }
+#map { flex: 1; min-height: 300px; }
+
+#panel {
+  width: var(--panel-w); overflow-y: auto; padding: 10px 14px;
+  background: #fff; border-left: 1px solid var(--line); font-size: 14px;
+}
+#panel section { margin-bottom: 16px; }
+.label { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
+         color: var(--muted); margin-bottom: 4px; }
+select { width: 100%; padding: 6px; font-size: 14px; }
+.hint { color: var(--muted); }
+
+footer { font-size: 12px; padding: 6px 14px; color: var(--muted); border-top: 1px solid var(--line); background: #fff; }
+footer a, #panel a { color: var(--accent); }
+
+/* Legend */
+.legend { display: flex; flex-wrap: wrap; margin-top: 8px; }
+.legend .sw { flex: 1 0 auto; min-width: 30px; text-align: center; font-size: 11px; padding: 3px 2px; }
+
+/* Data status */
+.status { list-style: none; margin: 0; padding: 0; }
+.status li { padding: 2px 0; }
+.status .ok::before { content: "● "; color: #2e9d47; }
+.status .bad::before { content: "● "; color: #d33; }
+
+/* SNOTEL station labels: value boxes when zoomed in, dots when zoomed out */
+.stn {
+  transform: translate(-50%, -50%);
+  min-width: 26px; padding: 1px 4px; border-radius: 3px;
+  font: 600 11px/14px system-ui, sans-serif; text-align: center; white-space: nowrap;
+  border: 1px solid rgba(0,0,0,.45); box-shadow: 0 1px 2px rgba(0,0,0,.25); cursor: pointer;
+}
+.stn.na { background: #fff; color: #888; }
+.z-low .stn { min-width: 0; width: 11px; height: 11px; padding: 0; border-radius: 50%; font-size: 0; }
+
+/* ASOS: wind barb + temperature */
+.asos { transform: translate(-50%, -50%); width: 44px; height: 44px; position: relative; cursor: pointer; }
+.asos svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.asos-temp { position: absolute; right: 26px; bottom: 24px; font: 700 11px system-ui, sans-serif;
+             color: #c0262d; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
+.asos.stale { opacity: .35; }
+.z-low .asos-temp { display: none; }
+.z-low .asos { transform: translate(-50%, -50%) scale(.7); }
+
+/* Popups and station detail */
+.leaflet-popup-content { font-size: 13px; line-height: 1.4; }
+.danger { display: inline-block; padding: 2px 8px; border-radius: 3px; font-weight: 700; }
+.metrics { width: 100%; border-collapse: collapse; margin: 6px 0; }
+.metrics td { padding: 2px 0; border-bottom: 1px solid #eef1f4; }
+.metrics td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.station h2 { font-size: 16px; margin: 0 0 2px; }
+.station .sub { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+#chart { width: 100%; height: 300px; }
+
+@media (max-width: 800px) {
+  main { flex-direction: column; }
+  #map { flex: none; height: 60vh; }
+  #panel { width: 100%; border-left: none; border-top: 1px solid var(--line); }
+}
