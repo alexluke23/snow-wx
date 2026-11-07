@@ -269,9 +269,12 @@
 
   function drawChart(ts) {
     const x = ts.times;
+    const smooth = ts.SNWD_med3;   // 3-hr median; older data files may lack it
     const traces = [
-      { x, y: ts.SNWD, name: "Depth (in)", type: "scatter", mode: "lines",
-        line: { color: "#2171b5", width: 2 }, yaxis: "y" },
+      { x, y: ts.SNWD, name: smooth ? "Depth, raw" : "Depth (in)", type: "scatter", mode: "lines",
+        line: { color: "#2171b5", width: smooth ? 1 : 2 }, opacity: smooth ? 0.35 : 1, yaxis: "y" },
+      ...(smooth ? [{ x, y: smooth, name: "Depth (in, 3-hr median)", type: "scatter", mode: "lines",
+        line: { color: "#2171b5", width: 2.2 }, yaxis: "y" }] : []),
       { x, y: ts.WTEQ, name: "SWE (in)", type: "scatter", mode: "lines",
         line: { color: "#238b45", width: 2 }, yaxis: "y2" },
       { x, y: ts.TOBS, name: "Temp (°F)", type: "scatter", mode: "lines",

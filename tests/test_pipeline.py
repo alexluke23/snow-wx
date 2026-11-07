@@ -30,6 +30,30 @@ def test_snotel_summary_detects_storm_and_drops_spike():
     assert 999 not in ts["SNWD"]
 
 
+def test_smoothed_depth_damps_noise_and_keeps_gaps():
+    times = [f"2026-11-06 {h:02d}:00" for h in range(8)]
+    depth = [30, 31, 44, 30, 31, None, 31, 30]          # in-range spike at 02:00, gap at 05:00
+    series = {"SNWD": [(t, v, None) for t, v in zip(times, depth)]}
+    ts = snotel.timeseries(series, ["SNWD"])
+    assert len(ts["SNWD_med3"]) == len(ts["SNWD"]) == len(ts["times"]) == 8
+    assert ts["SNWD"][2] == 44                          # raw kept
+    assert ts["SNWD_med3"][2] == 31                     # median of 31, 44, 30
+    assert ts["SNWD_med3"][5] is None                   # gap not bridged
+    assert ts["SNWD_med3"][0] == pytest.approx(30.5)    # edge: median of 30, 31
+
+
+def test_timeseries_handles_missing_elements():
+    # Live failure 2026-11-07: a station with no TOBS data gave the frame a
+    # non-datetime index and the time-based rolling window raised.
+    series = {"SNWD": [(v["date"], v["value"], None) for v in hourly_values("SNWD", 30)],
+              "WTEQ": [], "TOBS": []}
+    ts = snotel.timeseries(series, ["WTEQ", "SNWD", "PREC", "TOBS"])
+    assert len(ts["SNWD_med3"]) == len(ts["times"]) == 31
+    assert all(v is None for v in ts["TOBS"])
+    only_empty = snotel.timeseries({"SNWD": []}, ["SNWD"])
+    assert only_empty["times"] == [] and only_empty["SNWD_med3"] == []
+
+
 def test_change_over_needs_history():
     idx = pd.date_range("2026-11-01", periods=10, freq="h")
     s = pd.Series(range(10), index=idx, dtype=float)
