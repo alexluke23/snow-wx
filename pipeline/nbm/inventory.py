@@ -137,7 +137,7 @@ def selections(fhour: int, cycle_hour: int) -> list[tuple[Sel, bool]]:
         if (cycle_hour + h) % 12 == 0:
             opt("tmax12", "core", "TMAX", T2, 12, value=None)
             opt("tmin12", "core", "TMIN", T2, 12, value=None)
-    for span, name in (((0, 24), "qpf_0_1d"), ((0, 72), "qpf_0_3d"), ((72, 120), "qpf_3_5d"),
+    for span, name in (((0, 24), "qpf_0_1d"), ((0, 72), "qpf_0_3d"), ((48, 72), "qpf_2_3d"), ((72, 120), "qpf_3_5d"),
                        ((120, 168), "qpf_5_7d"), ((168, 240), "qpf_7_10d")):
         if h == span[1]:
             for p in PCTS:

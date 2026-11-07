@@ -11,6 +11,7 @@ others. The obs command exits non-zero only if every enabled source fails.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import shutil
@@ -29,6 +30,51 @@ SOURCES = {
 }
 
 
+def read_meta(outdir: Path) -> dict:
+    try:
+        return json.loads((outdir / "meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def write_meta(cfg: dict, outdir: Path, updates: dict) -> None:
+    """Merge source statuses into outdir/meta.json. A partial run (e.g. --only
+    avalanche) updates its own entries and keeps the others."""
+    meta = read_meta(outdir)
+    sources = {**(meta.get("sources") or {}), **updates}
+    write_json(outdir / "meta.json", {
+        "generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "region": cfg["region"],
+        "sources": sources,
+    })
+
+
+def product_status(outdir: Path) -> dict:
+    """Status entries for products made by other jobs and merged at build time
+    (NBM points, model maps): what is present in the site folder and how old it is."""
+    out = {}
+    pts = outdir / "data" / "points" / "summary.json"
+    try:
+        js = json.loads(pts.read_text(encoding="utf-8"))
+        out["points"] = {"ok": True, "count": len(js.get("areas", [])), "unit": "ski areas",
+                         "detail": f"NBM {js['cycle'][8:10]}Z run", "at": js.get("generated_at")}
+    except (OSError, ValueError, KeyError):
+        out["points"] = {"ok": False, "error": "no NBM point forecasts yet"}
+    idx = outdir / "models" / "index.json"
+    try:
+        js = json.loads(idx.read_text(encoding="utf-8"))
+        models = js.get("models") or {}
+        out["models"] = {"ok": bool(models), "count": len(models), "unit": "models",
+                         "detail": ", ".join(f"{m.get('label', k)} {m.get('cycle', '')[8:10]}Z"
+                                             for k, m in models.items()),
+                         "at": max((m.get("generated_at") or "" for m in models.values()), default=None)}
+        if not models:
+            out["models"]["error"] = "no model runs yet"
+    except (OSError, ValueError):
+        out["models"] = {"ok": False, "error": "no model runs yet"}
+    return out
+
+
 def run_obs(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
     session = make_session(cfg)
     status = {}
@@ -45,12 +91,9 @@ def run_obs(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
             logging.getLogger("snow-wx").exception("%s failed", name)
             status[name] = {"ok": False, "error": str(exc)[:300]}
         status[name]["seconds"] = round(time.time() - t0, 1)
+        status[name]["at"] = utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    write_json(outdir / "meta.json", {
-        "generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "region": cfg["region"],
-        "sources": status,
-    })
+    write_meta(cfg, outdir, status)
     ok = [n for n, s in status.items() if s["ok"]]
     print(f"Done. OK: {ok or 'none'}; failed: {[n for n in status if n not in ok] or 'none'}")
     return 0 if ok else 1
@@ -73,6 +116,7 @@ def build_site(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
         write_catalog(outdir / "models", list(load_models_config()["models"]))
     except Exception:
         logging.getLogger("snow-wx").exception("model catalog failed")
+    write_meta(cfg, outdir / "data", product_status(outdir))
     return code
 
 

@@ -30,6 +30,7 @@ BUCKET = "https://noaa-nbm-grib2-pds.s3.amazonaws.com"
 CACHE = REPO_ROOT / "data_cache" / "nbm"
 CATALOG = REPO_ROOT / "data" / "ski_areas.json"
 SOURCE = "NOAA/NWS National Blend of Models (NBM) via NOAA Open Data Dissemination (AWS)"
+SELECTION_VERSION = 2          # bump when inventory.selections changes (invalidates the sample cache)
 
 K_TO_F = lambda k: (k - 273.15) * 1.8 + 32.0  # noqa: E731
 MS_TO_MPH = 2.236936
@@ -183,13 +184,6 @@ def _r(v, nd=1):
     return round(float(v), nd)
 
 
-def _pct(d: dict, key: str, h: int, i: int) -> dict:
-    return {p: _val(d, h, f"{key}_p{p}", i) for p in P_LEVELS}
-
-
-P_LEVELS = (10, 50, 90)
-
-
 def _val(data, h, key, i):
     arr = data.get(h, {}).get(key)
     if arr is None:
@@ -200,120 +194,170 @@ def _val(data, h, key, i):
 
 def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: int,
                    elev_ft: float, grid_ft: float | None, tz) -> dict:
-    """Series, 12-h periods and totals for one point (column i of every array)."""
+    """Series, 6-h windows, 12-h periods and totals for one point (column i).
+
+    Amounts are NBM deterministic means scaled by P(snow at the point); 10-90 %
+    ranges use NBM snowfall percentiles to 48 h and QPF percentiles x SLR x P(snow)
+    after that ("extended"). See pipeline/points.py for the method notes.
+    """
+    def v(h, k):
+        return _val(data, h, k, i)
+
+    hset = set(hours)
     series = {k: [] for k in ("t_f", "wind_mph", "gust_mph", "wdir", "sky", "snowlvl_ft",
-                              "snowlvl_p10", "snowlvl_p90", "p_snow", "slr")}
-    psnow_by_h = {}
+                              "snowlvl_p10", "snowlvl_p90", "p_snow", "slr", "pop")}
+    ps: dict[int, float | None] = {}
     for h in hours:
-        t = _val(data, h, "t2m", i)
-        series["t_f"].append(_r(P.lapse_adjust_f(t, grid_ft, elev_ft)))
-        series["wind_mph"].append(_r(_val(data, h, "wind", i), 0))
-        series["gust_mph"].append(_r(_val(data, h, "gust", i), 0))
-        series["wdir"].append(_r(_val(data, h, "wdir", i), 0))
-        series["sky"].append(_r(_val(data, h, "sky", i) , 0))
-        sl50 = _val(data, h, "snowlvl_p50", i)
-        det = _val(data, h, "snowlvl", i)
-        p10, p90 = _val(data, h, "snowlvl_p10", i), _val(data, h, "snowlvl_p90", i)
-        series["snowlvl_ft"].append(_r(sl50 if sl50 is not None else det, -2))
+        series["t_f"].append(_r(P.lapse_adjust_f(v(h, "t2m"), grid_ft, elev_ft)))
+        series["wind_mph"].append(_r(v(h, "wind"), 0))
+        series["gust_mph"].append(_r(v(h, "gust"), 0))
+        series["wdir"].append(_r(v(h, "wdir"), 0))
+        series["sky"].append(_r(v(h, "sky"), 0))
+        sl50, det = v(h, "snowlvl_p50"), v(h, "snowlvl")
+        p10, p90 = v(h, "snowlvl_p10"), v(h, "snowlvl_p90")
+        mid = sl50 if sl50 is not None else det
+        series["snowlvl_ft"].append(_r(mid, -2))
         series["snowlvl_p10"].append(_r(p10, -2))
         series["snowlvl_p90"].append(_r(p90, -2))
-        ps = P.p_snow_level_below(elev_ft, p10, sl50 if sl50 is not None else det, p90)
-        psnow_by_h[h] = ps
-        series["p_snow"].append(_r(ps, 2))
-        series["slr"].append(_r(_val(data, h, "slr", i), 1))
+        ps[h] = P.p_snow_level_below(elev_ft, p10, mid, p90)
+        series["p_snow"].append(_r(ps[h], 2))
+        series["slr"].append(_r(v(h, "slr"), 1))
+        series["pop"].append(_r(v(h + (-h % 6), "pop6"), 2))
 
-    # precipitation windows: 1 h to f036, then 6 h
+    def steps_in(s, e):
+        return [h for h in hours if s < h <= e]
+
+    def raw_snow_at(h):
+        """Deterministic snow falling at step h (1-h amount to f036, else its 6-h window)."""
+        x = v(h, "snow1") if h <= 36 else v(h + (-h % 6), "snow6")
+        return x or 0.0
+
+    def slr_in(s, e):
+        """Mean NBM SNOWLR over snowy steps. NBM SNOWLR shrinks toward 0 where snow is
+        unlikely (it is not conditional on snow), so without deterministic snow use the
+        window's highest SNOWLR; clamp_slr later bounds it to 4-25. A fixed default
+        here made a dry cell (10:1) outrank a marginal one (Ski Apache base vs summit)."""
+        steps = steps_in(s, e)
+        vals = [v(h, "slr") for h in steps if raw_snow_at(h) > 0]
+        vals = [x for x in vals if x is not None and x > 0]
+        if vals:
+            return sum(vals) / len(vals)
+        anyv = [x for x in (v(h, "slr") for h in steps) if x is not None and x > 0]
+        return max(anyv) if anyv else None
+
+    # 6-h windows: the unit that periods and totals are summed from
+    W: dict[int, dict | None] = {}
+    for e in [h for h in hours if h % 6 == 0]:
+        q, raw = v(e, "qpf6"), v(e, "snow6")
+        if q is None or raw is None:
+            W[e] = None
+            continue
+        pw = [ps[h] for h in steps_in(e - 6, e) if ps.get(h) is not None]
+        pw = sum(pw) / len(pw) if pw else 1.0
+        lo, hi = v(e, "snow6_p10"), v(e, "snow6_p90")
+        W[e] = {"qpf": q, "raw": raw, "ps": pw, "snow": 0.0 if q < P.WET_IN else raw * pw,
+                "rng": None if lo is None or hi is None else (lo * pw, hi * pw),
+                "slr": slr_in(e - 6, e)}
+
+    def windows(s, e):
+        ws = [W.get(h) for h in range(s + 6, e + 1, 6)]
+        return None if not ws or any(w is None for w in ws) else ws
+
+    def qpct(key, e):
+        lo, hi = v(e, f"{key}_p10"), v(e, f"{key}_p90")
+        return None if lo is None or hi is None else (lo, hi)
+
+    def extended_range(qp, ws):
+        """QPF percentiles x SLR x P(snow) for the windows ws."""
+        if not ws:
+            return None, None
+        slr = P.clamp_slr(P.weighted_mean([w["slr"] for w in ws], [w["raw"] for w in ws]))
+        p = P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws])
+        if qp is None or p is None:
+            return None, slr
+        return (qp[0] * slr * p, qp[1] * slr * p), slr
+
+    # hourly chart: 1-h windows to f036, then 6-h windows
     precip = {"end": [], "hours": [], "qpf_in": [], "snow_in": [], "pop": []}
     for h in hours:
         if h <= 36:
-            q, s, pop, n = _val(data, h, "qpf1", i), _val(data, h, "snow1", i), _val(data, h, "pop1", i), 1
-        elif h % 6 == 0:
-            q, s, pop, n = _val(data, h, "qpf6", i), _val(data, h, "snow6", i), _val(data, h, "pop6", i), 6
+            w6 = W.get(h + (-h % 6))
+            q, raw, n, pop = v(h, "qpf1"), v(h, "snow1"), 1, v(h, "pop1")
+            dry = bool(w6) and w6["qpf"] < P.WET_IN
+            snow = None if raw is None else (0.0 if dry else raw * (ps.get(h) or 0.0))
+        elif h % 6 == 0 and W.get(h):
+            q, snow, pop, n = W[h]["qpf"], W[h]["snow"], v(h, "pop6"), 6
         else:
             continue
         precip["end"].append((init + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%MZ"))
         precip["hours"].append(n)
         precip["qpf_in"].append(_r(q, 2))
-        precip["snow_in"].append(_r(s, 1))
+        precip["snow_in"].append(_r(snow, 1))
         precip["pop"].append(_r(pop, 2))
-
-    qpf6 = {h: _val(data, h, "qpf6", i) for h in hours if h % 6 == 0}
-    snow6 = {h: _val(data, h, "snow6", i) for h in hours if h % 6 == 0}
-    hset = set(hours)
-
-    def snowing(h):
-        """Snow falling at step h: the 1-h amount to f036, else the 6-h window holding h."""
-        v = _val(data, h, "snow1", i) if h <= 36 else snow6.get(h + (-h % 6))
-        return (v or 0.0) > (0.02 if h <= 36 else 0.1)
-
-    def window_stats(s, e):
-        steps = [h for h in hours if s < h <= e]
-        ps = [psnow_by_h[h] for h in steps if psnow_by_h.get(h) is not None]
-        # NBM SNOWLR is ~0 where no snow falls: average it over snowy steps only
-        slr = [_val(data, h, "slr", i) for h in steps if snowing(h)]
-        slr = [v for v in slr if v is not None and v > 0]
-        return (sum(ps) / len(ps) if ps else None), (sum(slr) / len(slr) if slr else None), steps
-
-    def scaled(qpf_pct, s, e):
-        qd, sd = P.window_sum(qpf6, s, e, 6), P.window_sum(snow6, s, e, 6)
-        ps, slr, _ = window_stats(s, e)
-        ratio = P.snow_ratio(sd, qd, slr, ps)
-        snow = {p: (None if v is None else v * ratio) for p, v in qpf_pct.items()}
-        return snow, qd, sd, ps, slr
 
     out_periods = []
     for s, e in P.periods(init, hours):
-        if e not in hset:
+        ws = windows(s, e)
+        if e not in hset or ws is None:
             continue
-        key = "qpf12" if e - s == 12 else "qpf6"
-        qpct = _pct(data, key, e, i)
-        snow, qd, sd, ps, slr = scaled(qpct, s, e)
-        _, _, steps = window_stats(s, e)
-        temps = [series["t_f"][hours.index(h)] for h in steps]
-        temps = [t for t in temps if t is not None]
-        gusts_snow = [series["gust_mph"][hours.index(h)] for h in steps if snowing(h)]
-        gusts = [g for g in (series["gust_mph"][hours.index(h)] for h in steps) if g is not None]
-        sls = [series["snowlvl_ft"][hours.index(h)] for h in steps if series["snowlvl_ft"][hours.index(h)] is not None]
-        nbm_snow_pct = {p: P.window_sum({h: _val(data, h, f"snow6_p{p}", i) for h in qpf6}, s, e, 6)
-                        for p in P_LEVELS}
+        q = sum(w["qpf"] for w in ws)
+        snow = 0.0 if q < P.WET_IN else sum(w["snow"] for w in ws)
+        pmean = P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws])
+        qp = qpct("qpf12" if e - s == 12 else "qpf6", e)
+        ext_rng, slr = extended_range(qp, ws)
+        nbm_rng = P.rank_sum([w["rng"] for w in ws])
+        extended = nbm_rng is None
+        rng = P.with_mean(ext_rng if extended else nbm_rng, snow)
+        steps = steps_in(s, e)
+        idx = [hours.index(h) for h in steps]
+        temps = [series["t_f"][k] for k in idx if series["t_f"][k] is not None]
+        gusts = [series["gust_mph"][k] for k in idx if series["gust_mph"][k] is not None]
+        sls = [series["snowlvl_ft"][k] for k in idx if series["snowlvl_ft"][k] is not None]
+        snowy_gusts = [series["gust_mph"][k] for k, h in zip(idx, steps)
+                       if series["gust_mph"][k] is not None and raw_snow_at(h) > 0]
+        pops = [x for x in (v(h, "pop6") for h in range(s + 6, e + 1, 6)) if x is not None]
         out_periods.append({
             **P.period_label(init, s, e, tz),
-            "qpf_in": {str(p): _r(v, 2) for p, v in qpct.items()},
-            "snow_in": {str(p): _r(v, 1) for p, v in snow.items()},
-            "snow_det_in": _r(sd, 1), "qpf_det_in": _r(qd, 2),
-            "nbm_snow_pct_in": ({str(p): _r(v, 1) for p, v in nbm_snow_pct.items()}
-                                if all(v is not None for v in nbm_snow_pct.values()) else None),
-            "p_snow": _r(ps, 2),
-            "type": P.precip_type(qpct.get(50), ps),
+            "snow_in": _r(snow, 1),
+            "snow_lo": _r(rng[0], 1) if rng else None, "snow_hi": _r(rng[1], 1) if rng else None,
+            "extended": extended,
+            # 0-48 h only: the extended-outlook range too, to compare the two methods
+            "snow_ext_lo": _r(ext_rng[0], 1) if (ext_rng and not extended) else None,
+            "snow_ext_hi": _r(ext_rng[1], 1) if (ext_rng and not extended) else None,
+            "qpf_in": _r(q, 2),
+            "qpf_lo": _r(min(qp[0], q), 2) if qp else None, "qpf_hi": _r(max(qp[1], q), 2) if qp else None,
+            "p_snow": _r(pmean, 2), "type": P.precip_type(q, pmean),
+            "pop": _r(max(pops), 2) if pops else None,
             "slr": _r(slr, 1),
-            "powder": P.powder_quality(slr, max([g for g in gusts_snow if g is not None], default=None),
-                                       snow.get(50)),
+            "powder": P.powder_quality(slr, max(snowy_gusts, default=None), snow),
             "t_max_f": _r(max(temps)) if temps else None, "t_min_f": _r(min(temps)) if temps else None,
             "gust_max_mph": _r(max(gusts), 0) if gusts else None,
             "snowlvl_min_ft": _r(min(sls), -2) if sls else None,
         })
 
     totals = {}
-    blocks = {"24h": [("qpf_0_1d", 0, 24)], "72h": [("qpf_0_3d", 0, 72)],
-              "7d": [("qpf_0_3d", 0, 72), ("qpf_3_5d", 72, 120), ("qpf_5_7d", 120, 168)],
-              "10d": [("qpf_0_3d", 0, 72), ("qpf_3_5d", 72, 120), ("qpf_5_7d", 120, 168),
-                      ("qpf_7_10d", 168, 240)]}
-    for name, parts in blocks.items():
-        if any(e not in hset for _, _, e in parts):
+    qblocks = {"24h": [("qpf_0_1d", 24)], "72h": [("qpf_0_3d", 72)],
+               "7d": [("qpf_0_3d", 72), ("qpf_3_5d", 120), ("qpf_5_7d", 168)],
+               "10d": [("qpf_0_3d", 72), ("qpf_3_5d", 120), ("qpf_5_7d", 168), ("qpf_7_10d", 240)]}
+    sblocks = [("qpf_2_3d", 48, 72), ("qpf_3_5d", 72, 120), ("qpf_5_7d", 120, 168), ("qpf_7_10d", 168, 240)]
+    for name, end in (("24h", 24), ("72h", 72), ("7d", 168), ("10d", 240)):
+        ws = windows(0, end)
+        if end not in hset or ws is None:
             continue
-        qparts, sparts = [], []
-        for key, s, e in parts:
-            q = _pct(data, key, e, i)
-            sn, *_ = scaled(q, s, e)
-            qparts.append(q)
-            sparts.append(sn)
-        q, sn = P.comonotonic_sum(qparts), P.comonotonic_sum(sparts)
-        e = parts[-1][2]
-        ps, _, _ = window_stats(0, e)
-        totals[name] = {"qpf_in": {str(p): _r(v, 2) for p, v in q.items()},
-                        "snow_in": {str(p): _r(v, 1) for p, v in sn.items()},
-                        "snow_det_in": _r(P.window_sum(snow6, 0, e, 6), 1),
-                        "p_snow": _r(ps, 2), "approx": len(parts) > 1}
+        q = sum(w["qpf"] for w in ws)
+        snow = 0.0 if q < P.WET_IN else sum(w["snow"] for w in ws)
+        parts = [P.rank_sum([w["rng"] for w in (windows(0, min(end, 48)) or [{"rng": None}])])]
+        for key, s, e in sblocks:
+            if e <= end:
+                parts.append(extended_range(qpct(key, e), windows(s, e))[0])
+        srng = P.with_mean(P.rank_sum(parts), snow)
+        qrng = P.with_mean(P.rank_sum([qpct(k, e) for k, e in qblocks[name]]), q)
+        totals[name] = {"snow_in": _r(snow, 1),
+                        "snow_lo": _r(srng[0], 1) if srng else None, "snow_hi": _r(srng[1], 1) if srng else None,
+                        "qpf_in": _r(q, 2),
+                        "qpf_lo": _r(qrng[0], 2) if qrng else None, "qpf_hi": _r(qrng[1], 2) if qrng else None,
+                        "p_snow": _r(P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws]), 2),
+                        "extended": end > 48}
     return {"series": series, "precip": precip, "periods": out_periods, "totals": P.monotone_totals(totals)}
 
 
@@ -333,14 +377,16 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
             fc = point_forecast(data, hours, init, i, a[k]["elev_ft"], g.get("elev_ft"), tz)
             doc["points"][k] = {"elev_ft": a[k]["elev_ft"], "grid_elev_ft": g.get("elev_ft"),
                                 "grid": [g["i"], g["j"]], **fc}
-        files[a["id"]] = doc
         tot = {k: doc["points"][k]["totals"] for k in ("summit", "base")}
+        doc["checks"] = P.plausibility(tot["base"], tot["summit"])
+        files[a["id"]] = doc
         per = doc["points"]["summit"]["periods"]
+        brief = lambda t: {n: [x["snow_in"], x["snow_lo"], x["snow_hi"]] for n, x in t.items()}  # noqa: E731
         summary.append({
             "id": a["id"], "name": a["name"], "state": a["state"], "region": a["region"],
             "major": a.get("major", False), "lat": a["summit"]["lat"], "lon": a["summit"]["lon"],
-            "summit": {n: t["snow_in"] for n, t in tot["summit"].items()},
-            "base": {n: t["snow_in"] for n, t in tot["base"].items()},
+            # [most likely (mean), 10th, 90th] snow in inches per window
+            "summit": brief(tot["summit"]), "base": brief(tot["base"]), "checks": doc["checks"],
             "p_snow_base_72h": tot["base"].get("72h", {}).get("p_snow"),
             "snowlvl_min_72h_ft": min([p["snowlvl_min_ft"] for p in per[:6] if p["snowlvl_min_ft"] is not None],
                                       default=None),
@@ -378,7 +424,10 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
     col = {c: n for n, c in enumerate(cells)}
     ij = (np.array([c[0] for c in cells]), np.array([c[1] for c in cells]))
     hours = [h for h in forecast_hours(max_hour)]
-    cache_dir = CACHE / cid
+    # samples are columns in cell order: key the cache on the cell list and the selections
+    import hashlib
+    key = hashlib.md5(repr((cells, SELECTION_VERSION)).encode()).hexdigest()[:10]
+    cache_dir = CACHE / f"{cid}_{key}"
     log.info("NBM %s: %d forecast hours, %d grid cells for %d areas", cid, len(hours), len(cells), len(cat["areas"]))
     t0 = time.time()
     data: dict[int, dict] = {}
@@ -402,5 +451,9 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
                                       "generated_at": generated, "source": SOURCE, "areas": summary})
     log.info("NBM %s: wrote %d area files (max %.0f KB, total %.1f MB) + summary.json",
              cid, len(files), max(sizes) / 1024, sum(sizes) / 1e6)
+    flagged = {k: d["checks"] for k, d in files.items() if d.get("checks")}
+    if flagged:
+        log.warning("plausibility flags (%d areas): %s", len(flagged),
+                    "; ".join(f"{k}: {', '.join(v)}" for k, v in list(flagged.items())[:10]))
     emit(new="true", cycle=cid)
     return 0

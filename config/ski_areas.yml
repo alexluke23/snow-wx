@@ -34,6 +34,20 @@ exclude:
   - Homewood Mountain Resort            # duplicate of "Homewood Ski Area"
   - Woodward                            # Woodward Park City: indoor/terrain-park venue
 
+# Several OpenSkiMap areas that are one ski area: lifts are pooled, the biggest
+# member supplies the other attributes. Members may be filtered-out areas too.
+merge:
+  The Summit at Snoqualmie: [Three Summits, Summit West, Summit Central, Summit East]   # Alpental stays separate
+
+# Summit checks without overrides (owner rule: override only if OSM lift data is incomplete).
+# Checked 7 Nov 2026 against OSM via Overpass (data 2026-11-07T23:46Z) + USGS 3DEP:
+# - Kirkwood: all main chairs mapped (only low Chair 5 missing); highest top terminals
+#   Sunrise way/10282120 9,472 ft and The Wall way/130100679 9,464 ft. Terrain within
+#   300 m rises to 9,758 ft, so the published ~9,800 ft is the peak, not a lift top.
+# - Palisades Olympic Valley: 19 lifts mapped incl. Granite Chief way/30786856 (top
+#   8,629 ft) and Emigrant way/30786691 (top 8,749 ft = our summit); the published
+#   ~9,050 ft is Granite Chief peak (hike-to).
+
 # Areas the filter would drop (e.g. tagged nordic-only in OpenSkiMap).
 include:
   - Tahoe Donner Downhill Ski Area

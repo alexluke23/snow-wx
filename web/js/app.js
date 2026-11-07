@@ -495,9 +495,24 @@
   // ---------------------------------------------------------------- load
   let lastUpdated = "";
 
+  // One line per source: obs fetched by this build plus products merged in from
+  // other jobs (NBM points, model maps, NOHRSC), each with its own time.
+  const SOURCE_LABEL = { snotel: "SNOTEL", asos: "ASOS", avalanche: "Avalanche", points: "NBM forecasts",
+    models: "Model maps", nohrsc: "NOHRSC snow" };
+  const UNIT = { snotel: "stations", asos: "stations", avalanche: "zones" };
+  const ago = (iso) => {
+    if (!iso) return "";
+    const m = (Date.now() - new Date(iso)) / 6e4;
+    return m < 90 ? `${Math.max(1, Math.round(m))} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+  };
   function drawStatus(meta) {
-    const items = Object.entries(meta.sources || {}).map(([name, s]) =>
-      `<li class="${s.ok ? "ok" : "bad"}">${esc(name)}: ${s.ok ? `${s.count} ${name === "avalanche" ? "zones" : "stations"}` : `failed (${esc(s.error)})`}</li>`);
+    const items = Object.entries(meta.sources || {}).map(([name, s]) => {
+      const label = SOURCE_LABEL[name] || name;
+      const what = s.ok ? [s.count !== undefined ? `${s.count} ${s.unit || UNIT[name] || ""}`.trim() : "", s.detail || ""]
+        .filter(Boolean).join(" · ") : `failed (${esc(s.error)})`;
+      const when = s.at ? ` <span class="hint" title="${esc(s.at)}">${ago(s.at)}</span>` : "";
+      return `<li class="${s.ok ? "ok" : "bad"}">${esc(label)}: ${esc(what)}${when}</li>`;
+    });
     $("status").innerHTML = items.join("");
   }
 
