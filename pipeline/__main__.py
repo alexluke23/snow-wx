@@ -62,6 +62,11 @@ def build_site(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
     web = REPO_ROOT / "web"
     shutil.copytree(web, outdir, dirs_exist_ok=True)
     code = run_obs(cfg, outdir / "data", only)
+    # Static catalogs that live in the repo (built on demand, e.g. `pipeline catalog`).
+    for name in ("ski_areas.json",):
+        src = REPO_ROOT / "data" / name
+        if src.exists():
+            shutil.copy2(src, outdir / "data" / name)
     try:
         from .models.catalog import write_catalog
         from .models.config import load_models_config
@@ -102,6 +107,21 @@ def main(argv=None) -> int:
         p.add_argument("--only", nargs="*", choices=list(SOURCES), help="run only these sources")
         p.add_argument("-v", "--verbose", action="store_true")
     _models_args(sub)
+    p = sub.add_parser("catalog", help="rebuild data/ski_areas.json (on demand; slow external lookups are cached)")
+    p.add_argument("--out", default=str(REPO_ROOT / "data" / "ski_areas.json"))
+    p.add_argument("--obs-dir", default="build/data", help="folder with snotel/asos.geojson for nearest-station joins")
+    p.add_argument("--refresh", action="store_true", help="re-download OpenSkiMap")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("points", help="NBM point forecasts for every ski area into OUT/<id>.json")
+    p.add_argument("--out", default="build/data/points")
+    p.add_argument("--cycle", help="NBM cycle YYYYMMDDHH (default: newest complete 00/06/12/18Z)")
+    p.add_argument("--published", default=None, help="cycle already on the site; exit 0 if unchanged")
+    p.add_argument("--max-hour", type=int, default=264)
+    p.add_argument("--workers", type=int, default=6)
+    p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
 
     # Windows consoles/pipes default to cp1252; Herbie prints emoji. Never crash on that.
@@ -128,6 +148,14 @@ def main(argv=None) -> int:
                          github_output=args.github_output)
 
     cfg = load_config(args.config)
+    if args.cmd == "points":
+        from .nbm.run import run_points
+        cycle = datetime.strptime(args.cycle, "%Y%m%d%H") if args.cycle else None
+        return run_points(cfg, make_session(cfg), Path(args.out), cycle=cycle, published=args.published,
+                          max_hour=args.max_hour, workers=args.workers, github_output=args.github_output)
+    if args.cmd == "catalog":
+        from . import catalog
+        return catalog.run(cfg, make_session(cfg), Path(args.out), Path(args.obs_dir), args.refresh)
     if args.cmd == "obs":
         return run_obs(cfg, Path(args.out), args.only)
     if args.cmd == "build":

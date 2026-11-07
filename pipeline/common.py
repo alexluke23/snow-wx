@@ -45,23 +45,25 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def clean(value: Any) -> Any:
+def clean(value: Any, ndigits: int = 2) -> Any:
     """Make values JSON-safe: NaN/inf -> None, round floats."""
     if isinstance(value, float):
         if math.isnan(value) or math.isinf(value):
             return None
-        return round(value, 2)
+        return round(value, ndigits)
     if isinstance(value, dict):
-        return {k: clean(v) for k, v in value.items()}
+        return {k: clean(v, ndigits) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
-        return [clean(v) for v in value]
+        return [clean(v, ndigits) for v in value]
     return value
 
 
-def write_json(path: Path, obj: Any) -> None:
+def write_json(path: Path, obj: Any, ndigits: int = 2) -> None:
+    """Compact JSON; floats rounded to ndigits (2 suits data values; pass more for
+    coordinates or grid definitions)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(clean(obj), f, separators=(",", ":"), allow_nan=False)
+        json.dump(clean(obj, ndigits), f, separators=(",", ":"), allow_nan=False)
 
 
 def feature(lon: float, lat: float, props: dict) -> dict:

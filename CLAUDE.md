@@ -95,6 +95,36 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
     runs warm). At/below-ground classification agrees on 92–99.7% of points.
     The 0 °C cap barely changes RRFS (it has 925 mb heights).
 
+## Ski areas and point forecasts (M1/M2)
+- `python -m pipeline catalog` (on demand; needs build/data/snotel|asos.geojson from a
+  `build`) → `data/ski_areas.json` (committed, ODbL) + `data/ski_areas_verify.csv`.
+  Seeds: OpenSkiMap ski_areas + lifts GeoJSON (cached in data_cache/openskimap, ~140 MB).
+  Base = lowest lift bottom terminal, skipping lifts that start > `transport_drop_m`
+  below the lowest run (city trams/valley gondolas); summit = highest lift top
+  terminal (lift-served, not hike-to). Elevations = USGS 3DEP ImageServer getSamples,
+  checked against OpenSkiMap's per-vertex z (`verify`: ok | dem-only | review).
+  Joins: region (config boxes), tz + NWS grid (api.weather.gov /points), avalanche
+  zone (point in polygon; `zone_id` = avalanche.org feature id, now kept in
+  avalanche.geojson), nearest SNOTEL/ASOS, NBM i/j + cell elevation (3DEP mean over
+  the 2.5-km cell; NBM files have no terrain). Slow lookups cached in data_cache/catalog
+  (3DEP ~1 s per point, cell stats ~10 s each). Fixes go in `config/ski_areas.yml`.
+- `python -m pipeline points` → `build/data/points/<id>.json` + `summary.json`
+  (CI: `points` entry in the models.yml matrix → `points-<cycle>.tar` on the
+  model-maps release → update-site unpacks it into build/data). Code: `pipeline/nbm/`
+  (inventory parse/select, fetch+decode+sample) and pure `pipeline/points.py`.
+- NBM inventory facts (7 Nov 2026): every core cycle reaches f264 (hourly to f048,
+  3-hourly to f192, 6-hourly to f264); qmd only 00/06/12/18Z. ASNOW percentiles to
+  f048 (6-h to f054), SNOWLVL + SNOWLR percentiles to f048, deterministic after.
+  QPF percentiles (qmd, 0..100 by 5) in 6/12-h windows to f264, plus day blocks
+  0-1, 0-3, 3-5, 5-7, 7-10 day. SNOWLVL is metres MSL (extrapolated below ground in
+  dry air — a low value at a high cell is real, not a unit bug); SNOWLR is ~0 where no
+  snow falls (average it over snowy steps only). ecCodes names these `unknown`.
+- Methods (pure, tested): lapse 6.5 °C/km grid→point (cap 4000 ft); P(snow) = P(snow
+  level < point) from p10/50/90 (det ±800 ft ramp later); 12-h periods 00Z–12Z /
+  12Z–00Z; snow range = QPF percentiles × det snow/QPF ratio; 7/10-day ranges add block
+  percentiles rank by rank (wider than true). Sanity vs NDFD:
+  `python -m pipeline.nbm.sanity`.
+
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff.
 Branch `dev2` (from main after PR #1; not pushed). Session 2 scope: M0 → M1 → M2,
@@ -109,7 +139,9 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       viewer caption; Actions bumped to node24 majors (checkout v7, cache v6,
       setup-micromamba v3, configure-pages v6, upload-pages-artifact v5,
       deploy-pages v5), runners pinned `ubuntu-24.04`. CI not re-run yet (needs push).
-- [ ] M1 ski-area catalog
+- [x] M1 ski-area catalog: 161 areas, `data/ski_areas.json` (+ `_verify.csv`), map layer,
+      search, area.html stub. Full run ~21 min cold (3DEP), ~7 s cached. Open items:
+      Kirkwood / Olympic Valley summits unverified (see PLAN.md Status).
 - [ ] M2 NBM point pipeline
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

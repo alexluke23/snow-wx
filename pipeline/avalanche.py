@@ -68,7 +68,7 @@ def process(fc: dict, states: list[str], precision: int, now) -> dict:
         geom = feat.get("geometry")
         if not geom:
             continue
-        props = {k: p.get(k) for k in KEEP}
+        props = {"zone_id": feat.get("id"), **{k: p.get(k) for k in KEEP}}
         try:
             level = int(p.get("danger_level"))
         except (TypeError, ValueError):

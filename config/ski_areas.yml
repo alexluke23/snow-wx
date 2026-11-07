@@ -1,0 +1,103 @@
+# Ski-area catalog:  python -m pipeline catalog   (on demand, not hourly)
+# Seeds from OpenSkiMap (OpenStreetMap-derived, ODbL) and writes data/ski_areas.json,
+# which is committed and published under ODbL with attribution.
+# Prefer editing this file over code.
+
+source:
+  ski_areas: https://tiles.openskimap.org/geojson/ski_areas.geojson
+  lifts: https://tiles.openskimap.org/geojson/lifts.geojson
+  attribution: "© OpenStreetMap contributors, OpenSkiMap (ODbL)"
+
+states: [WA, OR, CA, NV, ID, MT, WY, UT, CO, AZ, NM]
+min_vertical_ft: 300        # lift-served vertical; drops tubing hills and rope-tow bumps
+major_count: 60             # largest areas (by downhill run length) flagged "major"
+
+# A lift whose bottom terminal is more than this far below the area's lowest
+# downhill run is transport (city tram, valley gondola) and not the ski base.
+transport_drop_m: 60
+
+# DEM checks: USGS 3DEP elevation at each base/summit point vs OpenSkiMap's
+# per-vertex elevation. Larger differences are listed for review.
+verify_tolerance_ft: 150
+
+nearest:
+  snotel: {count: 3, max_km: 50}
+  asos:   {count: 2, max_km: 60}
+
+# Matching is case-insensitive on the OpenSkiMap name (or id).
+exclude:
+  - Wasatch Peaks Ranch                 # private club
+  - Yellowstone Club                    # private club
+  - Utah Olympic Park                   # training venue, not a public ski area
+  - High Wallowas                       # Wallowa Lake summer tramway
+  - Beartooth Basin Summer Ski Area     # summer-only
+  - Homewood Mountain Resort            # duplicate of "Homewood Ski Area"
+  - Woodward                            # Woodward Park City: indoor/terrain-park venue
+
+# Areas the filter would drop (e.g. tagged nordic-only in OpenSkiMap).
+include:
+  - Tahoe Donner Downhill Ski Area
+
+# Per-area fixes keyed by OpenSkiMap name. Any of: name, region, url,
+# base {lat, lon}, summit {lat, lon} (elevations always come from the DEM),
+# exclude_lifts [names] (lifts OpenSkiMap attaches to the wrong area).
+overrides:
+  Palisades Tahoe Alpine Meadows:       # OSM ties Olympic Valley lifts to Alpine Meadows (base 6224 ft)
+    exclude_lifts: [Red Dog Express, Gold Coast Funitel, Base to Base]
+  Aspen Snowmass: {name: Snowmass}
+  Sun Valley - Bald Mountain: {name: Sun Valley (Bald Mountain)}
+  Sun Valley - Dollar Mountain: {name: Sun Valley (Dollar Mountain)}
+  "Ski Santa Fe, Santa Fe, Q3855441": {name: Ski Santa Fe}
+  Nordic Valley Resort (Wolf Mountain): {name: Nordic Valley}
+
+# Regions: first box that contains the summit wins; otherwise the state name.
+# box = [west, east, south, north]
+regions:
+  - {name: Olympics,              box: [-125.0, -122.6, 46.5, 48.5]}
+  - {name: Washington Cascades,   box: [-122.6, -120.2, 46.2, 49.1]}
+  - {name: Inland Northwest,      box: [-120.2, -115.0, 46.4, 49.1]}
+  - {name: Blue Mountains,        box: [-119.5, -116.5, 44.4, 46.4]}
+  - {name: Mt. Hood,              box: [-122.0, -121.4, 45.2, 45.6]}
+  - {name: Oregon Cascades,       box: [-122.9, -121.4, 41.9, 45.2]}
+  - {name: Northern California,   box: [-124.5, -120.0, 40.0, 42.1]}
+  - {name: Lake Tahoe,            box: [-120.5, -119.7, 38.6, 39.5]}
+  - {name: Eastern Sierra,        box: [-119.3, -118.3, 37.4, 38.0]}
+  - {name: Sierra Nevada,         box: [-121.0, -118.0, 35.5, 38.6]}
+  - {name: Southern California,   box: [-118.5, -116.0, 33.5, 34.6]}
+  - {name: Wasatch,               box: [-112.0, -111.3, 40.3, 41.45]}
+  - {name: Northern Utah,         box: [-112.2, -111.2, 41.45, 42.1]}
+  - {name: Southern Utah,         box: [-113.5, -111.0, 37.0, 39.0]}
+  - {name: Tetons,                box: [-111.7, -110.6, 43.3, 44.0]}
+  - {name: Central Idaho,         box: [-116.7, -115.5, 43.5, 46.2]}
+  - {name: Sun Valley Area,       box: [-115.0, -113.4, 43.3, 44.6]}
+  - {name: Southern Idaho,        box: [-114.6, -111.5, 41.9, 43.3]}
+  - {name: Northwest Montana,     box: [-115.0, -113.5, 47.5, 49.1]}
+  - {name: Western Montana,       box: [-114.6, -111.9, 45.3, 47.5]}
+  - {name: Southwest Montana,     box: [-111.9, -109.0, 45.0, 46.0]}
+  - {name: Summit County,         box: [-106.2, -105.86, 39.4, 39.72]}
+  - {name: Vail Valley,           box: [-106.7, -106.25, 39.5, 39.7]}
+  - {name: Aspen,                 box: [-107.0, -106.75, 39.05, 39.3]}
+  - {name: Front Range,           box: [-105.95, -105.3, 39.4, 40.1]}
+  - {name: Steamboat,             box: [-107.0, -106.6, 40.3, 40.6]}
+  - {name: Gunnison,              box: [-107.2, -106.7, 38.5, 39.0]}
+  - {name: San Juans,             box: [-108.2, -106.6, 37.2, 38.1]}
+  - {name: Central Colorado,      box: [-106.5, -105.8, 38.4, 39.4]}
+  - {name: Northern New Mexico,   box: [-106.6, -105.0, 35.0, 37.0]}
+  - {name: Southern New Mexico,   box: [-106.0, -105.0, 32.5, 34.0]}
+
+state_names: {WA: Washington, OR: Oregon, CA: California, NV: Nevada, ID: Idaho,
+              MT: Montana, WY: Wyoming, UT: Utah, CO: Colorado, AZ: Arizona,
+              NM: New Mexico}
+
+# Fallback time zones when api.weather.gov does not give one.
+state_tz: {WA: America/Los_Angeles, OR: America/Los_Angeles, CA: America/Los_Angeles,
+           NV: America/Los_Angeles, ID: America/Boise, MT: America/Denver,
+           WY: America/Denver, UT: America/Denver, CO: America/Denver,
+           AZ: America/Phoenix, NM: America/Denver}
+
+services:
+  dem_samples: https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples
+  dem_stats: https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/computeStatisticsHistograms
+  nws_points: https://api.weather.gov/points/{lat:.4f},{lon:.4f}
+  # One small NBM message (any element) gives the 2.5-km grid definition.
+  nbm_grid_idx: https://noaa-nbm-grib2-pds.s3.amazonaws.com/blend.{date}/{hh}/core/blend.t{hh}z.core.f001.co.grib2.idx

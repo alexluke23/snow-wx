@@ -46,6 +46,14 @@ percentiles, snow level method, verification).
 - **Session 2 (Nov 7, branch `dev2`):** M0 done locally — HRRR/RRFS upper air
   removed, Actions on node24 majors, runners pinned `ubuntu-24.04`; awaiting a CI
   run after push.
+- **M1 catalog:** 161 western areas (60 "major" by run length) in
+  `data/ski_areas.json`. All base/summit points have 3DEP elevations; OpenSkiMap's
+  own z agrees within 31 ft (it is DEM-derived too, so this checks the points, not
+  the choice of terminal). Hand-check of the top 60 vs published figures: fixed
+  Alpine Meadows (OSM attached Olympic Valley lifts); unverified: Kirkwood summit
+  (9,465 ft lift top vs ~9,800 published), Palisades Olympic Valley summit (8,749 vs
+  ~9,050). 59 areas lie outside avalanche-center zones; 17 have no SNOTEL within
+  50 km (CA/AZ/NM mostly; CA's CDEC sensors are not ingested).
 - **CI housekeeping:** Node 20 deprecation warnings (bump action versions);
   `ubuntu-latest` → Ubuntu 26 migration notice (pin `ubuntu-24.04`).
   GitHub hourly schedule is best-effort (only 2 runs overnight) — monitor.
@@ -66,6 +74,7 @@ percentiles, snow level method, verification).
 | **Nov 7** | **Remove upper-air fields (500 mb, 700 mb) from HRRR and RRFS. Keep them for GFS (and ECMWF later).** |
 | **Nov 7** | **Model maps must be zoomable** → interactive data layers for surface fields (§5.4). |
 | **Nov 7** | **NBM is the primary point-forecast engine; NDFD shown as the NWS official forecast alongside it.** |
+| Nov 7 | Ski-area catalog: private clubs (Yellowstone Club, Wasatch Peaks Ranch), training venues and summer-only areas excluded; base = lowest lift terminal serving runs, summit = highest lift-served terminal (not hike-to). |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
@@ -250,9 +259,10 @@ screenshots checked. Suggested session grouping in brackets.
   [x] models.html no longer lists upper-air fields for HRRR/RRFS.
 
 **M1 — Ski-area catalog** [Session 1]
-- [ ] `pipeline/catalog.py`, `config/ski_areas.yml` overrides, `data/ski_areas.json`.
-- [ ] Ski-area layer on the main map (distinct marker, click → area page stub).
-- [ ] ✅ when: ≥ 150 western areas with base+summit coords/elevations; top 60
+- [x] `pipeline/catalog.py`, `config/ski_areas.yml` overrides, `data/ski_areas.json`.
+- [x] Ski-area layer on the main map (distinct marker, click → area page stub).
+- [x] ✅ when: (161 areas; base/summit = lift terminals, elevations USGS 3DEP; top 60
+  hand-checked vs published figures, see Status; all joins present) ≥ 150 western areas with base+summit coords/elevations; top 60
   hand-verified; joins to avalanche zone, nearest SNOTEL/ASOS, NWS grid, NBM grid.
 
 **M2 — NBM point pipeline** [Session 1–2]
