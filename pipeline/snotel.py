@@ -208,12 +208,24 @@ def timeseries(series: dict[str, list[tuple]], elements: Iterable[str]) -> dict:
     return out
 
 
-def pct_of_median(daily: dict[str, list[tuple]]) -> float | None:
-    """Percent of median SWE from the most recent daily value with a median."""
+def median_swe(daily: dict[str, list[tuple]]) -> tuple[float | None, float | None]:
+    """(latest SWE, its median) from the most recent daily value with a median."""
     for date, value, median in reversed(daily.get("WTEQ", [])):
-        if value is not None and median not in (None, 0):
-            return 100.0 * float(value) / float(median)
-    return None
+        if value is not None and median is not None:
+            return float(value), float(median)
+    return None, None
+
+
+def pct_of_median(daily: dict[str, list[tuple]], min_median: float = 0.0) -> float | None:
+    """Percent of median SWE, or None when the median is below `min_median`.
+
+    Early in the season a tiny median makes the ratio meaningless (0.7" vs a
+    0.175" median reads as 400%), so it is suppressed below the threshold.
+    """
+    value, median = median_swe(daily)
+    if value is None or not median or median < min_median:
+        return None
+    return 100.0 * value / median
 
 
 # --------------------------------------------------------------------------
@@ -228,6 +240,7 @@ def _chunks(seq: list, n: int):
 def run(cfg: dict, session, outdir: Path) -> dict:
     scfg = cfg["snotel"]
     elements = scfg["elements"]
+    min_median = float(scfg.get("min_median_swe_in", 1.0))
     stations = fetch_stations(session, cfg["region"]["states"])
     if not stations:
         raise RuntimeError("no SNOTEL stations returned")
@@ -261,7 +274,9 @@ def run(cfg: dict, session, outdir: Path) -> dict:
             summary = summarize(series)
             if summary["obs_time"] is None:
                 continue  # no usable data in the window
-            summary["pct_median"] = pct_of_median(daily.get(trip, {}))
+            st_daily = daily.get(trip, {})
+            summary["median_swe_in"] = median_swe(st_daily)[1]
+            summary["pct_median"] = pct_of_median(st_daily, min_median)
             fname = trip.replace(":", "_")
             write_json(
                 outdir / "snotel" / f"{fname}.json",
