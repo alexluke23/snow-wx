@@ -42,26 +42,10 @@ percentiles, snow level method, verification).
 - **Model maps:** HRRR, RRFS, GFS — 10 fields, 6 domains (GFS west only), loop
   viewer; `models.yml` CI every 3 h → Release assets (`model-maps`) → site.
   Site ≈ 240 MB. First CI run green.
-- **Not started:** NBM, NDFD, ECMWF, ski areas.
-- **Session 2 (Nov 7, branch `dev2`):** M0 done locally — HRRR/RRFS upper air
-  removed, Actions on node24 majors, runners pinned `ubuntu-24.04`; awaiting a CI
-  run after push.
-- **M1 catalog:** 161 western areas (60 "major" by run length) in
-  `data/ski_areas.json`. All base/summit points have 3DEP elevations; OpenSkiMap's
-  own z agrees within 31 ft (it is DEM-derived too, so this checks the points, not
-  the choice of terminal). Hand-check of the top 60 vs published figures: fixed
-  Alpine Meadows (OSM attached Olympic Valley lifts); unverified: Kirkwood summit
-  (9,465 ft lift top vs ~9,800 published), Palisades Olympic Valley summit (8,749 vs
-  ~9,050). 59 areas lie outside avalanche-center zones; 17 have no SNOTEL within
-  50 km (CA/AZ/NM mostly; CA's CDEC sensors are not ingested).
-- **M2 NBM points:** `python -m pipeline points` → 161 area files (≤ 32 KB, 5.3 MB
-  total) + summary.json in ~155 s locally (80 forecast hours, ~1 GB of byte ranges).
-  Inventory: snowfall/snow-level/SLR percentiles only to ~48 h, QPF percentiles to
-  11 days (details in CLAUDE.md). NBM core GRIB uses alternative row scanning —
-  caught when Wasatch values came from the eastern US; decodes now match the NBS
-  text bulletins at 8 airports. Sanity (12Z 7 Nov, dry pattern): our 12-h snow
-  medians are within ~0.15 in of NBM's deterministic snow; vs NWS gridpoints:
-  Timberline 3.2 vs 1.6 in, Crystal 1.4 vs 0.0 in, 8 dry areas agree at 0.
+- **Session 1 (dev2, Nov 7):** M0 done; M1 catalog (161 areas, 60 major,
+  3DEP elevations); M2 NBM points (fixed NBM alternating-row decode bug;
+  matches NBM bulletins); M3 area page v1 reviewed — consistent with NWS.
+- **Not started:** NDFD, ECMWF, NOHRSC overlays, Powder Finder.
 - **CI housekeeping:** Node 20 deprecation warnings (bump action versions);
   `ubuntu-latest` → Ubuntu 26 migration notice (pin `ubuntu-24.04`).
   GitHub hourly schedule is best-effort (only 2 runs overnight) — monitor.
@@ -82,9 +66,16 @@ percentiles, snow level method, verification).
 | **Nov 7** | **Remove upper-air fields (500 mb, 700 mb) from HRRR and RRFS. Keep them for GFS (and ECMWF later).** |
 | **Nov 7** | **Model maps must be zoomable** → interactive data layers for surface fields (§5.4). |
 | **Nov 7** | **NBM is the primary point-forecast engine; NDFD shown as the NWS official forecast alongside it.** |
-| Nov 7 | NBM periods are 12Z–00Z / 00Z–12Z (≈ 5 AM–5 PM MST), not 6 AM–6 PM local: NBM is 6-hourly after 48 h and its QPF percentiles end at 00/06/12/18Z. *Owner to confirm.* |
-| Nov 7 | Snowfall ranges = NBM QPF percentiles × NBM's deterministic snow/QPF ratio for the window (NBM has no snowfall percentiles past ~48 h); one method for all 11 days. *Owner to confirm.* |
-| Nov 7 | Ski-area catalog: private clubs (Yellowstone Club, Wasatch Peaks Ranch), training venues and summer-only areas excluded; base = lowest lift terminal serving runs, summit = highest lift-served terminal (not hike-to). |
+| Nov 7 (S2) | 1. Day/night = 12Z–00Z / 00Z–12Z periods, labeled in local time (e.g. "5 AM–5 PM MST"). |
+| Nov 7 (S2) | 2. Snowfall ranges: NBM snowfall percentiles for 0–48 h; beyond 48 h QPF percentiles × SLR × P(snow at elevation), styled as "extended outlook". Report how the two methods compare over 0–48 h. |
+| Nov 7 (S2) | 3. Bars, the headline "most likely" and totals use NBM deterministic (mean) values so bars sum to totals; percentiles only as 10–90% whiskers/ranges. Zero snowfall when expected QPF < 0.01". |
+| Nov 7 (S2) | 4. Point snow = snowfall × P(snow level below point elevation) from the snow-level percentiles; label "mostly rain" / "mixed". |
+| Nov 7 (S2) | 5. NBM points stay at 4×/day (00/06/12/18Z). |
+| Nov 7 (S2) | 6. Catalog: merge Three Summits + Summit West/Central/East into "The Summit at Snoqualmie"; Alpental stays separate. Kirkwood / Palisades summit overrides only if OSM lift data is incomplete, with the source cited. |
+| Nov 7 (S2) | 7. Keep Plotly, but render the headline + tiles as plain HTML first and load charts afterwards; measure with Lighthouse (mobile) and report. |
+| Nov 7 (S2) | Add NBM + NDFD forecasts for all SNOTEL sites; NDFD sampled from GRIB2 on AWS (api.weather.gov only for alerts/AFD/missing elements). |
+| Nov 7 (S2) | Add NOHRSC overlays to obs map: SNODAS SWE, snow depth, 24 h SWE change; National Gridded Snowfall Analysis 24/48/72 h. Builds the interactive-layer system (§5.4) first used here. |
+| Nov 7 (S2) | Obs map performance work (canvas rendering, lazy charts). |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
@@ -262,34 +253,40 @@ Work top-down. Each milestone = its own commits with tests + a live run +
 screenshots checked. Suggested session grouping in brackets.
 
 **M0 — Housekeeping** [Session 1]
-- [x] Remove HRRR/RRFS `h500`, `t700`; snow-level legend note.
-- [x] Bump all Actions to current major versions (clear Node 20 warnings); pin
+- Remove HRRR/RRFS `h500`, `t700`; snow-level legend note.
+- Bump all Actions to current major versions (clear Node 20 warnings); pin
   `runs-on: ubuntu-24.04`.
-- [ ] ✅ when: CI green with no deprecation warnings (needs a push/merge + run);
-  [x] models.html no longer lists upper-air fields for HRRR/RRFS.
+- ✅ when: CI green with no deprecation warnings; models.html no longer lists
+  upper-air fields for HRRR/RRFS.
 
 **M1 — Ski-area catalog** [Session 1]
-- [x] `pipeline/catalog.py`, `config/ski_areas.yml` overrides, `data/ski_areas.json`.
-- [x] Ski-area layer on the main map (distinct marker, click → area page stub).
-- [x] ✅ when: (161 areas; base/summit = lift terminals, elevations USGS 3DEP; top 60
-  hand-checked vs published figures, see Status; all joins present) ≥ 150 western areas with base+summit coords/elevations; top 60
+- `pipeline/catalog.py`, `config/ski_areas.yml` overrides, `data/ski_areas.json`.
+- Ski-area layer on the main map (distinct marker, click → area page stub).
+- ✅ when: ≥ 150 western areas with base+summit coords/elevations; top 60
   hand-verified; joins to avalanche zone, nearest SNOTEL/ASOS, NWS grid, NBM grid.
 
 **M2 — NBM point pipeline** [Session 1–2]
-- [x] Inventory check, fetch-once-sample-all, percentiles, elevation handling,
-  periods, powder quality; CI job (`points` in the models.yml matrix; not yet run on GitHub).
-- [x] ✅ when: `data/points/<id>.json` + `summary.json` for all areas; unit tests for
+- Inventory check, fetch-once-sample-all, percentiles, elevation handling,
+  periods, powder quality; CI job.
+- ✅ when: `data/points/<id>.json` + `summary.json` for all areas; unit tests for
   period aggregation, lapse adjustment, snow-level→P(snow); a sanity report
   comparing NBM 24 h snow median with NDFD for 10 areas.
 
 **M3 — Ski-area page v1** [Session 2]
-- [x] Headline numbers, day/night bars, snow-level chart, hourly meteogram, recent
-  obs, avalanche danger, favorites, share link. Mobile-first. (v1, awaiting owner review)
-- [ ] ✅ when: screenshots checked at 375/1280 px for Crystal, Mammoth, Alta (done);
-  cold-load < 2 s not yet measured (Plotly-basic 355 KB gz + ~60 KB data); Chrome screenshots at 375 px and 1280 px look clean for 3 areas
+- Headline numbers, day/night bars, snow-level chart, hourly meteogram, recent
+  obs, avalanche danger, favorites, share link. Mobile-first.
+- ✅ when: Chrome screenshots at 375 px and 1280 px look clean for 3 areas
   (wet PNW, Sierra, dry interior); loads < 2 s on a cold cache.
 
-**M4 — Powder Finder** [Session 2]
+**M3.5 — Snowpack overlays, SNOTEL forecasts, speed** [Session 2]
+- Obs map performance (canvas markers, cached declutter, lazy Plotly).
+- NOHRSC overlays: SNODAS SWE, depth, 24 h SWE change; NOHRSC 24/48/72 h
+  snowfall analysis — built on the §5.4 interactive-layer system.
+- NBM + NDFD point forecasts at every SNOTEL site (NDFD via AWS GRIB2).
+- ✅ when: map interactions feel instant; overlays zoom smoothly with hover
+  values; any SNOTEL station opens a forecast view.
+
+**M4 — Powder Finder** [Session 2–3]
 - Map + sortable/filterable table (state/region; 24 h / 72 h / 7 d; range;
   snow level; wind), favorites first.
 - ✅ when: sort/filter work on mobile; markers use the shared snowfall palette.

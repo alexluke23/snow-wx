@@ -132,8 +132,6 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff.
 Branch `dev2` (from main after PR #1; not pushed). Session 2 scope: M0 → M1 → M2,
 then M3 for 3 areas if time allows.
-Git note: the global `user.name` in ~/.gitconfig contains pasted command text, so
-commits are made with `git -c user.name="Alex Lukinbeal" commit ...` (owner to fix).
 Done earlier (branch `dev`, merged): Phase-1 polish A1–A5; model maps HRRR/RRFS/GFS
 (B6–B10) + CI. Full local runs 12Z 7 Nov: HRRR 1361 img / 114 MB / 214 s,
 RRFS 1349 / 100 MB / 240 s, GFS 362 / 23 MB / 178 s (before M0 removed upper air
