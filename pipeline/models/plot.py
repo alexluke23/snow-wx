@@ -436,7 +436,7 @@ def draw_snowlevel(c: Canvas, d: dict):
     leg = ax.legend(handles=handles, loc="lower left", fontsize=7, framealpha=0.9,
                     handlelength=1.6, borderpad=0.4, labelspacing=0.3)
     leg.set_zorder(9)
-    return SNOWLEVEL, "Snow level: lowest wet-bulb 0 °C height (ft MSL)"
+    return SNOWLEVEL, "Snow level ≈ wet-bulb 0 °C height (ft MSL)"
 
 
 def draw_t2m(c: Canvas, d: dict):

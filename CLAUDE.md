@@ -5,6 +5,10 @@ mountains, built for skiers and snow-science users. Owner is a meteorologist
 comfortable with Python. Free hosting: GitHub Actions (hourly) builds static
 JSON/PNG + HTML and deploys to GitHub Pages. No servers, no API keys.
 
+**Product plan: `docs/PLAN.md`** (vision, specs, milestones M0–M10, decisions log).
+Read it with this file at the start of every session; keep its §2 Status, §3
+Decisions log and §8 milestone checkboxes current as work lands.
+
 ## Commands
 Use the project's conda env Python for every Python command (no `conda activate`
 needed), e.g.
@@ -91,43 +95,21 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
     runs warm). At/below-ground classification agrees on 92–99.7% of points.
     The 0 °C cap barely changes RRFS (it has 925 mb heights).
 
-## Roadmap (see project plan)
-1. Observations map (done: SNOTEL, ASOS, avalanche danger)
-2. Model map pipeline with Herbie: HRRR, RRFS (operational Nov 2026, replaced
-   NAM), GFS, NBM, ECMWF IFS/AIFS — western domain + subregions, loop viewer
-   (done on `dev`: HRRR, RRFS, GFS + viewer + CI; ECMWF and NBM maps not yet)
-3. Point forecasts: NBM/NDFD meteograms, ensemble plumes, elevation bands
-4. Snow-science products: SLR comparisons, snow level vs terrain, wind loading
-5. Verification vs SNOTEL/ASOS, alerts, mobile polish
-
 ## TODO / session handoff (keep current; newest state wins)
-Branch `dev` (not pushed). Plan: A1–A5 polish → HRRR end-to-end (fetch → plots →
-viewer → CI) → RRFS → GFS → NBM points → ECMWF.
+Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff.
+Branch `dev2` (from main after PR #1; not pushed). Session 2 scope: M0 → M1 → M2,
+then M3 for 3 areas if time allows.
 Git note: the global `user.name` in ~/.gitconfig contains pasted command text, so
-commits on `dev` were made with `git -c user.name="Alex Lukinbeal" commit ...`
-(the global config was left alone; owner to fix).
-- [x] 0. Env bootstrap (DLL path, emoji-safe stdout), this TODO list
-- [x] A1 ASOS temp rounding · A2 %-median guard · A3 label declutter · A4 smoothed depth · A5 search + URL hash
-- [x] B6+B7 HRRR fetch/derive/plots (`pipeline/models/`, `config/models.yml`, tests/test_models.py)
-- [x] B8 full HRRR run: 1361 images, 59 MB, 216 s locally · B9 web/models.html viewer
-- [x] B10 CI: `.github/workflows/models.yml` + release-asset hand-off in `update-site.yml`.
-      NOT yet exercised on GitHub (schedules only run on the default branch): after
-      merging to main, run Actions → Model maps → Run workflow and check the
-      `model-maps` release + site.
-- [x] RRFS enabled (config + CI matrix); WBZ cross-check done (see Model maps notes)
-- [x] GFS enabled (moisture rh, native ABSV, west only) + CI matrix [hrrr, rrfs, gfs].
-      Local full runs, 12Z 7 Nov (home internet; CI on AWS should be faster):
-      HRRR 1361 img / 114 MB / 214 s, RRFS 1349 img / 100 MB / 240 s,
-      GFS 362 img / 23 MB / 178 s. Whole site 240 MB. Terrain contours roughly
-      doubled HRRR PNG size (59 -> 114 MB); drop them in plot.Canvas.add_terrain if
-      bandwidth matters more than context.
-- [ ] C11 NBM points (not started). Findings: NBM `core` CONUS 2.5 km files (~200 MB,
-      `blend.tHHz.core.fFFF.co.grib2`, Herbie `nbm`, product `co`) already hold ASNOW
-      percentiles (`ASNOW:surface:18-24 hour acc@(fcst,dt=6 hour),missing=0:10% level`,
-      also 50%/90%, and 1-h windows), 6-h APCP and SNOWLR percentiles — no `qmd` file
-      needed. Plan: `config/points.yml` (SNOTEL triplets + ski areas with lat/lon/elev),
-      reuse fetch.download_frame/decode with an NBM var catalog, nearest-grid-point
-      extraction (precompute indices once), 6-hourly to 168 h, write
-      `data/nbm/<id>.json`, meteogram in the station panel (p10/p50/p90 band).
-- [ ] C12 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
+commits are made with `git -c user.name="Alex Lukinbeal" commit ...` (owner to fix).
+Done earlier (branch `dev`, merged): Phase-1 polish A1–A5; model maps HRRR/RRFS/GFS
+(B6–B10) + CI. Full local runs 12Z 7 Nov: HRRR 1361 img / 114 MB / 214 s,
+RRFS 1349 / 100 MB / 240 s, GFS 362 / 23 MB / 178 s (before M0 removed upper air
+from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
+- [x] M0 upper air (h500/t700) removed from HRRR/RRFS; snow-level note on maps +
+      viewer caption; Actions bumped to node24 majors (checkout v7, cache v6,
+      setup-micromamba v3, configure-pages v6, upload-pages-artifact v5,
+      deploy-pages v5), runners pinned `ubuntu-24.04`. CI not re-run yet (needs push).
+- [ ] M1 ski-area catalog
+- [ ] M2 NBM point pipeline
+- [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

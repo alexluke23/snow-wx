@@ -35,9 +35,12 @@ def test_field_fhours_need_history():
 
 
 def test_image_budget(mcfg):
-    assert field_domains(mcfg, "hrrr", "h500") == ["west"]
+    assert field_domains(mcfg, "gfs", "h500") == ["west"]
     assert len(field_domains(mcfg, "hrrr", "t2m")) == 6
-    assert image_count(mcfg, "hrrr") == 1361
+    assert image_count(mcfg, "hrrr") == 1361 - 29 - 29 * 6         # 1361 before h500/t700 removal
+    for m in ("hrrr", "rrfs"):                                      # upper air: GFS (and ECMWF) only
+        assert not {"h500", "t700"} & set(mcfg["models"][m]["fields"])
+    assert {"h500", "t700"} <= set(mcfg["models"]["gfs"]["fields"])
     assert total_image_count(mcfg) <= mcfg["budget"]["max_images"]
 
 
@@ -198,11 +201,11 @@ def test_run_model_no_complete_cycle_is_clean(mcfg, tmp_path, monkeypatch):
 def test_build_index_and_catalog(mcfg, tmp_path):
     ok = [{"field": "t2m", "domain": "wasatch", "f": 6, "bytes": 10},
           {"field": "t2m", "domain": "west", "f": 0, "bytes": 10},
-          {"field": "h500", "domain": "west", "f": 0, "bytes": 5}]
+          {"field": "qpf6", "domain": "west", "f": 6, "bytes": 5}]
     idx = build_index(mcfg, "hrrr", datetime(2026, 11, 7, 0), ok)
     assert idx["fields"]["t2m"]["domains"] == ["west", "wasatch"]      # config order
     assert idx["fields"]["t2m"]["fhours"] == [0, 6]
-    assert list(idx["fields"]) == ["h500", "t2m"]                       # model field order
+    assert list(idx["fields"]) == ["qpf6", "t2m"]                       # model field order
     assert idx["path"].format(field="t2m", domain="west", fhour="006") == "2026110700/t2m/west/f006.png"
     for name in ("gfs", "hrrr"):
         p = tmp_path / name / "index.json"
