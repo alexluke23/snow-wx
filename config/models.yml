@@ -1,0 +1,73 @@
+# Model map pipeline:  python -m pipeline models --model hrrr
+# Prefer editing this file over code. Output (per model, latest cycle only):
+#   <out>/<model>/<cycle>/<field>/<domain>/fNNN.png   +   <out>/<model>/index.json
+
+cache_dir: data_cache/herbie   # GRIB2 byte-range subsets + per-frame arrays (gitignored)
+
+budget:
+  max_images: 6000             # tests fail if the config below would exceed this
+  max_site_mb: 900             # CI fails the deploy above this (Pages limit is 1 GB)
+
+image:
+  width_px: 900                # width of one map panel; height follows the domain shape
+  dpi: 100
+  colors: 128                  # PNG palette size after quantizing (smaller files)
+
+# Fixed map extents [west, east, south, north]. tz is used for the local valid time.
+domains:
+  west:     {label: Western US,       extent: [-125.5, -102.0, 31.0, 49.5], tz: America/Denver}
+  pnw:      {label: PNW / Cascades,   extent: [-125.0, -116.5, 42.0, 49.2], tz: America/Los_Angeles}
+  sierra:   {label: Sierra Nevada,    extent: [-122.5, -116.5, 35.3, 40.8], tz: America/Los_Angeles}
+  nrockies: {label: Northern Rockies, extent: [-117.5, -108.5, 43.0, 49.2], tz: America/Denver}
+  wasatch:  {label: Wasatch / Uintas, extent: [-113.3, -108.8, 39.0, 42.2], tz: America/Denver}
+  colorado: {label: Colorado,         extent: [-109.3, -104.5, 36.8, 41.1], tz: America/Denver}
+
+# Per-field domain limits (default: every domain the model lists).
+field_domains:
+  h500: [west]                 # synoptic field; subregions add nothing
+
+models:
+  hrrr:
+    enabled: true
+    label: HRRR
+    herbie: {model: hrrr}
+    products: {sfc: sfc, upper: sfc}     # HRRR wrfsfc has 1000-500 mb levels
+    moisture: dpt                         # pressure-level moisture field (dpt or rh)
+    vorticity: compute                    # no ABSV in wrfsfc -> compute from u/v
+    levels: [1000, 925, 850, 700, 500]
+    cycles: [0, 6, 12, 18]                # the 48-hr runs
+    fhours: [[0, 18, 1], [21, 48, 3]]     # [start, stop, step] inclusive
+    domains: [west, pnw, sierra, nrockies, wasatch, colorado]
+    fields: [h500, t700, qpf1, qpf6, qpf24, qpf_total, snow, snowlevel, t2m, gust]
+    smooth_km: 30                         # Gaussian smoothing for 500 mb heights/vorticity
+    attribution: "NOAA/NCEP HRRR via NOAA Open Data Dissemination (AWS)"
+
+  rrfs:
+    enabled: false                        # turned on after HRRR works end-to-end
+    label: RRFS
+    herbie: {model: rrfs, domain: conus}
+    products: {sfc: 2dfld, upper: prslev}
+    moisture: dpt
+    vorticity: native
+    levels: [1000, 925, 850, 700, 500]
+    cycles: [0, 6, 12, 18]                # the 84-hr runs
+    fhours: [[0, 84, 3]]
+    domains: [west, pnw, sierra, nrockies, wasatch, colorado]
+    fields: [h500, t700, qpf6, qpf24, qpf_total, snow, snowlevel, t2m, gust]
+    smooth_km: 30
+    attribution: "NOAA/NCEP RRFS via NOAA Open Data Dissemination (AWS)"
+
+  gfs:
+    enabled: false
+    label: GFS
+    herbie: {model: gfs}
+    products: {sfc: pgrb2.0p25, upper: pgrb2.0p25}
+    moisture: rh
+    vorticity: native
+    levels: [1000, 925, 850, 700, 500]
+    cycles: [0, 6, 12, 18]
+    fhours: [[0, 240, 6]]
+    domains: [west]                       # 25 km is too coarse for subregions
+    fields: [h500, t700, qpf6, qpf24, qpf_total, snow, snowlevel, t2m, gust]
+    smooth_km: 0
+    attribution: "NOAA/NCEP GFS via NOAA Open Data Dissemination (AWS)"

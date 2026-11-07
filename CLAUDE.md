@@ -54,6 +54,8 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 Branch `dev` (not pushed). Plan: A1–A5 polish → HRRR end-to-end (fetch → plots →
 viewer → CI) → RRFS → GFS → NBM points → ECMWF.
 - [x] 0. Env bootstrap (DLL path, emoji-safe stdout), this TODO list
-- [ ] A1 ASOS temp rounding · A2 %-median guard · A3 label declutter · A4 smoothed depth · A5 search + URL hash
-- [ ] B6–B10 HRRR end-to-end, then RRFS, GFS
+- [x] A1 ASOS temp rounding · A2 %-median guard · A3 label declutter · A4 smoothed depth · A5 search + URL hash
+- [x] B6+B7 HRRR fetch/derive/plots (`pipeline/models/`, `config/models.yml`, tests/test_models.py)
+- [ ] B8 full-run timing/size + index JSON check · B9 web/models.html viewer · B10 CI workflows
+- [ ] then RRFS (cross-check WBZ vs native), GFS
 - [ ] C11 NBM points · C12 ECMWF
