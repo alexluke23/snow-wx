@@ -44,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [hrrr]   # add rrfs / gfs here when enabled in config/models.yml
+        model: [hrrr, rrfs, gfs]   # one job per model; keep in sync with config/models.yml
     env:
       GH_TOKEN: ${{ github.token }}
       MODEL: ${{ matrix.model }}

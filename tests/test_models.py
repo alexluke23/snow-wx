@@ -199,6 +199,17 @@ def test_build_index_and_catalog(mcfg, tmp_path):
 
 # ---------------------------------------------------------------- plotting smoke test
 
+def test_crop_bounds_cover_lambert_corners(mcfg):
+    # First render left the western map's NE corner empty: a Lambert box built from
+    # [-125.5, -102, 31, 49.5] reaches well east of -102 at its northern edge.
+    from pipeline.models.plot import map_lonlat_bounds
+    w, e, s, n = mcfg["domains"]["west"]["extent"]
+    bw, be, bs, bn = map_lonlat_bounds([mcfg["domains"]["west"]["extent"]], pad_deg=0)
+    assert be > e + 1.0 and bw < w - 1.0 and bs <= s and bn >= n
+
+
+
+
 def test_render_fixed_size_png(mcfg, tmp_path):
     from PIL import Image
     from pipeline.models import plot

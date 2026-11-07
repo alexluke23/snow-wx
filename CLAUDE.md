@@ -83,6 +83,13 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
     "at/below ground" color. Freezing-level contours use HGT:highest tropospheric
     freezing level (HRRR's lowest 0C isotherm follows valley cold pools).
   - Snowfall uses CPOFP (frozen %) at the end of each step for the whole step.
+  - WBZ cross-check vs RRFS native `HGT:lowest level of the wet bulb zero`
+    (gh/lowestLevelWetBulb0), RRFS 12Z 7 Nov 2026, f000–f048, western crop:
+    precipitating points: computed − native median about −190 ft (per-hour −155 to −200,
+    IQR about −390 to −10 ft); terrain > 5000 ft: median −180 ft but varies by time of
+    day (IQR about ±600 ft); all above-ground points: about +300 ft (dry air aloft, Stull
+    runs warm). At/below-ground classification agrees on 92–99.7% of points.
+    The 0 °C cap barely changes RRFS (it has 925 mb heights).
 
 ## Roadmap (see project plan)
 1. Observations map (done: SNOTEL, ASOS, avalanche danger)
@@ -103,7 +110,18 @@ viewer → CI) → RRFS → GFS → NBM points → ECMWF.
       NOT yet exercised on GitHub (schedules only run on the default branch): after
       merging to main, run Actions → Model maps → Run workflow and check the
       `model-maps` release + site.
-- [ ] RRFS: enable in config/models.yml, quick render, check PNGs, cross-check computed
-      WBZ vs native `HGT:lowest level of the wet bulb zero`, add to the matrix
-- [ ] GFS: same (moisture rh, native ABSV, west only)
-- [ ] C11 NBM points · C12 ECMWF
+- [x] RRFS enabled (config + CI matrix); WBZ cross-check done (see Model maps notes)
+- [x] GFS enabled (moisture rh, native ABSV, west only) + CI matrix [hrrr, rrfs, gfs].
+      Local full runs (home internet; CI on AWS should be faster): HRRR 1361 img/59 MB/216 s,
+      RRFS 1349 img/100 MB/240 s, GFS 369 img, ~27 s/frame locally (download-bound:
+      0.25° global messages can't be spatially subset by byte range).
+- [ ] C11 NBM points (not started). Findings: NBM `core` CONUS 2.5 km files (~200 MB,
+      `blend.tHHz.core.fFFF.co.grib2`, Herbie `nbm`, product `co`) already hold ASNOW
+      percentiles (`ASNOW:surface:18-24 hour acc@(fcst,dt=6 hour),missing=0:10% level`,
+      also 50%/90%, and 1-h windows), 6-h APCP and SNOWLR percentiles — no `qmd` file
+      needed. Plan: `config/points.yml` (SNOTEL triplets + ski areas with lat/lon/elev),
+      reuse fetch.download_frame/decode with an NBM var catalog, nearest-grid-point
+      extraction (precompute indices once), 6-hourly to 168 h, write
+      `data/nbm/<id>.json`, meteogram in the station panel (p10/p50/p90 band).
+- [ ] C12 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
+      IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

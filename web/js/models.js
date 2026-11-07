@@ -208,7 +208,8 @@
     }
     $("updated").textContent = "Runs: " + names.map((k) => {
       const m = catalog.models[k];
-      return `${m.label} ${m.cycle.slice(8, 10)}Z ${m.cycle.slice(6, 8)}/${m.cycle.slice(4, 6)}`;
+      const day = new Date(m.init).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+      return `${m.label} ${m.cycle.slice(8, 10)}Z ${day}`;
     }).join(" · ");
     settle(readHash());
   }

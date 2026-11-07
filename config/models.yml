@@ -43,7 +43,7 @@ models:
     attribution: "NOAA/NCEP HRRR via NOAA Open Data Dissemination (AWS)"
 
   rrfs:
-    enabled: false                        # turned on after HRRR works end-to-end
+    enabled: true
     label: RRFS
     herbie: {model: rrfs, domain: conus}
     products: {sfc: 2dfld, upper: prslev}
@@ -58,7 +58,7 @@ models:
     attribution: "NOAA/NCEP RRFS via NOAA Open Data Dissemination (AWS)"
 
   gfs:
-    enabled: false
+    enabled: true
     label: GFS
     herbie: {model: gfs}
     products: {sfc: pgrb2.0p25, upper: pgrb2.0p25}
