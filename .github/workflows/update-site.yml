@@ -48,9 +48,11 @@ jobs:
           names=$(gh release view model-maps --json assets -q '.assets[].name' 2>/dev/null || true)
           for m in $(echo "$names" | sed -n 's/^\([a-z0-9]*\)-[0-9]\{10\}\.tar$/\1/p' | sort -u); do
             # newest first; fall back to an older asset if one vanished mid-update
+            dest=build/models; [ "$m" = points ] && dest=build/data   # NBM point forecasts
+            mkdir -p "$dest"
             for a in $(echo "$names" | grep -E "^${m}-[0-9]{10}\.tar$" | sort -r); do
               if gh release download model-maps -p "$a" -D "$RUNNER_TEMP/models" --clobber \
-                 && tar -C build/models -xf "$RUNNER_TEMP/models/$a"; then
+                 && tar -C "$dest" -xf "$RUNNER_TEMP/models/$a"; then
                 echo "model maps: $a"; break
               fi
               echo "::warning::could not fetch $a"

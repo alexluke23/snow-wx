@@ -44,7 +44,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [hrrr, rrfs, gfs]   # one job per model; keep in sync with config/models.yml
+        # one job per model (keep in sync with config/models.yml) + NBM ski-area point forecasts
+        model: [hrrr, rrfs, gfs, points]
     env:
       GH_TOKEN: ${{ github.token }}
       MODEL: ${{ matrix.model }}
@@ -91,7 +92,13 @@ jobs:
         shell: bash -el {0}
         # Writes new=true|false and cycle=... to $GITHUB_OUTPUT. Exit 0 with
         # new=false when nothing newer than the published cycle is complete.
-        run: python -m pipeline models --model "$MODEL" --out out/models --published "${{ steps.pub.outputs.cycle }}"
+        run: |
+          if [ "$MODEL" = points ]; then
+            # NBM 00/06/12/18Z cycles reach f264 (core + qmd) a few hours after init
+            python -m pipeline points --out out/models/points --published "${{ steps.pub.outputs.cycle }}"
+          else
+            python -m pipeline models --model "$MODEL" --out out/models --published "${{ steps.pub.outputs.cycle }}"
+          fi
 
       - name: Upload to the model-maps release
         if: steps.render.outputs.new == 'true'

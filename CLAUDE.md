@@ -116,9 +116,12 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
   3-hourly to f192, 6-hourly to f264); qmd only 00/06/12/18Z. ASNOW percentiles to
   f048 (6-h to f054), SNOWLVL + SNOWLR percentiles to f048, deterministic after.
   QPF percentiles (qmd, 0..100 by 5) in 6/12-h windows to f264, plus day blocks
-  0-1, 0-3, 3-5, 5-7, 7-10 day. SNOWLVL is metres MSL (extrapolated below ground in
-  dry air — a low value at a high cell is real, not a unit bug); SNOWLR is ~0 where no
-  snow falls (average it over snowy steps only). ecCodes names these `unknown`.
+  0-1, 0-3, 3-5, 5-7, 7-10 day. SNOWLVL is metres MSL; SNOWLR is ~0 where
+  no snow falls (average it over snowy steps only). ecCodes names these `unknown`.
+  **core GRIB uses alternativeRowScanning** (odd rows stored reversed; qmd does not):
+  index with `run.flat_index`, or odd-row cells read the mirror column (this bug once
+  made Wasatch values come from the eastern US). Check decodes against the NBS text
+  bulletins (`blend.YYYYMMDD/HH/text/blend_nbstx.tHHz`: TMP, Q06, SLV in 100s ft).
 - Methods (pure, tested): lapse 6.5 °C/km grid→point (cap 4000 ft); P(snow) = P(snow
   level < point) from p10/50/90 (det ±800 ft ramp later); 12-h periods 00Z–12Z /
   12Z–00Z; snow range = QPF percentiles × det snow/QPF ratio; 7/10-day ranges add block
@@ -142,6 +145,9 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
 - [x] M1 ski-area catalog: 161 areas, `data/ski_areas.json` (+ `_verify.csv`), map layer,
       search, area.html stub. Full run ~21 min cold (3DEP), ~7 s cached. Open items:
       Kirkwood / Olympic Valley summits unverified (see PLAN.md Status).
-- [ ] M2 NBM point pipeline
+- [x] M2 NBM point pipeline: `pipeline/nbm/`, `pipeline/points.py`, `points` CI matrix
+      entry (untested on GitHub), sanity script. Known weak spot: when NBM's
+      deterministic QPF is ~0 but its QPF percentiles are not, the fallback ratio
+      (SLR × P(snow)) can overstate trace snow (Mission Ridge 1.1 vs det 0.2 in).
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

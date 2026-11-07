@@ -54,6 +54,14 @@ percentiles, snow level method, verification).
   (9,465 ft lift top vs ~9,800 published), Palisades Olympic Valley summit (8,749 vs
   ~9,050). 59 areas lie outside avalanche-center zones; 17 have no SNOTEL within
   50 km (CA/AZ/NM mostly; CA's CDEC sensors are not ingested).
+- **M2 NBM points:** `python -m pipeline points` → 161 area files (≤ 32 KB, 5.3 MB
+  total) + summary.json in ~155 s locally (80 forecast hours, ~1 GB of byte ranges).
+  Inventory: snowfall/snow-level/SLR percentiles only to ~48 h, QPF percentiles to
+  11 days (details in CLAUDE.md). NBM core GRIB uses alternative row scanning —
+  caught when Wasatch values came from the eastern US; decodes now match the NBS
+  text bulletins at 8 airports. Sanity (12Z 7 Nov, dry pattern): our 12-h snow
+  medians are within ~0.15 in of NBM's deterministic snow; vs NWS gridpoints:
+  Timberline 3.2 vs 1.6 in, Crystal 1.4 vs 0.0 in, 8 dry areas agree at 0.
 - **CI housekeeping:** Node 20 deprecation warnings (bump action versions);
   `ubuntu-latest` → Ubuntu 26 migration notice (pin `ubuntu-24.04`).
   GitHub hourly schedule is best-effort (only 2 runs overnight) — monitor.
@@ -74,6 +82,8 @@ percentiles, snow level method, verification).
 | **Nov 7** | **Remove upper-air fields (500 mb, 700 mb) from HRRR and RRFS. Keep them for GFS (and ECMWF later).** |
 | **Nov 7** | **Model maps must be zoomable** → interactive data layers for surface fields (§5.4). |
 | **Nov 7** | **NBM is the primary point-forecast engine; NDFD shown as the NWS official forecast alongside it.** |
+| Nov 7 | NBM periods are 12Z–00Z / 00Z–12Z (≈ 5 AM–5 PM MST), not 6 AM–6 PM local: NBM is 6-hourly after 48 h and its QPF percentiles end at 00/06/12/18Z. *Owner to confirm.* |
+| Nov 7 | Snowfall ranges = NBM QPF percentiles × NBM's deterministic snow/QPF ratio for the window (NBM has no snowfall percentiles past ~48 h); one method for all 11 days. *Owner to confirm.* |
 | Nov 7 | Ski-area catalog: private clubs (Yellowstone Club, Wasatch Peaks Ranch), training venues and summer-only areas excluded; base = lowest lift terminal serving runs, summit = highest lift-served terminal (not hike-to). |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
@@ -266,9 +276,9 @@ screenshots checked. Suggested session grouping in brackets.
   hand-verified; joins to avalanche zone, nearest SNOTEL/ASOS, NWS grid, NBM grid.
 
 **M2 — NBM point pipeline** [Session 1–2]
-- [ ] Inventory check, fetch-once-sample-all, percentiles, elevation handling,
-  periods, powder quality; CI job.
-- [ ] ✅ when: `data/points/<id>.json` + `summary.json` for all areas; unit tests for
+- [x] Inventory check, fetch-once-sample-all, percentiles, elevation handling,
+  periods, powder quality; CI job (`points` in the models.yml matrix; not yet run on GitHub).
+- [x] ✅ when: `data/points/<id>.json` + `summary.json` for all areas; unit tests for
   period aggregation, lapse adjustment, snow-level→P(snow); a sanity report
   comparing NBM 24 h snow median with NDFD for 10 areas.
 
