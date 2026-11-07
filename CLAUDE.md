@@ -149,5 +149,9 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       entry (untested on GitHub), sanity script. Known weak spot: when NBM's
       deterministic QPF is ~0 but its QPF percentiles are not, the fallback ratio
       (SLR × P(snow)) can overstate trace snow (Mission Ridge 1.1 vs det 0.2 in).
+- [ ] M3 ski-area page v1 (`web/area.html`, `web/js/area.js`) committed for owner
+      review; checked at 375/1280 px for crystal-mountain, mammoth-mountain,
+      alta-ski-area via iframe harness pages (headless Chrome won't go below ~500 px).
+      Waiting on owner decisions (see final summary of session 2) before polishing.
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

@@ -283,9 +283,10 @@ screenshots checked. Suggested session grouping in brackets.
   comparing NBM 24 h snow median with NDFD for 10 areas.
 
 **M3 — Ski-area page v1** [Session 2]
-- [ ] Headline numbers, day/night bars, snow-level chart, hourly meteogram, recent
-  obs, avalanche danger, favorites, share link. Mobile-first.
-- [ ] ✅ when: Chrome screenshots at 375 px and 1280 px look clean for 3 areas
+- [x] Headline numbers, day/night bars, snow-level chart, hourly meteogram, recent
+  obs, avalanche danger, favorites, share link. Mobile-first. (v1, awaiting owner review)
+- [ ] ✅ when: screenshots checked at 375/1280 px for Crystal, Mammoth, Alta (done);
+  cold-load < 2 s not yet measured (Plotly-basic 355 KB gz + ~60 KB data); Chrome screenshots at 375 px and 1280 px look clean for 3 areas
   (wet PNW, Sierra, dry interior); loads < 2 s on a cold cache.
 
 **M4 — Powder Finder** [Session 2]
