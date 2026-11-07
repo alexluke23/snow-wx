@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snow-Wx · Model maps</title>
+  <meta name="description" content="HRRR, RRFS and GFS forecast maps for the western US mountains: precipitation, snowfall, snow level, temperature, wind.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="models-page">
+  <header>
+    <h1>Snow-Wx <span>Western US</span></h1>
+    <nav class="site-nav">
+      <a href="index.html">Obs map</a>
+      <a href="models.html" class="active" aria-current="page">Model maps</a>
+    </nav>
+    <div id="updated">Loading…</div>
+  </header>
+
+  <main class="viewer">
+    <div class="controls" role="group" aria-label="Map selection">
+      <label>Model <select id="model"></select></label>
+      <label>Field <select id="field"></select></label>
+      <label>Region <select id="domain"></select></label>
+    </div>
+
+    <div class="player" role="group" aria-label="Forecast hour">
+      <button id="prev" type="button" title="Previous hour (←)" aria-label="Previous hour">◀</button>
+      <button id="play" type="button" title="Play / pause (space)" aria-label="Play">▶ Play</button>
+      <button id="next" type="button" title="Next hour (→)" aria-label="Next hour">▶</button>
+      <input id="hour" type="range" min="0" max="0" value="0" aria-label="Forecast hour">
+      <span id="hour-label" class="hour-label">–</span>
+      <label class="speed">Speed
+        <select id="speed">
+          <option value="900">slow</option>
+          <option value="450" selected>normal</option>
+          <option value="200">fast</option>
+        </select>
+      </label>
+      <span id="loading" class="loading" aria-live="polite"></span>
+    </div>
+
+    <figure class="frame">
+      <img id="frame" alt="Model forecast map">
+      <figcaption id="caption" class="hint"></figcaption>
+    </figure>
+    <p id="empty" class="empty-note" hidden>No model runs have been published yet. They appear here
+      after the “Model maps” workflow runs (every 3 hours).</p>
+  </main>
+
+  <footer>
+    Model data: NOAA/NCEP via <a href="https://www.noaa.gov/nodd" target="_blank" rel="noopener">NOAA Open Data Dissemination</a> (AWS).
+    Keys: ← → step · space play/pause · Home/End first/last.
+    <strong>Not a substitute for your local avalanche or NWS forecast.</strong>
+  </footer>
+
+  <script src="js/models.js"></script>
+</body>
+</html>
