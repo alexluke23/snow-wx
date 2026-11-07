@@ -39,7 +39,7 @@ env:
 
 jobs:
   render:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -59,10 +59,10 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.sel.outputs.run == 'true'
 
-      - uses: mamba-org/setup-micromamba@v2
+      - uses: mamba-org/setup-micromamba@v3
         if: steps.sel.outputs.run == 'true'
         with:
           environment-file: environment.yml
@@ -70,7 +70,7 @@ jobs:
 
       - name: Cache Natural Earth basemap files
         if: steps.sel.outputs.run == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/cartopy
           key: cartopy-naturalearth-50m-v1
