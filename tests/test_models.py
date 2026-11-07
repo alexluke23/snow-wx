@@ -141,6 +141,21 @@ def test_derive_frame_accumulates(mcfg):
     assert out12["precip_now"][0, 0] == 1.0
 
 
+def test_field_arrays_cover_every_field(mcfg):
+    from pipeline.models.config import FIELD_INFO
+    from pipeline.models.plot import DRAW
+    from pipeline.models.run import FIELD_ARRAYS
+    assert set(FIELD_ARRAYS) == set(FIELD_INFO) == set(DRAW)
+    m = mcfg["models"]["hrrr"]
+    st, grid = RunState(), _grid()
+    derive_frame(_raw(None), grid, m, m["fields"], 0, st)
+    out = derive_frame(_raw(25.4), grid, m, m["fields"], 6, st)
+    # frames 0 and 6 only: 1-hr and 24-hr windows genuinely can't exist yet
+    missing = {f: k for f in m["fields"] if f not in ("qpf1", "qpf24")
+               for k in FIELD_ARRAYS[f] if k not in out}
+    assert not missing
+
+
 def test_needed_vars_follow_config(mcfg):
     hrrr = needed_vars(mcfg["models"]["hrrr"], ["h500", "snowlevel"])
     assert {"u500", "v500", "dpt850", "fzl_top"} <= set(hrrr) and "absv500" not in hrrr

@@ -31,6 +31,14 @@ from .fetch import (Grid, candidate_cycles, cycle_complete, decode, download_fra
 log = logging.getLogger("snow-wx.models")
 
 
+# Arrays each field's plot needs (from derive_frame).
+FIELD_ARRAYS = {
+    "h500": ("h500_dam", "vort500"), "t700": ("t700_c", "h700_dam", "u700_kt", "v700_kt"),
+    "qpf1": ("qpf1",), "qpf6": ("qpf6",), "qpf24": ("qpf24",), "qpf_total": ("qpf_total",),
+    "snow": ("snow10", "snowku"), "snowlevel": ("snowlevel_ft", "snow_at_sfc"),
+    "t2m": ("t2m_f",), "gust": ("gust_kt",),
+}
+
 # ---------------------------------------------------------------- derivation (pure)
 
 @dataclass
@@ -264,8 +272,11 @@ def run_model(cfg: dict, model: str, out: Path, *, fhours: list[int] | None = No
                          crs=json.dumps(grid.crs), uv_rel=grid.uv_grid_relative)
             frame_path = work / f"f{f:03d}.npz"
             np.savez(frame_path, **arrays)
+            # A failed earlier frame can leave a window (e.g. qpf6) underivable here.
+            ready = [fld for fld in use_fields if f in fh_by_field[fld]
+                     and all(k in arrays for k in FIELD_ARRAYS[fld])]
             for dom in cfg["domains"]:
-                todo = [fld for fld in use_fields if f in fh_by_field[fld] and dom in doms_by_field[fld]]
+                todo = [fld for fld in ready if dom in doms_by_field[fld]]
                 if todo:
                     plot_futures.append(pool.submit(render_task, str(grid_path), str(frame_path), dom,
                                                     todo, f, str(run_dir), meta))

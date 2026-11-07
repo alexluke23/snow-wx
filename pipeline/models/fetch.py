@@ -139,11 +139,25 @@ def cycle_complete(mcfg: dict, cycle: datetime, fxx: int, save_dir: Path) -> boo
 
 
 def download_frame(mcfg: dict, catalog: dict[str, Var], names: list[str], cycle: datetime,
-                   fxx: int, save_dir: Path) -> list[Path]:
-    """Byte-range download the needed messages for one forecast hour.
+                   fxx: int, save_dir: Path, attempts: int = 3) -> list[Path]:
+    """Byte-range download the needed messages for one forecast hour, retrying
+    transient network errors (a connection reset once dropped a GFS frame)."""
+    import time
+    for i in range(attempts):
+        try:
+            return _download_frame(mcfg, catalog, names, cycle, fxx, save_dir)
+        except FileNotFoundError:
+            raise
+        except Exception as exc:
+            if i == attempts - 1:
+                raise
+            log.info("%s f%03d download retry %d: %s", mcfg["label"], fxx, i + 1, exc)
+            time.sleep(5 * (i + 1))
 
-    Returns one local GRIB2 subset file per distinct Herbie product.
-    """
+
+def _download_frame(mcfg: dict, catalog: dict[str, Var], names: list[str], cycle: datetime,
+                    fxx: int, save_dir: Path) -> list[Path]:
+    """Returns one local GRIB2 subset file per distinct Herbie product."""
     by_product: dict[str, set[str]] = {}
     for where, product in mcfg["products"].items():
         by_product.setdefault(product, set()).add(where)

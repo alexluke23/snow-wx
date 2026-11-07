@@ -116,9 +116,11 @@ commits on `dev` were made with `git -c user.name="Alex Lukinbeal" commit ...`
       `model-maps` release + site.
 - [x] RRFS enabled (config + CI matrix); WBZ cross-check done (see Model maps notes)
 - [x] GFS enabled (moisture rh, native ABSV, west only) + CI matrix [hrrr, rrfs, gfs].
-      Local full runs (home internet; CI on AWS should be faster): HRRR 1361 img/59 MB/216 s,
-      RRFS 1349 img/100 MB/240 s, GFS 369 img, ~27 s/frame locally (download-bound:
-      0.25° global messages can't be spatially subset by byte range).
+      Local full runs, 12Z 7 Nov (home internet; CI on AWS should be faster):
+      HRRR 1361 img / 114 MB / 214 s, RRFS 1349 img / 100 MB / 240 s,
+      GFS 362 img / 23 MB / 178 s. Whole site 240 MB. Terrain contours roughly
+      doubled HRRR PNG size (59 -> 114 MB); drop them in plot.Canvas.add_terrain if
+      bandwidth matters more than context.
 - [ ] C11 NBM points (not started). Findings: NBM `core` CONUS 2.5 km files (~200 MB,
       `blend.tHHz.core.fFFF.co.grib2`, Herbie `nbm`, product `co`) already hold ASNOW
       percentiles (`ASNOW:surface:18-24 hour acc@(fcst,dt=6 hour),missing=0:10% level`,
