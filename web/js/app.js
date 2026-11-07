@@ -214,8 +214,10 @@
     for (const f of fc.features) {
       const p = f.properties;
       const [lon, lat] = f.geometry.coordinates;
+      // Whole degrees on the map (short labels overlap less); decimals in the popup.
+      const tLabel = p.temp_f === null || p.temp_f === undefined ? "" : Math.round(p.temp_f);
       const html = `<div class="asos${p.stale ? " stale" : ""}">${barbSVG(p.wind_kt, p.wind_dir)}
-        <span class="asos-temp">${p.temp_f ?? ""}</span></div>`;
+        <span class="asos-temp">${tLabel}</span></div>`;
       const m = L.marker([lat, lon], {
         icon: L.divIcon({ html, className: "", iconSize: null }), title: p.name,
       });
@@ -223,7 +225,7 @@
         <strong>${esc(p.id)} – ${esc(p.name)}</strong><br>
         <span class="hint">${localTime(p.valid_utc)}${p.stale ? " · <strong>stale</strong>" : ""}</span>
         <table class="metrics">
-          <tr><td>Temp / Dewpoint</td><td>${num(p.temp_f, 0, "°F")} / ${num(p.dewp_f, 0, "°F")}</td></tr>
+          <tr><td>Temp / Dewpoint</td><td>${num(p.temp_f, 1, "°F")} / ${num(p.dewp_f, 1, "°F")}</td></tr>
           <tr><td>Wind</td><td>${num(p.wind_dir, 0, "°")} @ ${num(p.wind_kt, 0, " kt")}${p.gust_kt ? ` G${num(p.gust_kt, 0)}` : ""}</td></tr>
           <tr><td>Visibility</td><td>${num(p.vis_mi, 1, " mi")}</td></tr>
           <tr><td>Today hi / lo</td><td>${num(p.tmax_f, 0, "°")} / ${num(p.tmin_f, 0, "°")}</td></tr>
