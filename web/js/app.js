@@ -64,6 +64,74 @@
     map.getContainer().classList.toggle("z-low", map.getZoom() < LOW_ZOOM);
   map.on("zoomend", setZoomClass);
 
+  // ---------------------------------------------------------------- declutter
+  // From LOW_ZOOM up, labels are placed greedily by priority; a label that
+  // would overlap one already placed collapses to a dot (SNOTEL) or a bare
+  // wind barb (ASOS). Every marker stays on the map and clickable.
+  const CELL = 64; // spatial-hash cell size, px
+
+  function labelItems() {
+    const items = [];
+    const size = map.getSize(), margin = 60;
+    const onScreen = (pt) => pt.x > -margin && pt.y > -margin && pt.x < size.x + margin && pt.y < size.y + margin;
+    if (map.hasLayer(snotelLayer)) {
+      const spec = SNOTEL_VARS[currentVar];
+      snotelLayer.eachLayer((m) => {
+        const el = m.getElement()?.firstElementChild;
+        const pt = map.latLngToContainerPoint(m.getLatLng());
+        if (!el || !onScreen(pt)) return;
+        const v = m.options.value;
+        const text = v === null || v === undefined ? "–" : fmtValue(spec, v);
+        const w = Math.max(26, 10 + 6.6 * text.length), h = 16;
+        const prio = m.options.triplet === selected ? 1e9
+          : v === null || v === undefined ? 1 : 3 + Math.min(Math.abs(v), 1e6) / 1e6;
+        items.push({ m, el, kind: "snotel", prio,
+          box: [pt.x - w / 2 - 1, pt.y - h / 2 - 1, pt.x + w / 2 + 1, pt.y + h / 2 + 1] });
+      });
+    }
+    if (map.hasLayer(asosLayer)) {
+      for (const [id, m] of asosMarkers) {
+        const el = m.getElement()?.firstElementChild;
+        const t = m.options.tempLabel;
+        const pt = map.latLngToContainerPoint(m.getLatLng());
+        if (!el || t === "" || !onScreen(pt)) continue;
+        // .asos-temp sits up-left of the station: right edge 4 px left of it, bottom 2 px above.
+        const w = 7 * String(t).length + 2;
+        const prio = selected === `asos:${id}` ? 1e9 : m.options.stale ? 0.5 : 2;
+        items.push({ m, el, kind: "asos", prio, box: [pt.x - 4 - w, pt.y - 16, pt.x - 3, pt.y - 1] });
+      }
+    }
+    return items;
+  }
+
+  function declutter() {
+    const items = labelItems();
+    if (map.getZoom() < LOW_ZOOM) {      // z-low CSS already shows dots / hides temps
+      for (const it of items) it.el.classList.remove("dot");
+      return;
+    }
+    items.sort((a, b) => b.prio - a.prio);
+    const grid = new Map();
+    const cells = (b) => {
+      const out = [];
+      for (let cx = Math.floor(b[0] / CELL); cx <= Math.floor(b[2] / CELL); cx++)
+        for (let cy = Math.floor(b[1] / CELL); cy <= Math.floor(b[3] / CELL); cy++) out.push(`${cx},${cy}`);
+      return out;
+    };
+    const hits = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+    for (const it of items) {
+      const keys = cells(it.box);
+      const blocked = keys.some((k) => (grid.get(k) || []).some((b) => hits(it.box, b)));
+      it.el.classList.toggle("dot", blocked);
+      it.m.setZIndexOffset(blocked ? -2000 : it.kind === "snotel" ? 1000 : 500);
+      if (!blocked) for (const k of keys) (grid.get(k) || grid.set(k, []).get(k)).push(it.box);
+    }
+  }
+
+  let declutterTimer = null;
+  const scheduleDeclutter = () => { clearTimeout(declutterTimer); declutterTimer = setTimeout(declutter, 50); };
+  map.on("zoomend moveend overlayadd overlayremove", scheduleDeclutter);
+
   // ---------------------------------------------------------------- avalanche
   function avyStyle(f) {
     const p = f.properties;
@@ -141,12 +209,14 @@
         icon: L.divIcon({ html, className: "", iconSize: null }),
         title: `${p.name} (${num(p.elev_ft, 0)} ft)`,
         triplet: p.triplet,
-        zIndexOffset: bg ? Math.round((v ?? 0) * 10) : -1000,
+        value: bg ? v : null,
+        zIndexOffset: bg ? 1000 : -1000,
       });
       m.on("click", () => selectSnotel(p));
       snotelLayer.addLayer(m);
     }
     drawLegend(spec);
+    scheduleDeclutter();
   }
 
   function selectSnotel(p) {
@@ -156,6 +226,7 @@
       if (m.options.triplet === p.triplet) m.getElement()?.firstElementChild?.classList.add("sel");
     });
     writeHash();
+    scheduleDeclutter();   // the selected station always keeps its label
     showStation(p);
   }
 
@@ -264,6 +335,7 @@
         <span class="asos-temp">${tLabel}</span></div>`;
       const m = L.marker([lat, lon], {
         icon: L.divIcon({ html, className: "", iconSize: null }), title: p.name,
+        tempLabel: tLabel, stale: !!p.stale,
       });
       m.bindPopup(`
         <strong>${esc(p.id)} – ${esc(p.name)}</strong><br>
@@ -281,6 +353,7 @@
       asosLayer.addLayer(m);
       asosMarkers.set(String(p.id), m);
     }
+    scheduleDeclutter();
   }
 
   // ---------------------------------------------------------------- search
