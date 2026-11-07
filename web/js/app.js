@@ -49,11 +49,14 @@
   const avyLayer = L.geoJSON(null, { style: avyStyle, onEachFeature: avyPopup });
   const snotelLayer = L.layerGroup();
   const asosLayer = L.layerGroup();
+  const skiLayer = L.layerGroup();
   avyLayer.addTo(map);
   snotelLayer.addTo(map);
   asosLayer.addTo(map);
+  skiLayer.addTo(map);
 
   L.control.layers(baseLayers, {
+    "Ski areas": skiLayer,
     "Avalanche danger": avyLayer,
     "SNOTEL": snotelLayer,
     "ASOS / AWOS (wind, temp)": asosLayer,
@@ -164,7 +167,7 @@
 
   // ---------------------------------------------------------------- URL hash state
   // #v=<SNOTEL variable>&map=<zoom>/<lat>/<lon>&s=<station>
-  // s is a SNOTEL triplet (766:UT:SNTL) or asos:<id> (asos:SLC).
+  // s is a SNOTEL triplet (766:UT:SNTL), asos:<id> (asos:SLC) or area:<id> (area:alta-ski-area).
   function readHash() {
     const q = new URLSearchParams(location.hash.replace(/^#/, ""));
     const out = { v: q.get("v"), s: q.get("s") };
@@ -359,12 +362,48 @@
     scheduleDeclutter();
   }
 
+  // ---------------------------------------------------------------- ski areas
+  // data/ski_areas.json (pipeline catalog; OpenSkiMap/OSM, ODbL). Triangle markers,
+  // larger for the major areas; popup links to the area page.
+  const skiMarkers = new Map();
+  const ft = (v) => (v === null || v === undefined ? "–" : `${Number(v).toLocaleString()} ft`);
+
+  function drawSkiAreas(cat) {
+    skiLayer.clearLayers();
+    skiMarkers.clear();
+    for (const a of cat?.areas || []) {
+      const size = a.major ? 16 : 11;
+      const icon = L.divIcon({
+        className: `ski${a.major ? " major" : ""}`, iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+        html: `<svg viewBox="0 0 16 16" width="${size}" height="${size}" aria-hidden="true">` +
+          `<path d="M8 1.5 15 14.5H1z"/></svg>` });
+      const m = L.marker([a.summit.lat, a.summit.lon], { icon, title: a.name, zIndexOffset: 1500,
+        keyboard: true, alt: `${a.name} ski area` });
+      const avy = a.avalanche ? `<br>Avalanche zone: ${esc(a.avalanche.zone)}` : "";
+      m.bindPopup(`<strong>${esc(a.name)}</strong>
+        <div class="hint">${esc(a.region)}, ${esc(a.state)}</div>
+        <p>Base ${ft(a.base.elev_ft)} · Summit ${ft(a.summit.elev_ft)}<br>
+        Vertical ${ft(a.vertical_ft)} · ${a.lifts} lifts${avy}</p>
+        <a href="area.html#${encodeURIComponent(a.id)}">Forecast and details →</a>
+        ${a.url ? `<br><a href="${esc(safeUrl(a.url))}" target="_blank" rel="noopener">Area website</a>` : ""}`);
+      m.on("popupopen", () => { selected = `area:${a.id}`; writeHash(); });
+      m.on("popupclose", () => { if (selected === `area:${a.id}`) { selected = null; writeHash(); } });
+      m.addTo(skiLayer);
+      skiMarkers.set(a.id, m);
+    }
+    if (cat?.attribution) map.attributionControl.addAttribution(`Ski areas ${esc(cat.attribution)}`);
+  }
+
   // ---------------------------------------------------------------- search
-  // One list of SNOTEL + ASOS stations, matched on name or ID.
+  // One list of ski areas + SNOTEL + ASOS stations, matched on name or ID.
   let stationIndex = [];
 
-  function buildIndex(sno, aso) {
+  function buildIndex(sno, aso, ski) {
     stationIndex = [];
+    for (const a of ski?.areas || []) {
+      stationIndex.push({ key: `area:${a.id}`, kind: "AREA", ids: [a.id], name: a.name,
+        sub: `Ski area · ${a.region}, ${a.state}`, lat: a.summit.lat, lon: a.summit.lon });
+    }
     for (const f of sno?.features || []) {
       const p = f.properties, [lon, lat] = f.geometry.coordinates;
       stationIndex.push({ key: p.triplet, kind: "SNOTEL", ids: [String(p.id), p.triplet], name: p.name,
@@ -397,7 +436,10 @@
 
   function selectStation(s, { fly = true } = {}) {
     if (fly) map.setView([s.lat, s.lon], Math.max(map.getZoom(), 10));
-    if (s.kind === "SNOTEL") {
+    if (s.kind === "AREA") {
+      if (!map.hasLayer(skiLayer)) skiLayer.addTo(map);
+      skiMarkers.get(s.key.slice(5))?.openPopup();
+    } else if (s.kind === "SNOTEL") {
       if (!map.hasLayer(snotelLayer)) snotelLayer.addTo(map);
       selectSnotel(s.props);
     } else {
@@ -415,7 +457,7 @@
       list.innerHTML = results.length
         ? results.map((s, i) => `<li role="option" data-i="${i}" class="${i === active ? "active" : ""}">
             ${esc(s.name)}<span class="kind">${esc(s.sub)}</span></li>`).join("")
-        : `<li class="empty">No matching station</li>`;
+        : `<li class="empty">No match</li>`;
       list.hidden = false;
       input.setAttribute("aria-expanded", "true");
     };
@@ -474,15 +516,17 @@
     else map.setView(meta?.region?.map_center || [41.5, -113], meta?.region?.map_zoom || 5);
     setZoomClass();
 
-    const [avy, sno, aso] = await Promise.allSettled([
+    const [avy, sno, aso, ski] = await Promise.allSettled([
       getJSON("avalanche.geojson", lastUpdated),
       getJSON("snotel.geojson", lastUpdated),
       getJSON("asos.geojson", lastUpdated),
+      getJSON("ski_areas.json", lastUpdated),
     ]);
     if (avy.status === "fulfilled") avyLayer.addData(avy.value);
     if (sno.status === "fulfilled") { snotelData = sno.value; drawSnotel(); }
     if (aso.status === "fulfilled") drawAsos(aso.value);
-    buildIndex(sno.value, aso.value);
+    if (ski.status === "fulfilled") drawSkiAreas(ski.value);
+    buildIndex(sno.value, aso.value, ski.value);
 
     hashReady = true;
     openFromHash(initialHash, false);
