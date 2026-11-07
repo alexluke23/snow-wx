@@ -1,0 +1,28 @@
+# One environment for your laptop AND GitHub Actions.
+#   conda env create -f environment.yml
+#   conda activate snow-wx
+# After editing this file:  conda env update -f environment.yml --prune
+name: snow-wx
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  # Phase 1: observations + website
+  - requests
+  - pyyaml
+  - numpy
+  - pandas
+  - pytest
+  # Phase 2+: model data and map plotting (installed now so you can explore)
+  - xarray
+  - eccodes
+  - cfgrib
+  - herbie-data
+  - metpy
+  - cartopy
+  - matplotlib
+  - scipy
+  - netcdf4
+  # Notebooks for prototyping
+  - jupyterlab
+  - ipykernel

@@ -1,0 +1,78 @@
+// Color scales for SNOTEL variables. `bins` are thresholds; `colors` has one
+// more entry than `bins` (values below the first threshold use colors[0]).
+// Edit freely -- the legend is generated from these definitions.
+
+const SNOTEL_VARS = {
+  depth_24h: {
+    label: "24-hr snow depth change (in)",
+    bins: [-2, 1, 3, 6, 9, 12, 18, 24],
+    colors: ["#a6761d", "#f0f0f0", "#c6dbef", "#9ecae1", "#6baed6", "#3182bd",
+             "#08519c", "#6a51a3", "#d03dcf"],
+    signed: true, digits: 0,
+  },
+  depth_72h: {
+    label: "72-hr snow depth change (in)",
+    bins: [-4, 2, 6, 12, 18, 24, 36, 48],
+    colors: ["#a6761d", "#f0f0f0", "#c6dbef", "#9ecae1", "#6baed6", "#3182bd",
+             "#08519c", "#6a51a3", "#d03dcf"],
+    signed: true, digits: 0,
+  },
+  swe_24h: {
+    label: "24-hr SWE change (in)",
+    bins: [-0.3, 0.1, 0.25, 0.5, 1, 1.5, 2, 3],
+    colors: ["#a6761d", "#f0f0f0", "#c7e9c0", "#a1d99b", "#74c476", "#31a354",
+             "#006d2c", "#6a51a3", "#d03dcf"],
+    signed: true, digits: 1,
+  },
+  depth_in: {
+    label: "Snow depth (in)",
+    bins: [1, 12, 24, 36, 48, 72, 96, 120],
+    colors: ["#ffffff", "#deebf7", "#c6dbef", "#9ecae1", "#6baed6", "#4292c6",
+             "#2171b5", "#08519c", "#08306b"],
+    digits: 0,
+  },
+  swe_in: {
+    label: "Snow water equivalent (in)",
+    bins: [0.1, 2, 4, 6, 8, 12, 16, 24, 32],
+    colors: ["#ffffff", "#e5f5e0", "#c7e9c0", "#a1d99b", "#74c476", "#41ab5d",
+             "#238b45", "#006d2c", "#00441b", "#3f007d"],
+    digits: 1,
+  },
+  pct_median: {
+    label: "SWE % of median",
+    bins: [25, 50, 70, 90, 110, 130, 150, 200],
+    colors: ["#8c510a", "#bf812d", "#dfc27d", "#f6e8c3", "#f5f5f5", "#c7eae5",
+             "#80cdc1", "#35978f", "#01665e"],
+    digits: 0, suffix: "%",
+  },
+  temp_f: {
+    label: "Air temperature (°F)",
+    bins: [-10, 0, 10, 20, 28, 32, 36, 45, 55],
+    colors: ["#4a1486", "#6a51a3", "#2171b5", "#4292c6", "#9ecae1", "#deebf7",
+             "#fee0d2", "#fc9272", "#ef3b2c", "#a50f15"],
+    digits: 0,
+  },
+};
+
+function colorFor(spec, v) {
+  if (v === null || v === undefined || Number.isNaN(v)) return null;
+  let i = 0;
+  while (i < spec.bins.length && v >= spec.bins[i]) i++;
+  return spec.colors[i];
+}
+
+// Black or white text depending on background brightness.
+function textOn(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#111" : "#fff";
+}
+
+function fmtValue(spec, v) {
+  if (v === null || v === undefined) return "–";
+  const s = v.toFixed(spec.digits ?? 0);
+  return (spec.signed && v > 0 ? "+" : "") + s + (spec.suffix || "");
+}
+
+// NAADS danger colors (match pipeline/avalanche.py)
+const DANGER_TEXT = { 0: "#333", 1: "#fff", 2: "#333", 3: "#111", 4: "#fff", 5: "#fff" };
