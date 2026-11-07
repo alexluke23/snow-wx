@@ -93,6 +93,31 @@ def select_areas(features: list[dict], ccfg: dict) -> list[dict]:
     return list(picked.values())
 
 
+def apply_merges(areas: list[dict], features: list[dict], ccfg: dict) -> list[dict]:
+    """Pool OpenSkiMap areas that are one ski area (config `merge`). Each record gets
+    `ids` (all member OpenSkiMap ids), `runs_km` and `runs_min_m` over the members."""
+    for a in areas:
+        a.setdefault("ids", [a["props"]["id"]])
+    for new_name, names in (ccfg.get("merge") or {}).items():
+        members = [a for a in areas if _matches(a["props"], names)]
+        if not members:
+            continue
+        st = members[0]["state"]
+        ids = {a["props"]["id"] for a in members}
+        extra = [f["properties"] for f in features
+                 if _matches(f.get("properties") or {}, names) and f["properties"]["id"] not in ids
+                 and area_state(f["properties"], ccfg["states"]) == st]
+        props_all = [a["props"] for a in members] + extra
+        primary = max(members, key=lambda a: lift_vertical_ft(a["props"]))
+        mins = [((p.get("statistics") or {}).get("runs") or {}).get("minElevation") for p in props_all]
+        merged = {**primary, "props": {**primary["props"], "name": new_name},
+                  "ids": [p["id"] for p in props_all], "merged_from": [p["name"] for p in props_all],
+                  "runs_km": sum(run_length_km(p) for p in props_all),
+                  "runs_min_m": min((m for m in mins if m is not None), default=None)}
+        areas = [a for a in areas if a not in members] + [merged]
+    return areas
+
+
 def lift_terminals(lift_features: list[dict], area_ids: set[str]) -> dict[str, list[dict]]:
     """area id -> [{name, type, bottom: (lon, lat, z_m|None), top: (...)}] for operating lifts."""
     out: dict[str, list[dict]] = {}
@@ -435,8 +460,8 @@ def _pt(lon, lat, elev_ft):
 def build_catalog(session, cfg: dict, ccfg: dict, obs_dir: Path, refresh: bool = False):
     from .avalanche import MAP_LAYER
     areas_fc, lifts_fc = download_openskimap(session, ccfg, refresh)
-    areas = select_areas(areas_fc, ccfg)
-    terms = lift_terminals(lifts_fc, {a["props"]["id"] for a in areas})
+    areas = apply_merges(select_areas(areas_fc, ccfg), areas_fc, ccfg)
+    terms = lift_terminals(lifts_fc, {i for a in areas for i in a["ids"]})
     del lifts_fc
     log.info("selected %d areas, %d with lift terminals", len(areas), len(terms))
 
@@ -447,14 +472,15 @@ def build_catalog(session, cfg: dict, ccfg: dict, obs_dir: Path, refresh: bool =
         runs = (p.get("statistics") or {}).get("runs") or {}
         ov = (ccfg.get("overrides") or {}).get(p["name"], {})
         skip = {str(x).lower() for x in ov.get("exclude_lifts") or []}
-        mine = [t for t in terms.get(p["id"], []) if str(t["name"] or "").lower() not in skip]
-        base, summit, n = base_summit(mine, runs.get("minElevation"), drop)
+        mine = [t for aid in a["ids"] for t in terms.get(aid, []) if str(t["name"] or "").lower() not in skip]
+        runs_min = a["runs_min_m"] if "runs_min_m" in a else runs.get("minElevation")
+        base, summit, n = base_summit(mine, runs_min, drop)
         if "base" in ov:
             base = (ov["base"]["lon"], ov["base"]["lat"], None)
         if "summit" in ov:
             summit = (ov["summit"]["lon"], ov["summit"]["lat"], None)
         rows.append({"a": a, "p": p, "ov": ov, "base": base, "summit": summit, "lifts": n,
-                     "runs_km": run_length_km(p)})
+                     "runs_km": a.get("runs_km", run_length_km(p))})
     missing = [r["p"]["name"] for r in rows if r["base"] is None]
     rows = [r for r in rows if r["base"] is not None]
 
@@ -546,6 +572,7 @@ def build_catalog(session, cfg: dict, ccfg: dict, obs_dir: Path, refresh: bool =
             "nbm_grid": nbm,
             "verify": status,
             "osm_id": p["id"],
+            **({"merged_from": r["a"]["merged_from"]} if "merged_from" in r["a"] else {}),
         }
         out.append(rec)
         report.append({"id": rec["id"], "name": name, "state": st, "region": rec["region"],

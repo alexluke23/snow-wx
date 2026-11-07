@@ -1,20 +1,18 @@
 """Point-forecast processing shared by NBM (and later NDFD / models): pure functions.
 
-Methods (documented for about.html):
-- Temperature: NBM value at the 2.5-km cell, moved from the cell's mean terrain
-  height to the point with a fixed lapse rate (6.5 °C/km), height change capped.
-- P(snow at a point) = P(snow level below the point). Within ~48 h NBM gives
-  snow-level percentiles (10/50/90); the CDF is interpolated between them with
-  linear tails. Later, only the deterministic snow level exists, so a ±800 ft ramp
-  stands in for its uncertainty.
-- Periods are 12 h, 00Z–12Z ("night") and 12Z–00Z ("day"), because NBM beyond
-  48 h is 6-hourly and its QPF percentiles come in windows ending at 00/06/12/18Z.
-  In the West that is about 5 AM–5 PM local (MST) / 4 AM–4 PM (PST).
-- Snowfall range = QPF percentiles × the period's snow-to-liquid factor
-  (NBM deterministic snow ÷ deterministic QPF), because NBM has no snowfall
-  percentiles past ~48 h. One method for the whole 11 days.
-- 7- and 10-day ranges add NBM's 3/2/2/3-day block percentiles rank by rank
-  (slightly wider than the true range); 24 h and 72 h use NBM's own windows.
+Methods (owner decisions, PLAN.md §3, session 2; documented for about.html):
+- Amounts (bars, "most likely", totals) are NBM deterministic (mean) values, summed
+  over 6-h windows, so day/night bars add up to the totals. Snow is zeroed when the
+  window's expected QPF is < 0.01".
+- Point snow = NBM snowfall × P(snow level below the point), the probability taken
+  from NBM's snow-level percentiles (10/50/90, linear tails) to 48 h and from a
+  ±800 ft ramp on the deterministic snow level after that.
+- 10–90 % ranges: 0–48 h NBM snowfall percentiles (6-h windows added rank by rank,
+  i.e. a slightly wide range); beyond 48 h ("extended outlook") NBM QPF percentiles
+  × SNOWLR (clamped 4–25) × P(snow). Ranges always include the mean.
+- Temperature: NBM value at the 2.5-km cell moved to the point with 6.5 °C/km
+  (height change capped at 4000 ft).
+- Periods: 12 h, 00Z–12Z (night) and 12Z–00Z (day), labelled in local time.
 """
 
 from __future__ import annotations
@@ -58,10 +56,61 @@ def p_snow_level_below(elev_ft, p10=None, p50=None, p90=None):
 
 
 def precip_type(qpf_in, p_snow, wet=0.01):
-    """Label for a period/step: None (dry), snow, mix or rain."""
+    """Label for a period/step: None (dry), "snow", "mixed" or "mostly rain"."""
     if qpf_in is None or p_snow is None or qpf_in < wet:
         return None
-    return "snow" if p_snow >= 0.7 else "mix" if p_snow >= 0.3 else "rain"
+    return "snow" if p_snow >= 0.7 else "mixed" if p_snow >= 0.3 else "mostly rain"
+
+
+SLR_MIN, SLR_MAX, SLR_DEFAULT = 4.0, 25.0, 10.0
+WET_IN = 0.01
+
+
+def clamp_slr(slr):
+    """NBM SNOWLR (or a fallback) limited to a physically plausible 4–25:1."""
+    if slr is None or (isinstance(slr, float) and math.isnan(slr)) or slr <= 0:
+        return SLR_DEFAULT
+    return min(SLR_MAX, max(SLR_MIN, slr))
+
+
+def rank_sum(ranges):
+    """Add (lo, hi) ranges rank by rank; None if any part is missing."""
+    lo = hi = 0.0
+    for r in ranges:
+        if r is None or r[0] is None or r[1] is None:
+            return None
+        lo, hi = lo + r[0], hi + r[1]
+    return lo, hi
+
+
+def with_mean(rng, mean):
+    """Widen a (lo, hi) range so it contains the mean."""
+    if rng is None or mean is None:
+        return rng
+    return min(rng[0], mean), max(rng[1], mean)
+
+
+def weighted_mean(values, weights):
+    pairs = [(v, w) for v, w in zip(values, weights) if v is not None]
+    if not pairs:
+        return None
+    tw = sum(max(w or 0.0, 0.0) for _, w in pairs)
+    if tw <= 0:
+        return sum(v for v, _ in pairs) / len(pairs)
+    return sum(v * max(w or 0.0, 0.0) for v, w in pairs) / tw
+
+
+def plausibility(base_totals: dict, summit_totals: dict, key="10d", ratio=1.25, slack_in=1.0) -> list[str]:
+    """Flags for review: base snow above summit snow (mean or 90th pct) by more than
+    `ratio` x summit + slack. Different 2.5-km cells can legitimately differ a little."""
+    out = []
+    b, s = base_totals.get(key), summit_totals.get(key)
+    if not b or not s:
+        return out
+    for f in ("snow_in", "snow_hi"):
+        if b.get(f) is not None and s.get(f) is not None and b[f] > s[f] * ratio + slack_in:
+            out.append(f"base {f} {b[f]:.1f} > summit {s[f]:.1f} ({key})")
+    return out
 
 
 def powder_quality(slr, gust_mph_during_snow=None, snow_in=None):
@@ -72,28 +121,6 @@ def powder_quality(slr, gust_mph_during_snow=None, snow_in=None):
     if gust_mph_during_snow is not None and gust_mph_during_snow > 30:
         q += ", wind-affected"
     return q
-
-
-def snow_ratio(snow_det_in, qpf_det_in, slr_mean=None, p_snow=None, min_qpf=0.01, default_slr=10.0):
-    """Snow per inch of liquid for a window: NBM det snow ÷ det QPF. When the
-    deterministic QPF is ~0 (only the wet percentiles have precip), use the mean
-    SLR of snowy steps (else 10:1) × P(snow at the point)."""
-    if qpf_det_in is not None and qpf_det_in >= min_qpf and snow_det_in is not None:
-        return max(0.0, snow_det_in / qpf_det_in)
-    if p_snow is not None:
-        return max(0.0, (slr_mean if slr_mean and slr_mean >= 5 else default_slr) * p_snow)
-    return 0.0
-
-
-def comonotonic_sum(blocks: list[dict]) -> dict:
-    """Add percentile dicts rank by rank ({10: a, 50: b, 90: c} + ...)."""
-    out = {}
-    for b in blocks:
-        for k, v in b.items():
-            if v is None:
-                return {k: None for k in b}
-            out[k] = out.get(k, 0.0) + v
-    return out
 
 
 def periods(init: datetime, hours: list[int], length_h: int = 12) -> list[tuple[int, int]]:
@@ -110,12 +137,17 @@ def periods(init: datetime, hours: list[int], length_h: int = 12) -> list[tuple[
     return out
 
 
+def _hour(t: datetime) -> str:
+    return t.strftime("%I %p").lstrip("0")
+
+
 def period_label(init: datetime, start_h: int, end_h: int, tz) -> dict:
     t0, t1 = init + timedelta(hours=start_h), init + timedelta(hours=end_h)
-    l0 = t0.astimezone(tz)
+    l0, l1 = t0.astimezone(tz), t1.astimezone(tz)
     day = t0.hour == 12 or (t0.hour == 18 and end_h - start_h == 6)
     return {"start": t0.strftime("%Y-%m-%dT%H:%MZ"), "end": t1.strftime("%Y-%m-%dT%H:%MZ"),
-            "label": f"{l0:%a} {'day' if day else 'night'}", "is_day": day}
+            "label": f"{l0:%a} {'day' if day else 'night'}", "is_day": day,
+            "local": f"{_hour(l0)}–{_hour(l1)} {l1:%Z}"}
 
 
 def window_sum(series: dict[int, float | None], start_h: int, end_h: int, step: int) -> float | None:
@@ -129,7 +161,8 @@ def window_sum(series: dict[int, float | None], start_h: int, end_h: int, step: 
     return total if n else None
 
 
-def monotone_totals(totals: dict, order=("24h", "72h", "7d", "10d"), fields=("qpf_in", "snow_in")) -> dict:
+def monotone_totals(totals: dict, order=("24h", "72h", "7d", "10d"),
+                    fields=("qpf_lo", "qpf_hi", "snow_lo", "snow_hi")) -> dict:
     """Longer windows can't hold less than shorter ones: each window's percentile is
     raised to at least the previous window's (separate NBM blocks and snow ratios
     can otherwise disagree slightly)."""
@@ -140,9 +173,8 @@ def monotone_totals(totals: dict, order=("24h", "72h", "7d", "10d"), fields=("qp
             continue
         if prev is not None:
             for f in fields:
-                for k, v in cur[f].items():
-                    pv = prev[f].get(k)
-                    if v is not None and pv is not None and v < pv:
-                        cur[f][k] = pv
+                v, pv = cur.get(f), prev.get(f)
+                if v is not None and pv is not None and v < pv:
+                    cur[f] = pv
         prev = cur
     return totals

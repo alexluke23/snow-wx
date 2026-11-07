@@ -102,3 +102,15 @@ def test_lcc_ij_round_trip_and_bounds():
     assert xmin < lon < xmax and ymin < lat < ymax and (ymax - ymin) == pytest.approx(0.023, abs=0.003)
     with pytest.raises(ValueError):
         c.lcc_ij(10.0, -160.0, NBM)
+
+
+def test_apply_merges_pools_members():
+    feats = [area("Three Summits", lo=800, hi=1180), area("Summit West", lo=900, hi=1130),
+             area("Summit East", lo=850, hi=880), area("Alpental", lo=950, hi=1650)]   # East: < 300 ft
+    cfg = {**CCFG, "states": ["UT"], "merge": {"The Summit": ["Three Summits", "Summit West", "Summit East"]}}
+    got = {a["props"]["name"]: a for a in c.apply_merges(c.select_areas(feats, cfg), feats, cfg)}
+    assert set(got) == {"The Summit", "Alpental"}
+    m = got["The Summit"]
+    assert set(m["ids"]) == {"Three Summits", "Summit West", "Summit East"}        # filtered member pooled too
+    assert m["runs_min_m"] == 800 and m["runs_km"] == pytest.approx(16.5)
+    assert got["Alpental"]["ids"] == ["Alpental"]

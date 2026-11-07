@@ -70,21 +70,23 @@ def test_p_snow_from_snow_level():
     assert f(6000, 6000, 7000, 8000) == pytest.approx(0.1)
     assert f(7400, None, 7000, None) == pytest.approx(0.75)               # deterministic ramp
     assert f(9000, None, None, None) is None
-    assert P.precip_type(0.3, 0.9) == "snow" and P.precip_type(0.3, 0.5) == "mix"
-    assert P.precip_type(0.3, 0.1) == "rain" and P.precip_type(0.0, 0.9) is None
+    assert P.precip_type(0.3, 0.9) == "snow" and P.precip_type(0.3, 0.5) == "mixed"
+    assert P.precip_type(0.3, 0.1) == "mostly rain" and P.precip_type(0.005, 0.9) is None
 
 
-def test_ratio_quality_sums():
-    assert P.snow_ratio(6.0, 0.5, 20, 1.0) == 12.0
-    assert P.snow_ratio(0.0, 0.0, 15, 0.4) == pytest.approx(6.0)        # fallback SLR x P(snow)
-    assert P.snow_ratio(0.0, 0.0, 0.3, 0.5) == pytest.approx(5.0)       # SLR ~0 when dry -> 10:1
+def test_slr_ranges_quality():
+    assert P.clamp_slr(118.0) == 25.0 and P.clamp_slr(0.2) == 4.0 and P.clamp_slr(None) == 10.0
+    assert P.rank_sum([(0.0, 2.0), (1.0, 3.0)]) == (1.0, 5.0) and P.rank_sum([(0, 1), None]) is None
+    assert P.with_mean((1.0, 2.0), 3.0) == (1.0, 3.0) and P.with_mean(None, 1.0) is None
+    assert P.weighted_mean([1.0, 3.0], [0.0, 1.0]) == 3.0 and P.weighted_mean([2.0, 4.0], [0, 0]) == 3.0
     assert P.powder_quality(16, 20, 4) == "Blower"
     assert P.powder_quality(12, 35, 4) == "Medium, wind-affected"
     assert P.powder_quality(8, None, 4) == "Dense" and P.powder_quality(20, 10, 0.1) is None
-    assert P.comonotonic_sum([{10: 1, 50: 2, 90: 4}, {10: 0, 50: 1, 90: 3}]) == {10: 1, 50: 3, 90: 7}
-    assert P.comonotonic_sum([{10: 1, 50: None}]) == {10: None, 50: None}
     assert P.window_sum({6: 1.0, 12: 2.0}, 0, 12, 6) == 3.0
     assert P.window_sum({6: 1.0}, 0, 12, 6) is None
+    base = {"10d": {"snow_in": 9.0, "snow_hi": 38.0}}
+    assert len(P.plausibility(base, {"10d": {"snow_in": 3.0, "snow_hi": 23.0}})) == 2
+    assert P.plausibility({"10d": {"snow_in": 3.5, "snow_hi": 24.0}}, {"10d": {"snow_in": 3.0, "snow_hi": 23.0}}) == []
 
 
 def test_periods_align_to_00z_12z():
@@ -99,35 +101,61 @@ def test_periods_align_to_00z_12z():
     assert P.periods(init6, list(range(1, 31)))[:2] == [(0, 6), (6, 18)]       # partial first night
 
 
-def _fake_hour(h, n=2, snow1=0.0, qpf1=0.0):
+def _fake_hour(h, n=2, snowlvl=6000.0):
     d = {"t2m": np.full(n, 30.0), "wind": np.full(n, 10.0), "gust": np.full(n, 20.0),
-         "wdir": np.full(n, 270.0), "sky": np.full(n, 80.0), "snowlvl": np.full(n, 6000.0),
+         "wdir": np.full(n, 270.0), "sky": np.full(n, 80.0), "snowlvl": np.full(n, snowlvl),
          "slr": np.full(n, 15.0)}
     if h <= 36:
-        d.update(qpf1=np.full(n, qpf1), snow1=np.full(n, snow1), pop1=np.full(n, 0.5))
+        d.update(qpf1=np.full(n, 0.05), snow1=np.full(n, 0.5), pop1=np.full(n, 0.5))
     if h % 6 == 0:
         d.update(qpf6=np.full(n, 0.2), snow6=np.full(n, 3.0), pop6=np.full(n, 0.6))
+        if h <= 48:
+            d.update(snow6_p10=np.full(n, 1.0), snow6_p50=np.full(n, 3.0), snow6_p90=np.full(n, 5.0))
         if h % 12 == 0:
             d.update(qpf12_p10=np.full(n, 0.1), qpf12_p50=np.full(n, 0.4), qpf12_p90=np.full(n, 0.8))
     if h == 24:
         d.update(qpf_0_1d_p10=np.full(n, 0.2), qpf_0_1d_p50=np.full(n, 0.8), qpf_0_1d_p90=np.full(n, 1.6))
+    if h == 72:
+        d.update(qpf_0_3d_p10=np.full(n, 0.5), qpf_0_3d_p50=np.full(n, 2.0), qpf_0_3d_p90=np.full(n, 4.0),
+                 qpf_2_3d_p10=np.full(n, 0.1), qpf_2_3d_p50=np.full(n, 0.6), qpf_2_3d_p90=np.full(n, 1.2))
     return d
 
 
 def test_point_forecast_periods_and_totals():
     init = datetime(2026, 11, 7, 12, tzinfo=timezone.utc)
-    hours = list(range(1, 25))
-    data = {h: _fake_hour(h, snow1=0.5, qpf1=0.03) for h in hours}
+    hours = list(range(1, 37)) + list(range(42, 73, 6))
+    data = {h: _fake_hour(h) for h in hours}
     fc = point_forecast(data, hours, init, 0, elev_ft=9000, grid_ft=8000, tz=ZoneInfo("America/Denver"))
     # 1000 ft above the grid cell: 30 F - 3.57 F
     assert fc["series"]["t_f"][0] == pytest.approx(26.4, abs=0.05)
     assert fc["series"]["p_snow"][0] == 1.0                                  # snow level 6000 < 9000 ft
     per = fc["periods"][0]
-    # det snow 6 in / det QPF 0.4 in = 15:1, applied to QPF percentiles 0.1/0.4/0.8
-    assert per["snow_in"] == {"10": 1.5, "50": 6.0, "90": 12.0} and per["type"] == "snow"
-    assert per["powder"] == "Blower" and per["t_max_f"] == pytest.approx(26.4, abs=0.05)
-    assert fc["totals"]["24h"]["snow_in"]["50"] == pytest.approx(12.0)      # 0.8 in x 15
-    assert len(fc["precip"]["end"]) == 24 and fc["precip"]["hours"][0] == 1
+    # bars = deterministic means: two 6-h windows x 3.0 in; range = NBM snow pct added rank by rank
+    assert (per["snow_in"], per["snow_lo"], per["snow_hi"], per["extended"]) == (6.0, 2.0, 10.0, False)
+    assert per["type"] == "snow" and per["local"] == "5 AM–5 PM MST" and per["powder"] == "Blower"
+    # 0-48 h comparison: extended method = QPF pct 0.1/0.8 x SLR 15 x P 1
+    assert (per["snow_ext_lo"], per["snow_ext_hi"]) == (1.5, 12.0)
+    late = fc["periods"][4]                                                  # 60-72 h: extended outlook
+    assert late["extended"] and late["snow_in"] == 6.0 and (late["snow_lo"], late["snow_hi"]) == (1.5, 12.0)
+    tot = fc["totals"]
+    assert tot["24h"]["snow_in"] == 12.0 and (tot["24h"]["snow_lo"], tot["24h"]["snow_hi"]) == (4.0, 20.0)
+    # 72 h: 0-48 h NBM pct (8 windows: 8 / 40) + 48-72 h block 0.1/1.2 x 15
+    assert tot["72h"]["snow_in"] == 36.0 and (tot["72h"]["snow_lo"], tot["72h"]["snow_hi"]) == (9.5, 58.0)
+    assert sum(p["snow_in"] for p in fc["periods"]) == tot["72h"]["snow_in"]   # bars add up to the total
+    assert fc["precip"]["hours"][0] == 1 and fc["precip"]["snow_in"][0] == 0.5
+
+
+def test_point_snow_scaled_by_snow_level_and_dry_rule():
+    init = datetime(2026, 11, 7, 12, tzinfo=timezone.utc)
+    hours = list(range(1, 25))
+    data = {h: _fake_hour(h, snowlvl=9000.0) for h in hours}               # snow level = point elevation
+    fc = point_forecast(data, hours, init, 0, elev_ft=9000, grid_ft=9000, tz=ZoneInfo("America/Denver"))
+    assert fc["periods"][0]["snow_in"] == 3.0 and fc["periods"][0]["type"] == "mixed"   # x P(snow) 0.5
+    for h in hours:                                                          # QPF < 0.01 in: no snow
+        if h % 6 == 0:
+            data[h]["qpf6"] = np.full(2, 0.004)
+    fc = point_forecast(data, hours, init, 0, elev_ft=9000, grid_ft=9000, tz=ZoneInfo("America/Denver"))
+    assert fc["totals"]["24h"]["snow_in"] == 0.0 and fc["periods"][0]["type"] is None
 
 
 def test_ndfd_interval_overlap():
@@ -153,9 +181,9 @@ def test_flat_index_alternative_row_scanning():
 
 
 def test_monotone_totals():
-    t = {"24h": {"qpf_in": {"90": 1.0}, "snow_in": {"50": 5.0, "90": 9.0}},
-         "72h": {"qpf_in": {"90": 0.8}, "snow_in": {"50": 6.0, "90": 8.0}},
-         "7d": {"qpf_in": {"90": 2.0}, "snow_in": {"50": None, "90": 7.0}}}
+    t = {"24h": {"qpf_hi": 1.0, "snow_lo": 1.0, "snow_hi": 9.0},
+         "72h": {"qpf_hi": 0.8, "snow_lo": 2.0, "snow_hi": 8.0},
+         "7d": {"qpf_hi": 2.0, "snow_lo": None, "snow_hi": 7.0}}
     P.monotone_totals(t)
-    assert t["72h"]["qpf_in"]["90"] == 1.0 and t["72h"]["snow_in"] == {"50": 6.0, "90": 9.0}
-    assert t["7d"]["snow_in"] == {"50": None, "90": 9.0}
+    assert t["72h"] == {"qpf_hi": 1.0, "snow_lo": 2.0, "snow_hi": 9.0}
+    assert t["7d"]["snow_lo"] is None and t["7d"]["snow_hi"] == 9.0
