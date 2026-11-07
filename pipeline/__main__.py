@@ -74,6 +74,12 @@ def main(argv=None) -> int:
         p.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
 
+    # Windows consoles/pipes default to cp1252; Herbie prints emoji. Never crash on that.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = load_config(args.config)
