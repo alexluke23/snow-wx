@@ -3,10 +3,20 @@
 Open weather, snowpack and avalanche information for the western US mountains,
 built for skiers and snow-science folks.
 
-**Phase 1 (this version):** one map showing
+**Phase 1:** one map showing
 - **SNOTEL** (USDA NRCS): snow depth, SWE, 24/72-hr changes, % of median, temperature, with a 7-day chart per station
 - **ASOS/AWOS** airports (via Iowa Environmental Mesonet): wind barbs, temperature, METAR
 - **Avalanche danger** by forecast zone (avalanche.org), with expired ratings greyed out
+
+Search any station by name or ID; the map view, variable and selected station
+are kept in the page URL, so links can be shared.
+
+**Phase 2: model maps** (`models.html`): HRRR forecast maps for the West and five
+mountain regions (PNW/Cascades, Sierra, Northern Rockies, Wasatch/Uintas,
+Colorado), looped by forecast hour: 500 mb heights & vorticity, 700 mb
+temperature/wind, 1/6/24-hr and total precipitation, 10:1 vs Kuchera snowfall,
+snow level vs terrain, 2-m temperature and wind gusts. RRFS and GFS are
+configured and switch on in `config/models.yml`.
 
 Everything runs free: GitHub Actions fetches the data every hour and publishes
 the site to GitHub Pages. No API keys are needed.
@@ -57,7 +67,24 @@ source with logs: `python -m pipeline obs --only snotel -v`.
 6. Edit `config/settings.yml` → `http.user_agent` to include your repo URL,
    then commit and push.
 
-After that the site refreshes every hour on its own. **Note:** GitHub pauses
+After that the site refreshes every hour on its own.
+
+**Model maps** have their own workflow (**Model maps**, every 3 hours). The first
+time, open **Actions → Model maps → Run workflow**. It creates a pre-release
+called `model-maps` that holds the newest images for each model (one `.tar` per
+model, replaced automatically; it is storage, not a software release), then
+triggers **Update site**, which pulls those images into every deploy. If your
+repository's *Settings → Actions → General → Workflow permissions* are
+read-only, the workflow's own `permissions:` block still grants what it needs
+unless an organization policy blocks it.
+
+Run model maps locally (about a minute for this small example):
+
+```powershell
+C:/miniforge3/envs/snow-wx/python.exe -m pipeline models --model hrrr --fhours 0 6 12 --domains west wasatch
+C:/miniforge3/envs/snow-wx/python.exe -m pipeline build
+C:/miniforge3/envs/snow-wx/python.exe -m http.server 8000 -d build   # then open /models.html
+``` **Note:** GitHub pauses
 scheduled workflows in public repos after 60 days with no commits. If that
 happens, push any change or re-enable it in the Actions tab.
 
@@ -65,12 +92,15 @@ happens, push any change or re-enable it in the Actions tab.
 
 ```
 config/settings.yml        region, states, time windows, on/off switches
+config/models.yml          model maps: domains, models, forecast hours, fields
 pipeline/                  Python: one module per data source
   snotel.py  asos.py  avalanche.py  common.py  __main__.py
+  models/                  model maps: fetch, derive, plot, run, catalog
 web/                       the website (HTML/CSS/JS, no build step)
   js/colors.js             color scales and legends — tweak freely
+  models.html, js/models.js  model map loop viewer
 tests/                     offline unit tests (fake API responses)
-.github/workflows/         hourly build + deploy
+.github/workflows/         hourly build + deploy; 3-hourly model maps
 CLAUDE.md                  context for Claude Code
 ```
 
@@ -79,6 +109,8 @@ CLAUDE.md                  context for Claude Code
 | Source | Use | Terms |
 |---|---|---|
 | USDA NRCS AWDB (SNOTEL) | snow, SWE, temp | Public domain |
+| NOAA/NCEP HRRR, RRFS, GFS via NOAA Open Data Dissemination (AWS) | model maps | Public domain (US Government) |
+| Natural Earth | map outlines on model maps | Public domain |
 | Iowa Environmental Mesonet | ASOS/AWOS currents | Free for any lawful use, incl. commercial |
 | avalanche.org public API | danger by zone | Show unaltered, expire correctly, link to full forecast |
 | USGS National Map | basemaps | Public domain |
