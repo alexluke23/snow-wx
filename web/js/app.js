@@ -94,9 +94,35 @@
       <a href="${esc(safeUrl(p.link))}" target="_blank" rel="noopener">Read the full forecast →</a>`);
   }
 
+  // ---------------------------------------------------------------- URL hash state
+  // #v=<SNOTEL variable>&map=<zoom>/<lat>/<lon>&s=<station>
+  // s is a SNOTEL triplet (766:UT:SNTL) or asos:<id> (asos:SLC).
+  function readHash() {
+    const q = new URLSearchParams(location.hash.replace(/^#/, ""));
+    const out = { v: q.get("v"), s: q.get("s") };
+    const m = (q.get("map") || "").split("/").map(Number);
+    if (m.length === 3 && m.every(Number.isFinite)) out.view = { zoom: m[0], center: [m[1], m[2]] };
+    return out;
+  }
+
+  let selected = null;     // station key kept in the hash
+  let hashReady = false;   // don't write the hash before the first view is set
+  function writeHash() {
+    if (!hashReady) return;
+    const c = map.getCenter();
+    const parts = [`v=${encodeURIComponent(currentVar)}`,
+      `map=${map.getZoom()}/${c.lat.toFixed(4)}/${c.lng.toFixed(4)}`];
+    if (selected) parts.push(`s=${encodeURIComponent(selected).replace(/%3A/gi, ":")}`);
+    const h = `#${parts.join("&")}`;
+    if (h !== location.hash) history.replaceState(null, "", h);
+  }
+  map.on("moveend", writeHash);
+
   // ---------------------------------------------------------------- SNOTEL
   let snotelData = null;
   let currentVar = "depth_24h";
+  const initialHash = readHash();
+  if (initialHash.v && SNOTEL_VARS[initialHash.v]) currentVar = initialHash.v;
 
   function drawSnotel() {
     snotelLayer.clearLayers();
@@ -106,19 +132,31 @@
       const p = f.properties;
       const v = p[currentVar];
       const bg = colorFor(spec, v);
+      const sel = p.triplet === selected ? " sel" : "";
       const html = bg
-        ? `<div class="stn" style="background:${bg};color:${textOn(bg)}">${fmtValue(spec, v)}</div>`
-        : `<div class="stn na">–</div>`;
+        ? `<div class="stn${sel}" style="background:${bg};color:${textOn(bg)}">${fmtValue(spec, v)}</div>`
+        : `<div class="stn na${sel}">–</div>`;
       const [lon, lat] = f.geometry.coordinates;
       const m = L.marker([lat, lon], {
         icon: L.divIcon({ html, className: "", iconSize: null }),
         title: `${p.name} (${num(p.elev_ft, 0)} ft)`,
+        triplet: p.triplet,
         zIndexOffset: bg ? Math.round((v ?? 0) * 10) : -1000,
       });
-      m.on("click", () => showStation(p));
+      m.on("click", () => selectSnotel(p));
       snotelLayer.addLayer(m);
     }
     drawLegend(spec);
+  }
+
+  function selectSnotel(p) {
+    selected = p.triplet;
+    for (const el of document.querySelectorAll(".stn.sel")) el.classList.remove("sel");
+    snotelLayer.eachLayer((m) => {
+      if (m.options.triplet === p.triplet) m.getElement()?.firstElementChild?.classList.add("sel");
+    });
+    writeHash();
+    showStation(p);
   }
 
   function drawLegend(spec) {
@@ -186,7 +224,9 @@
   $("var-select").innerHTML = Object.entries(SNOTEL_VARS)
     .map(([k, s]) => `<option value="${k}">${esc(s.label)}</option>`).join("");
   $("var-select").value = currentVar;
-  $("var-select").addEventListener("change", (e) => { currentVar = e.target.value; drawSnotel(); });
+  $("var-select").addEventListener("change", (e) => {
+    currentVar = e.target.value; drawSnotel(); writeHash();
+  });
 
   // ---------------------------------------------------------------- ASOS
   // Wind barb pointing toward the direction the wind blows FROM, with
@@ -210,8 +250,11 @@
     return `<svg width="44" height="44"><g transform="rotate(${dir || 0} ${c} ${c})" stroke="${col}" stroke-width="1.5">${parts.join("")}</g></svg>`;
   }
 
+  const asosMarkers = new Map();  // id -> marker
+
   function drawAsos(fc) {
     asosLayer.clearLayers();
+    asosMarkers.clear();
     for (const f of fc.features) {
       const p = f.properties;
       const [lon, lat] = f.geometry.coordinates;
@@ -233,9 +276,103 @@
           <tr><td>Precip today</td><td>${num(p.precip_today_in, 2, '"')}</td></tr>
         </table>
         ${p.metar ? `<code style="font-size:11px">${esc(p.metar)}</code>` : ""}`);
+      m.on("popupopen", () => { selected = `asos:${p.id}`; writeHash(); });
+      m.on("popupclose", () => { if (selected === `asos:${p.id}`) { selected = null; writeHash(); } });
       asosLayer.addLayer(m);
+      asosMarkers.set(String(p.id), m);
     }
   }
+
+  // ---------------------------------------------------------------- search
+  // One list of SNOTEL + ASOS stations, matched on name or ID.
+  let stationIndex = [];
+
+  function buildIndex(sno, aso) {
+    stationIndex = [];
+    for (const f of sno?.features || []) {
+      const p = f.properties, [lon, lat] = f.geometry.coordinates;
+      stationIndex.push({ key: p.triplet, kind: "SNOTEL", ids: [String(p.id), p.triplet], name: p.name,
+        sub: `SNOTEL ${p.id} · ${p.state || ""} · ${num(p.elev_ft, 0)} ft`, lat, lon, props: p });
+    }
+    for (const f of aso?.features || []) {
+      const p = f.properties, [lon, lat] = f.geometry.coordinates, id = String(p.id);
+      const ids = /^[A-Z0-9]{3}$/.test(id) ? [id, `K${id}`] : [id];  // accept ICAO "KSLC"
+      stationIndex.push({ key: `asos:${id}`, kind: "ASOS", ids, name: p.name || id,
+        sub: `ASOS ${id}${p.stale ? " · stale" : ""}`, lat, lon });
+    }
+  }
+
+  function searchStations(query, limit = 10) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const hits = [];
+    for (const s of stationIndex) {
+      const ids = s.ids.map((x) => x.toLowerCase()), name = s.name.toLowerCase();
+      let score = -1;
+      if (ids.includes(q)) score = 0;
+      else if (name.startsWith(q) || ids.some((x) => x.startsWith(q))) score = 1;
+      else if (name.split(/[\s\-/()]+/).some((w) => w.startsWith(q))) score = 2;
+      else if (name.includes(q)) score = 3;
+      if (score >= 0) hits.push([score, s]);
+    }
+    hits.sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name));
+    return hits.slice(0, limit).map((h) => h[1]);
+  }
+
+  function selectStation(s, { fly = true } = {}) {
+    if (fly) map.setView([s.lat, s.lon], Math.max(map.getZoom(), 10));
+    if (s.kind === "SNOTEL") {
+      if (!map.hasLayer(snotelLayer)) snotelLayer.addTo(map);
+      selectSnotel(s.props);
+    } else {
+      if (!map.hasLayer(asosLayer)) asosLayer.addTo(map);
+      asosMarkers.get(s.key.slice(5))?.openPopup();
+    }
+  }
+
+  (function setupSearch() {
+    const input = $("search"), list = $("search-results");
+    let results = [], active = -1;
+    const close = () => { list.hidden = true; input.setAttribute("aria-expanded", "false"); active = -1; };
+    const render = () => {
+      if (!input.value.trim()) return close();
+      list.innerHTML = results.length
+        ? results.map((s, i) => `<li role="option" data-i="${i}" class="${i === active ? "active" : ""}">
+            ${esc(s.name)}<span class="kind">${esc(s.sub)}</span></li>`).join("")
+        : `<li class="empty">No matching station</li>`;
+      list.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+    };
+    const choose = (i) => {
+      const s = results[i];
+      if (!s) return;
+      input.value = s.name;
+      close();
+      input.blur();
+      selectStation(s);
+    };
+    input.addEventListener("input", () => { results = searchStations(input.value); active = results.length ? 0 : -1; render(); });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        if (!results.length) return;
+        e.preventDefault();
+        active = (active + (e.key === "ArrowDown" ? 1 : results.length - 1)) % results.length;
+        render();
+        list.querySelector("li.active")?.scrollIntoView({ block: "nearest" });
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        choose(active >= 0 ? active : 0);
+      } else if (e.key === "Escape") {
+        close();
+      }
+    });
+    // mousedown (not click) so the choice lands before the input's blur closes the list
+    list.addEventListener("mousedown", (e) => {
+      const li = e.target.closest("li[data-i]");
+      if (li) { e.preventDefault(); choose(Number(li.dataset.i)); }
+    });
+    input.addEventListener("blur", () => setTimeout(close, 100));
+  })();
 
   // ---------------------------------------------------------------- load
   let lastUpdated = "";
@@ -253,13 +390,12 @@
       lastUpdated = meta.generated_at;
       $("updated").textContent = `Updated ${localTime(meta.generated_at)}`;
       drawStatus(meta);
-      if (meta.region?.map_center) {
-        map.setView(meta.region.map_center, meta.region.map_zoom || 5);
-      }
     } catch (e) {
       $("updated").textContent = "No data yet – run the pipeline (see README).";
-      map.setView([41.5, -113], 5);
     }
+    // A view in the URL hash wins over the configured default.
+    if (initialHash.view) map.setView(initialHash.view.center, initialHash.view.zoom);
+    else map.setView(meta?.region?.map_center || [41.5, -113], meta?.region?.map_zoom || 5);
     setZoomClass();
 
     const [avy, sno, aso] = await Promise.allSettled([
@@ -270,7 +406,28 @@
     if (avy.status === "fulfilled") avyLayer.addData(avy.value);
     if (sno.status === "fulfilled") { snotelData = sno.value; drawSnotel(); }
     if (aso.status === "fulfilled") drawAsos(aso.value);
+    buildIndex(sno.value, aso.value);
+
+    hashReady = true;
+    openFromHash(initialHash, false);
+    writeHash();
   }
+
+  function openFromHash(h, fly) {
+    if (!h.s) return;
+    const s = stationIndex.find((x) => x.key === h.s);
+    if (s) selectStation(s, { fly: fly || !h.view });
+  }
+
+  // Hand-edited hashes / pasted links while the page is open.
+  window.addEventListener("hashchange", () => {
+    const h = readHash();
+    if (h.v && SNOTEL_VARS[h.v] && h.v !== currentVar) {
+      currentVar = h.v; $("var-select").value = currentVar; drawSnotel();
+    }
+    if (h.view) map.setView(h.view.center, h.view.zoom);
+    if (h.s && h.s !== selected) openFromHash(h, false);
+  });
 
   load();
 })();
