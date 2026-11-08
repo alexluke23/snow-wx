@@ -138,6 +138,7 @@ function SnowOverlays(map, { panel, onChange, sources = [
       ${l ? `<div class="overlay-meta">
           ${legend(l)}
           <p class="hint">${esc(l.units)} · ${esc(when(l))}</p>
+          ${l._group === "Forecast" ? `<p class="hint">Grid values (2.5 km); site pages adjust for elevation. Below ${l.units === "%" ? "5 %" : "0.1 in"} is left clear so the terrain shows.</p>` : ""}
           <label class="opacity">Opacity <input id="overlay-opacity" type="range" min="0.2" max="1" step="0.05" value="${opacity}"></label>
           <p id="overlay-readout" class="readout" aria-live="polite">Hover or tap the map for a value.</p>
         </div>` : ""}

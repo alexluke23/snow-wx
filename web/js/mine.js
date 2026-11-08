@@ -94,7 +94,7 @@
 
   async function render() {
     const ids = favs();
-    if (!ids.length) return emptyState();
+    if (!ids.length) { emptyState(); return; }
     const [alR, avyR, ...docs] = await Promise.allSettled([getJSON("data/alerts/index.json"), getJSON("data/avalanche_ratings.json"),
       ...ids.map((id) => getJSON(`data/points/${encodeURIComponent(id)}.json`))]);
     const alerts = alR.status === "fulfilled" ? alR.value : null, avy = avyR.status === "fulfilled" ? avyR.value : null;
@@ -113,6 +113,19 @@
     }));
   }
 
+  // "Always open My mountains" (set from the obs-map banner); easy to turn off here (owner S9)
+  function homePref() {
+    let on = false;
+    try { on = localStorage.getItem("snowwx.home") === "mine"; } catch { return; }
+    const el = document.createElement("p");
+    el.className = "home-pref";
+    el.innerHTML = `<label><input type="checkbox" id="home-pref"${on ? " checked" : ""}> Open My mountains when I go to Snow-Wx's map directly</label>`;
+    $("fresh").after(el);
+    el.querySelector("input").addEventListener("change", (e) => {
+      try { if (e.target.checked) localStorage.setItem("snowwx.home", "mine"); else localStorage.removeItem("snowwx.home"); } catch { /* ignore */ }
+    });
+  }
+
   if (typeof EXPECTED_TIP === "undefined") window.EXPECTED_TIP = "";
-  render();
+  render().then(() => { if (favs().length) homePref(); });
 })();
