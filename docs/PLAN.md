@@ -277,6 +277,9 @@ screenshots checked. Suggested session grouping in brackets.
   obs, avalanche danger, favorites, share link. Mobile-first.
 - ✅ when: Chrome screenshots at 375 px and 1280 px look clean for 3 areas
   (wet PNW, Sierra, dry interior); loads < 2 s on a cold cache.
+- ✔ Done (S2): decisions 1–7 applied; screenshots at 375/1280 px (Crystal, Mammoth,
+  Alta). Lighthouse mobile (local server, no gzip): Crystal 88, FCP 1.2 s, LCP 1.2 s
+  (was 2.3 s), TBT 470 ms (Plotly parse after first paint), 446 KB (was 805 KB).
 
 **M3.5 — Snowpack overlays, SNOTEL forecasts, speed** [Session 2]
 - Obs map performance (canvas markers, cached declutter, lazy Plotly).

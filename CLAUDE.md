@@ -147,9 +147,11 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       entry (untested on GitHub), sanity script. Known weak spot: when NBM's
       deterministic QPF is ~0 but its QPF percentiles are not, the fallback ratio
       (SLR × P(snow)) can overstate trace snow (Mission Ridge 1.1 vs det 0.2 in).
-- [ ] M3 ski-area page v1 (`web/area.html`, `web/js/area.js`) committed for owner
-      review; checked at 375/1280 px for crystal-mountain, mammoth-mountain,
-      alta-ski-area via iframe harness pages (headless Chrome won't go below ~500 px).
-      Waiting on owner decisions (see final summary of session 2) before polishing.
+- [x] M3 ski-area page: owner decisions applied (means for bars/totals, NBM snowfall pct
+      ranges 0–48 h, extended outlook after, P(snow at elevation), local period labels).
+      Lighthouse via `PATH=/c/miniforge3/envs/tools:$PATH npx -y lighthouse@12.6.1 URL
+      --only-categories=performance` (Node lives in a separate `tools` conda env).
+      Points files embed the area record; `avalanche_ratings.json` = zone_id → rating.
+- [ ] M3.5 B obs-map performance · C NOHRSC overlays · D SNOTEL/NDFD forecasts
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

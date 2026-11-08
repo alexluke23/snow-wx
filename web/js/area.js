@@ -226,11 +226,10 @@
       xaxis: { type: "date", fixedrange: true } }), PLOT_CFG);
   }
 
-  function avalanche(a, fc) {
+  function avalanche(a, ratings) {
     if (!a) return `<p class="hint">Outside the avalanche-center forecast zones.</p>`;
-    const f = (fc?.features || []).find((x) => x.properties.zone_id === a.zone_id);
-    if (!f) return `<p>${esc(a.zone)}</p>`;
-    const p = f.properties;
+    const p = ratings?.[String(a.zone_id)];
+    if (!p) return `<p>${esc(a.zone)}</p>`;
     return `<p><span class="danger-chip${p.expired ? " expired" : ""}" style="background:${esc(p.color)}">${esc(p.danger)}</span>
       ${esc(p.name)}${p.expired ? ` <span class="hint">(expired)</span>` : ""}</p>
       <a href="${esc(safeUrl(p.link))}" target="_blank" rel="noopener">Read the full forecast →</a>`;
@@ -259,16 +258,22 @@
   async function render() {
     const id = decodeURIComponent(location.hash.replace(/^#/, ""));
     const main = $("area");
-    let cat;
-    try { cat = await getJSON("data/ski_areas.json"); } catch (e) {
-      main.innerHTML = `<p>Ski-area catalog not available (${esc(e.message)}).</p>`; return;
-    }
-    const a = cat.areas.find((x) => x.id === id);
-    if (!a) return listPage(cat);
-    document.title = `Snow-Wx · ${a.name}`;
-    const [fcR, avyR] = await Promise.allSettled([getJSON(`data/points/${encodeURIComponent(a.id)}.json`),
-                                                 getJSON("data/avalanche.geojson")]);
+    // One request for the forecast (it embeds the catalog record); the whole
+    // catalog only for the list page or when no forecast exists yet.
+    const [fcR, avyR] = await Promise.allSettled([
+      id ? getJSON(`data/points/${encodeURIComponent(id)}.json`) : Promise.reject(new Error("no id")),
+      getJSON("data/avalanche_ratings.json")]);
     const fc = fcR.status === "fulfilled" ? fcR.value : null;
+    let a = fc?.area;
+    if (!a) {
+      let cat;
+      try { cat = await getJSON("data/ski_areas.json"); } catch (e) {
+        main.innerHTML = `<p>Ski-area catalog not available (${esc(e.message)}).</p>`; return;
+      }
+      a = cat.areas.find((x) => x.id === id);
+      if (!a) return listPage(cat);
+    }
+    document.title = `Snow-Wx · ${a.name}`;
     const tz = a.tz || "America/Denver";
     const keys = fc ? ["summit", "base"].filter((k) => fc.points[k]) : [];
     let pt = keys[0];

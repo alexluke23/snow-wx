@@ -96,6 +96,12 @@ def process(fc: dict, states: list[str], precision: int, now) -> dict:
     return feature_collection(out)
 
 
+def ratings_index(fc: dict) -> dict:
+    keep = ("name", "center", "danger", "danger_level", "color", "expired", "link", "end_date")
+    return {str(f["properties"].get("zone_id")): {k: f["properties"].get(k) for k in keep}
+            for f in fc.get("features", []) if f["properties"].get("zone_id") is not None}
+
+
 def run(cfg: dict, session, outdir: Path) -> dict:
     r = session.get(MAP_LAYER, timeout=session.request_timeout)
     r.raise_for_status()
@@ -103,6 +109,9 @@ def run(cfg: dict, session, outdir: Path) -> dict:
     fc = process(r.json(), cfg["region"]["states"],
                  cfg["avalanche"].get("coord_precision", 4), now)
     write_json(outdir / "avalanche.geojson", fc)
+    # Small zone_id -> rating index for pages that need one zone (area pages):
+    # avoids downloading every polygon.
+    write_json(outdir / "avalanche_ratings.json", ratings_index(fc))
     n = len(fc["features"])
     rated = sum(1 for f in fc["features"] if f["properties"]["danger_level"] > 0)
     log.info("Avalanche: wrote %d zones (%d with current ratings)", n, rated)

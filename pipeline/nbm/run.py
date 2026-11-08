@@ -370,7 +370,9 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
         doc = {"id": a["id"], "name": a["name"], "tz": a.get("tz"),
                "source": SOURCE, "cycle": init.strftime("%Y%m%d%H"),
                "issued": init.strftime("%Y-%m-%dT%H:%MZ"), "generated_at": generated,
-               "times": times, "fhours": hours, "points": {}}
+               "times": times, "fhours": hours, "points": {},
+               # the catalog record, so the area page needs one request instead of the whole catalog
+               "area": {k: v for k, v in a.items() if k not in ("nbm_grid", "osm_id", "verify")}}
         for k in ("summit", "base"):
             g = a["nbm_grid"][k]
             i = col[(g["i"], g["j"])]
