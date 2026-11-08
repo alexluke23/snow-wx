@@ -435,9 +435,11 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
         return 0
     cycle = cycle.replace(tzinfo=timezone.utc) if cycle.tzinfo is None else cycle
     cid = cycle.strftime("%Y%m%d%H")
-    if published == cid:
-        log.info("NBM %s already published; nothing new", cid)
-        emit(new="false", cycle=cid)
+    from ..version import stamp
+    tag = stamp(cid, "points")
+    if published == tag:
+        log.info("NBM %s already published; nothing new", tag)
+        emit(new="false", cycle=tag)
         return 0
 
     cells = sorted({(a["nbm_grid"][k]["i"], a["nbm_grid"][k]["j"]) for a in cat["areas"] for k in ("base", "summit")}
@@ -478,5 +480,5 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
     if flagged:
         log.warning("plausibility flags (%d areas): %s", len(flagged),
                     "; ".join(f"{k}: {', '.join(v)}" for k, v in list(flagged.items())[:10]))
-    emit(new="true", cycle=cid)
+    emit(new="true", cycle=tag)
     return 0

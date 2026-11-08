@@ -297,9 +297,11 @@ def run(cfg: dict, session, out: Path, *, published: str | None = None, github_o
         log.warning("NDFD not reachable")
         emit(new="false")
         return 0
-    if published == key:
-        log.info("NDFD %s already published; nothing new", key)
-        emit(new="false", cycle=key)
+    from .version import stamp
+    tag = stamp(key, "ndfd")
+    if published == tag:
+        log.info("NDFD %s already published; nothing new", tag)
+        emit(new="false", cycle=tag)
         return 0
     pts = forecast_points()
     flat = [(pid, k, p["lat"], p["lon"]) for f in pts for k, p in [(kk, f["points"][kk]) for kk in f["points"]]
@@ -328,5 +330,5 @@ def run(cfg: dict, session, out: Path, *, published: str | None = None, github_o
     write_json(out / "index.json", {"key": key, "issued": issued.strftime("%Y-%m-%dT%H:%MZ"),
                                     "generated_at": generated, "source": SOURCE, "count": len(pts)})
     log.info("NDFD %s: wrote %d files (max %.0f KB, total %.1f MB)", key, len(sizes), max(sizes) / 1024, sum(sizes) / 1e6)
-    emit(new="true", cycle=key)
+    emit(new="true", cycle=tag)
     return 0
