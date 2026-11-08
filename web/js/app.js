@@ -34,7 +34,8 @@
   }));
 
   async function getJSON(name, bust) {
-    const r = await fetch(`${DATA}${name}${bust ? `?v=${encodeURIComponent(bust)}` : ""}`);
+    // no-cache = revalidate (ETag) every time, so the data can load in parallel with meta.json
+    const r = await fetch(`${DATA}${name}${bust ? `?v=${encodeURIComponent(bust)}` : ""}`, { cache: "no-cache" });
     if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`);
     return r.json();
   }
@@ -58,14 +59,17 @@
   const snotelLayer = points.toggleLayer("snotel");
   const asosLayer = points.toggleLayer("asos");
   const skiLayer = points.toggleLayer("ski");
+  const spLayer = points.toggleLayer("snopark");      // Sno-Parks / winter recreation (rec_points.json)
   avyLayer.addTo(map);
   points.addTo(map);
   snotelLayer.addTo(map);
   asosLayer.addTo(map);
   skiLayer.addTo(map);
+  spLayer.addTo(map);
 
   L.control.layers(baseLayers, {
     "Ski areas": skiLayer,
+    "Sno-Parks": spLayer,
     "Avalanche danger": avyLayer,
     "SNOTEL": snotelLayer,
     "ASOS / AWOS (wind, temp)": asosLayer,
@@ -180,6 +184,30 @@
         }
       },
       onClick: () => openSki(it),
+    };
+    return it;
+  }
+
+  // Sno-Parks: small rounded squares with a "P" (distinct from the ski-area triangles)
+  function spItem(a) {
+    const size = 11;
+    const it = {
+      group: "snopark", top: true, lat: a.base.lat, lon: a.base.lon, area: a, title: `${a.name} (${a.type_label || "Sno-Park"})`,
+      labelBox: null, prio: () => 0,
+      hit: () => [-size / 2 - 3, -size / 2 - 3, size / 2 + 3, size / 2 + 3],
+      draw(ctx, x, y) {
+        const r = size / 2;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(x - r, y - r, size, size, 2.5); else ctx.rect(x - r, y - r, size, size);
+        ctx.fillStyle = selected === `sp:${a.id}` ? "#c2185b" : "#0f5f4a";
+        ctx.lineWidth = 1.4; ctx.strokeStyle = "#fff"; ctx.fill(); ctx.stroke();
+        if (size >= 10) { ctx.fillStyle = "#fff"; ctx.font = "700 8px system-ui, sans-serif"; ctx.textAlign = "center";
+          ctx.textBaseline = "middle"; ctx.fillText("P", x, y + 0.5); }
+        if (areaAlerts[a.id]?.length) {
+          ctx.beginPath(); ctx.arc(x, y, size * 0.95, 0, 2 * Math.PI); ctx.strokeStyle = "#b42318"; ctx.lineWidth = 2; ctx.stroke();
+        }
+      },
+      onClick: () => openSp(it),
     };
     return it;
   }
@@ -400,6 +428,23 @@
         ${a.url ? `<br><a href="${esc(safeUrl(a.url))}" target="_blank" rel="noopener">Area website</a>` : ""}`;
   }
   const openSki = (it) => openItemPopup(it, skiPopup(it.area), `area:${it.area.id}`);
+  const spItems = new Map();
+  function spPopup(a) {
+    const al = (areaAlerts[a.id] || []).map((r) => `<span class="alert-badge ${esc(r.level)}">${esc(r.event)}</span>`).join(" ");
+    return `<strong>${esc(a.name)}</strong>
+        <div class="hint">${esc(a.type_label || "Sno-Park")} · ${esc(a.region)}, ${esc(a.state)}</div>${al ? `<div class="popup-alerts">${al}</div>` : ""}
+        <p>Trailhead ${ft(a.base.elev_ft)} · high terrain ${ft(a.summit.elev_ft)}${a.avalanche ? `<br>Avalanche zone: ${esc(a.avalanche.zone)}` : ""}
+        ${a.permit ? `<br><span class="hint">${esc(a.permit)}</span>` : ""}</p>
+        <a href="area.html#${encodeURIComponent(a.id)}">Forecast and details →</a>`;
+  }
+  const openSp = (it) => openItemPopup(it, spPopup(it.area), `sp:${it.area.id}`);
+  function drawSnoParks(cat) {
+    spItems.clear();
+    const items = (cat?.areas || []).map(spItem);
+    for (const it of items) spItems.set(it.area.id, it);
+    points.setGroup("snopark", items, { order: 2 });
+    if (items.length) map.attributionControl.addAttribution("Sno-Parks: USDA Forest Service, © OpenStreetMap contributors (ODbL)");
+  }
 
   function drawSkiAreas(cat) {
     skiItems.clear();
@@ -413,8 +458,12 @@
   // One list of ski areas + SNOTEL + ASOS stations, matched on name or ID.
   let stationIndex = [];
 
-  function buildIndex(sno, aso, ski) {
+  function buildIndex(sno, aso, ski, rec) {
     stationIndex = [];
+    for (const a of rec?.areas || []) {
+      stationIndex.push({ key: `sp:${a.id}`, kind: "SNOPARK", ids: [a.id], name: a.name,
+        sub: `${a.type_label || "Sno-Park"} · ${a.region}, ${a.state}`, lat: a.base.lat, lon: a.base.lon });
+    }
     for (const a of ski?.areas || []) {
       stationIndex.push({ key: `area:${a.id}`, kind: "AREA", ids: [a.id], name: a.name,
         sub: `Ski area · ${a.region}, ${a.state}`, lat: a.summit.lat, lon: a.summit.lon });
@@ -437,7 +486,11 @@
 
   function selectStation(s, { fly = true } = {}) {
     if (fly) map.setView([s.lat, s.lon], Math.max(map.getZoom(), 10));
-    if (s.kind === "AREA") {
+    if (s.kind === "SNOPARK") {
+      if (!map.hasLayer(spLayer)) spLayer.addTo(map);
+      const it = spItems.get(s.key.slice(3));
+      if (it) openSp(it);
+    } else if (s.kind === "AREA") {
       if (!map.hasLayer(skiLayer)) skiLayer.addTo(map);
       const it = skiItems.get(s.key.slice(5));
       if (it) openSki(it);
@@ -523,34 +576,35 @@
   }
 
   async function load() {
+    // Start the base-map tiles and every data file at once (they used to wait for meta.json).
+    if (initialHash.view) map.setView(initialHash.view.center, initialHash.view.zoom);
+    else map.setView([41.5, -113], 5);
+    setZoomClass();
+    const dataP = Promise.allSettled([
+      getJSON("avalanche.geojson"), getJSON("snotel.geojson"), getJSON("asos.geojson"),
+      getJSON("map_points.json"),                      // compact ski areas + Sno-Parks (pipeline/search.py)
+      getJSON("alerts/index.json")]);
     let meta = null;
     try {
-      meta = await getJSON("meta.json", Date.now());
+      meta = await getJSON("meta.json");
       lastUpdated = meta.generated_at;
       $("updated").textContent = `Updated ${localTime(meta.generated_at)}`;
       drawStatus(meta);
     } catch (e) {
       $("updated").textContent = "No data yet – run the pipeline (see README).";
     }
-    // A view in the URL hash wins over the configured default.
-    if (initialHash.view) map.setView(initialHash.view.center, initialHash.view.zoom);
-    else map.setView(meta?.region?.map_center || [41.5, -113], meta?.region?.map_zoom || 5);
-    setZoomClass();
+    if (!initialHash.view && meta?.region?.map_center) map.setView(meta.region.map_center, meta.region.map_zoom || 5);
 
-    const [avy, sno, aso, ski, alr] = await Promise.allSettled([
-      getJSON("avalanche.geojson", lastUpdated),
-      getJSON("snotel.geojson", lastUpdated),
-      getJSON("asos.geojson", lastUpdated),
-      getJSON("ski_areas.json", lastUpdated),
-      getJSON("alerts/index.json", lastUpdated),
-    ]);
+    const [avy, sno, aso, ski, alr] = await dataP;
     if (alr.status === "fulfilled") areaAlerts = alr.value.areas || {};
     if (avy.status === "fulfilled") avyLayer.addData(avy.value);
     if (sno.status === "fulfilled") { snotelData = sno.value; drawSnotel(); }
     if (aso.status === "fulfilled") drawAsos(aso.value);
     if (ski.status === "fulfilled") drawSkiAreas(ski.value);
+    const rec = ski.status === "fulfilled" ? { areas: ski.value.snoparks || [] } : null;
+    if (rec) drawSnoParks(rec);
     overlays.load(initialHash.o);
-    buildIndex(sno.value, aso.value, ski.value);
+    buildIndex(sno.value, aso.value, ski.value, rec);
 
     hashReady = true;
     openFromHash(initialHash, false);
@@ -558,8 +612,11 @@
     window.snowwx.ready = true;
     // Warm the chart library once the map is idle, so the first station click is quick
     // without Plotly blocking the initial load.
-    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 2500));
-    idle(() => loadPlotly().catch(() => {}), { timeout: 5000 });
+    // Only after the first interaction (or 15 s): an idle-time prefetch competed with the base-map
+    // tiles and the station data on phones (Track 2 performance pass).
+    const warm = () => { loadPlotly().catch(() => {}); ["pointerdown", "keydown"].forEach((t) => removeEventListener(t, warm, true)); };
+    ["pointerdown", "keydown"].forEach((t) => addEventListener(t, warm, { capture: true, once: true }));
+    setTimeout(warm, 15000);
   }
 
   function openFromHash(h, fly) {
