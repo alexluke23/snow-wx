@@ -190,6 +190,9 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       build/data/alerts/index.json (+ details.json). Matching needs each point's NWS forecast
       zone + county: ski areas `nws.<pt>.zone/county`, SNOTEL `nws.zone/county`
       (`python -m pipeline catalog --snotel` fetches /points). Most winter alerts have no polygon.
+- [x] S4 (dev4): NBM full-suite cycle order + liquid_source, own exceedance probabilities
+      (`exceed` per point incl. window `mean`; `exceed_summary.json`), decisions 2-5, A Powder
+      Finder "Chance of" view (PROB palette in colors.js) + area-page exceedance chart.
 - [ ] AFD + ridge-top wind (S3 part C).
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

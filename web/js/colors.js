@@ -86,3 +86,11 @@ const SNOWFALL = {
            "#ff8700", "#db1400", "#9e0000", "#690000", "#ccccff", "#9f8ccd"],
   digits: 0,
 };
+
+// Chance of at least X inches (%): sequential, shared by Powder Finder table/map and area charts.
+const PROB = {
+  label: "Chance (%)",
+  bins: [5, 10, 20, 30, 50, 70, 90],
+  colors: ["#f4f6f8", "#dbe9f6", "#b3d3ea", "#7fb2d9", "#4a8cc4", "#2b5fa6", "#5b3a9c", "#8e1f7a"],
+  digits: 0,
+};

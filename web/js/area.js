@@ -48,7 +48,8 @@
   const localFmt = (iso, tz, opts) => new Date(iso).toLocaleString([], { timeZone: tz, ...opts });
   const TYPE_LABEL = { snow: "snow", mixed: "mixed rain and snow", "mostly rain": "mostly rain" };
   // Range wording (owner S3): NBM probabilistic guidance to 48 h, "likely range" beyond.
-  const rangeName = (t) => (t?.range === "likely 25-75" ? "likely range" : "NBM 10–90%");
+  // NBM's own snowfall percentiles normally; the derived range is only a labelled fallback
+  const rangeName = (t) => (t?.range === "derived 25-75" || t?.range === "likely 25-75" ? "derived range (fallback)" : "NBM 10–90%");
   const outside = (t) => t && t.snow_lo !== null && t.snow_lo !== undefined && t.snow_hi !== null && t.snow_hi !== undefined
     && t.snow_in !== null && (t.snow_in < t.snow_lo - 0.05 || t.snow_in > t.snow_hi + 0.05);
   const SEPARATE = "NBM's deterministic (most likely) and probabilistic forecasts are calibrated separately, " +
@@ -110,6 +111,30 @@
   const baseLayout = (h, extra = {}) => ({
     height: h, margin: { l: 46, r: 12, t: 8, b: 36 }, font: FONT, paper_bgcolor: "#fff", plot_bgcolor: "#fff",
     showlegend: false, hovermode: "x unified", ...extra });
+
+  // Chance of at least X inches per 24/48/72-h window (NBM probability fields), GSL-style lines
+  const EX_THR = { "24h": [4, 6, 8, 12, 18, 24], "48h": [4, 6, 8, 12, 18, 24, 36], "72h": [4, 6, 8, 12, 18, 24, 36, 48] };
+  let exWin = "24h";
+  function exceedChart(el, fc, pt, tz) {
+    const ex = fc.points[pt].exceed?.[exWin];
+    if (!ex || !ex.end?.length) { el.innerHTML = `<p class="hint">No NBM chances for this window.</p>`; return; }
+    const want = EX_THR[exWin].filter((t) => ex.thr.includes(t));
+    const lab = (iso) => localFmt(iso, tz, { weekday: "short", hour: "numeric" });
+    const traces = want.map((t, n) => {
+      const k = ex.thr.indexOf(t), c = PROB.colors[Math.min(PROB.colors.length - 1, 2 + Math.round(n * (PROB.colors.length - 3) / Math.max(1, want.length - 1)))];
+      return { x: ex.end, y: ex.p.map((r) => r[k]), name: `≥ ${t}"`, mode: "lines+markers", line: { color: c, width: 2 },
+        marker: { size: 5, color: c }, hovertemplate: `≥ ${t}": %{y}%<extra></extra>`, hoverinfo: "y",
+        text: ex.start.map((s0, i) => `${lab(s0)} → ${lab(ex.end[i])}`) };
+    });
+    const heads = ex.start.map((s0, i) => `${lab(s0)} → ${lab(ex.end[i])}`);
+    traces.forEach((tr) => { tr.hovertemplate = `%{customdata}<br>${tr.hovertemplate}`; tr.customdata = heads; delete tr.text; });
+    Plotly.react(el, traces, baseLayout(240, {
+      showlegend: true, legend: { orientation: "h", y: -0.18, font: { size: 11 } }, margin: { l: 46, r: 12, t: 8, b: 58 },
+      hovermode: "closest",
+      xaxis: { type: "date", fixedrange: true, tickformat: "%a %-d" },
+      yaxis: { range: [-3, 103], ticksuffix: "%", zeroline: false, fixedrange: true, gridcolor: "#eef1f5", dtick: 25 },
+    }), PLOT_CFG);
+  }
 
   function periodChart(el, fc, pt) {
     const per = fc.points[pt].periods;
@@ -384,6 +409,10 @@
       <section><h3>Snowfall by day and night</h3>
         <div class="chart" id="period-chart"><p class="hint">Loading chart…</p></div>
         <p class="note" id="period-note"></p></section>
+      <section id="ex-sec"><h3>Chance of at least…</h3>
+        <div class="seg" role="group" aria-label="Window" id="ex-win"><button type="button" class="on" data-w="24h">24 h</button><button type="button" data-w="48h">48 h</button><button type="button" data-w="72h">72 h</button></div>
+        <div class="chart" id="ex-chart"><p class="hint">Loading chart…</p></div>
+        <p class="note" id="ex-note"></p></section>
       <section><h3>Snow level vs the ${isStation ? "station" : "mountain"}</h3><div class="chart" id="sl-chart"><p class="hint">Loading chart…</p></div>
         <p class="note">Below the line precipitation falls as rain. Solid blue where precipitation is possible
           (≥ 20% chance), dotted grey where it is unlikely; shaded 10–90% for the first 48 h (NBM).</p></section>
@@ -437,7 +466,9 @@
         const dayLocal = d.points[pt].periods.find((p) => p.is_day)?.local || "about 5 AM–5 PM";
         $("period-note").textContent = src === "nws"
           ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), shown as issued: snowfall to 72 h already includes the forecasters' rain/snow decisions. Days are 12Z–00Z (${dayLocal}).`
-          : `Bars: NBM deterministic (most likely; they add up to the totals). Whiskers: NBM probabilistic guidance — 10–90% of NBM snowfall to 48 h, then the likely range (25–75% of precipitation × snow ratio × chance of snow at this elevation). NBM calibrates these separately, so a bar can sit outside its whisker. Days are 12Z–00Z (${dayLocal}); nights lighter; hatched = extended outlook.`;
+          : `Bars: NBM deterministic (most likely; they add up to the totals). Whiskers: NBM's own snowfall percentiles (10–90%). Only when the newest NBM run lacks them does a "derived range (fallback)" appear (25–75% of precipitation × snow ratio × chance of snow). NBM calibrates these separately, so a bar can sit outside its whisker. Days are 12Z–00Z (${dayLocal}); nights lighter; hatched = extended outlook.`;
+        $("ex-sec").hidden = src === "nws" || !d.points[pt].exceed || !Object.keys(d.points[pt].exceed).length;
+        $("ex-note").innerHTML = `NBM's own probability of at least each amount at the ${POINT_LABEL[pt].toLowerCase()} in ${exWin.replace("h", " h")} windows ending about 5 AM (12Z), plotted at the window end. Separate from the most-likely bars, so they can disagree. NBM only. <a href="about.html#probabilities">How they work →</a>`;
         $("met-note").textContent = src === "nws"
           ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), as issued — not adjusted to this elevation. Precipitation in 6-hour amounts.`
           : "Temperatures adjusted from the 2.5-km NBM grid to each elevation (6.5 °C/km). Hourly to 36 h, then 6-hour amounts.";
@@ -445,9 +476,15 @@
       const drawCharts = () => loadPlotly().then(() => {
         const d = doc(), keys = keysOf(d);
         periodChart(ready($("period-chart")), d, pt);
+        if (!$("ex-sec").hidden) exceedChart(ready($("ex-chart")), d, pt, tz);
         meteogram(ready($("met-chart")), d, pt, keys);
         snowLevelChart(ready($("sl-chart")), d, keys);
       });
+      $("ex-win")?.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {
+        exWin = btn.dataset.w;
+        $("ex-win").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === btn));
+        drawNumbers(); drawCharts();
+      }));
       drawNumbers();     // plain HTML first; charts after the library arrives
       main.querySelectorAll("[data-src]").forEach((btn) => btn.addEventListener("click", () => {
         src = btn.dataset.src;

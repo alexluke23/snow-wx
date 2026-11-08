@@ -341,3 +341,12 @@ def test_s4_fallback_order_thresholds_and_exceedance():
     ex = exceedance(data, [29, 35], init, 0)
     # only windows ending at valid 12Z (01Z + 35 h); thresholds sorted numerically
     assert ex["24h"] == {"start": ["2026-11-08T12:00Z"], "end": ["2026-11-09T12:00Z"], "thr": [1.0, 4.0], "p": [[40, 12]]}
+
+
+def test_window_means_sum_periods_inside_each_window():
+    from pipeline.nbm.run import window_means
+    per = [{"start": f"2026-11-0{d}T{h}:00Z", "end": e, "snow_in": v} for d, h, e, v in [
+        (8, 12, "2026-11-09T00:00Z", 1.0), (9, "00", "2026-11-09T12:00Z", 2.5),
+        (9, 12, "2026-11-10T00:00Z", 0.5), (9, "00", "x", 0)][:3]]
+    assert window_means(per, ["2026-11-08T12:00Z", "2026-11-09T12:00Z"],
+                        ["2026-11-09T12:00Z", "2026-11-10T12:00Z"]) == [3.5, None]   # 2nd not fully covered

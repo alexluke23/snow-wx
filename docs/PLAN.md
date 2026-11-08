@@ -45,7 +45,8 @@ percentiles, snow level method, verification).
 - **Session 1 (dev2, Nov 7):** M0 done; M1 catalog (161 areas, 60 major,
   3DEP elevations); M2 NBM points (fixed NBM alternating-row decode bug;
   matches NBM bulletins); M3 area page v1 reviewed — consistent with NWS.
-- **Not started:** NDFD, ECMWF, NOHRSC overlays, Powder Finder.
+- **Done since:** NDFD, NOHRSC overlays, Powder Finder (+ chance-of view, S4), alerts.
+- **Not started:** ECMWF.
 - **CI housekeeping:** Node 20 deprecation warnings (bump action versions);
   `ubuntu-latest` → Ubuntu 26 migration notice (pin `ubuntu-24.04`).
   GitHub hourly schedule is best-effort (only 2 runs overnight) — monitor.
@@ -321,6 +322,12 @@ screenshots checked. Suggested session grouping in brackets.
   state/region filters, sort by snow / observed 24 h / snow level, favorites first, Leaflet map
   (shared SNOWFALL palette) loaded after the list. Lighthouse mobile 99 (FCP 1.1 s, LCP 2.1 s,
   TBT 59–86 ms, CLS 0, 243 KB), accessibility 100.
+- ✔ S4 (dev4) A: "Most likely ↔ Chance of" toggle. Chance mode = NBM's own exceedance probabilities
+  (24/48/72 h windows ending 12Z, skier chips 4–24" / to 36" / to 48"), forecast-window select,
+  summit/base, sorted by chance, shared PROB palette (table + map), NWS disabled with a note,
+  ⓘ → about.html. Shows NBM's mean over the same window as "most likely". URL: m, pw, px, pd.
+  Data: points/exceed_summary.json (lazy, ~220 KB). Area pages: "Chance of at least…" chart
+  (24/48/72 h, lines per threshold). Lighthouse mobile 98 (FCP 1.1 s, LCP 2.3 s, TBT 78 ms, CLS 0).
 
 **M5 — NWS official** [Session 3]
 - NDFD base/summit, alerts banner, AFD link; NBM ↔ NWS toggle; about.html
