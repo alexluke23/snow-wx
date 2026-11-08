@@ -49,7 +49,7 @@ jobs:
         # when its newest input is already published, so the 3-hourly schedule also
         # covers "daily SNODAS" (~14Z) and "after each snowfall analysis" (~12 h after
         # 00Z/12Z).
-        model: [hrrr, rrfs, gfs, points, nohrsc]
+        model: [hrrr, rrfs, gfs, points, nohrsc, ndfd]
     env:
       GH_TOKEN: ${{ github.token }}
       MODEL: ${{ matrix.model }}
@@ -97,7 +97,10 @@ jobs:
         # Writes new=true|false and cycle=... to $GITHUB_OUTPUT. Exit 0 with
         # new=false when nothing newer than the published cycle is complete.
         run: |
-          if [ "$MODEL" = nohrsc ]; then
+          if [ "$MODEL" = ndfd ]; then
+            # NWS official forecast at every ski area and SNOTEL site (~320 MB of NDFD GRIB)
+            python -m pipeline ndfd --out out/models/ndfd --published "${{ steps.pub.outputs.cycle }}"
+          elif [ "$MODEL" = nohrsc ]; then
             python -m pipeline nohrsc --out out/models/nohrsc --published "${{ steps.pub.outputs.cycle }}"
           elif [ "$MODEL" = points ]; then
             # NBM 00/06/12/18Z cycles reach f264 (core + qmd) a few hours after init

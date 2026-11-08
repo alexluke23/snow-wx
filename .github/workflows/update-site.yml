@@ -49,7 +49,7 @@ jobs:
           for m in $(echo "$names" | sed -n 's/^\([a-z0-9]*\)-[0-9]\{10\}\.tar$/\1/p' | sort -u); do
             # newest first; fall back to an older asset if one vanished mid-update
             dest=build/models   # model maps; point forecasts and NOHRSC layers go under data/
-            case "$m" in points|nohrsc) dest=build/data ;; esac
+            case "$m" in points|nohrsc|ndfd) dest=build/data ;; esac
             mkdir -p "$dest"
             for a in $(echo "$names" | grep -E "^${m}-[0-9]{10}\.tar$" | sort -r); do
               if gh release download model-maps -p "$a" -D "$RUNNER_TEMP/models" --clobber \

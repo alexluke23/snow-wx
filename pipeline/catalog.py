@@ -607,3 +607,66 @@ def run(cfg: dict, session, out: Path = OUT, obs_dir: Path | None = None, refres
              sum(a["verify"] == "dem-only" for a in areas), sum(a["verify"] == "review" for a in areas),
              ", ".join(missing) or "none")
     return 0
+
+
+# ---------------------------------------------------------------- SNOTEL forecast points
+
+SNOTEL_OUT = REPO_ROOT / "data" / "snotel_points.json"
+
+
+def snotel_point_id(triplet: str) -> str:
+    """'663:CO:SNTL' -> 'snotel-663-CO-SNTL' (used in URLs and file names)."""
+    return "snotel-" + triplet.replace(":", "-")
+
+
+def state_tz(state: str, lat: float, ccfg: dict) -> str:
+    """Fallback zone by state; northern Idaho (panhandle, roughly > 45.5 N) is Pacific."""
+    if state == "ID" and lat > 45.5:
+        return "America/Los_Angeles"
+    return (ccfg.get("state_tz") or {}).get(state, "America/Denver")
+
+
+def build_snotel_points(session, ccfg: dict, obs_dir: Path, out: Path = SNOTEL_OUT, workers: int = 8) -> int:
+    """Every SNOTEL station as a single-elevation forecast point: NBM cell (i, j) and the
+    cell's mean 3DEP elevation (for the lapse adjustment). On demand, like the catalog."""
+    feats = json.loads((obs_dir / "snotel.geojson").read_text(encoding="utf-8"))["features"]
+    grid = json.loads(OUT.read_text(encoding="utf-8"))["nbm_grid"]
+    rows, envs = [], {}
+    for f in feats:
+        p = f["properties"]
+        lon, lat = f["geometry"]["coordinates"]
+        try:
+            i, j = lcc_ij(lat, lon, grid)
+        except ValueError:
+            continue
+        envs[f"{i},{j}"] = cell_envelope(i, j, grid)
+        rows.append((p, lat, lon, i, j))
+    # Cell elevation for ~800 SNOTEL cells: the full-cell 3DEP statistics call (used for ski
+    # areas) runs at ~17 cells/min, so use the mean of 5 batched point samples per cell
+    # (centre + quadrant centres). Exact cell means are used where already cached.
+    stats = JsonCache(CACHE / "dem_cells.json").data
+    pts5 = {}
+    for key, (x0, y0, x1, y1) in envs.items():
+        if key in stats:
+            continue
+        cx, cy, dx, dy = (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 4, (y1 - y0) / 4
+        pts5[key] = [(cy, cx), (cy - dy, cx - dx), (cy - dy, cx + dx), (cy + dy, cx - dx), (cy + dy, cx + dx)]
+    dem = dem_elevations(session, ccfg, [q for v in pts5.values() for q in v], JsonCache(CACHE / "dem_points.json"),
+                         batch=8, workers=workers)
+    cell_elev = {k: stats[k] for k in envs if k in stats}
+    for key, qs in pts5.items():
+        vals = [dem[_key(*q)] for q in qs if dem.get(_key(*q)) is not None]
+        cell_elev[key] = sum(vals) / len(vals) if vals else None
+    pts = []
+    for p, lat, lon, i, j in rows:
+        e = cell_elev.get(f"{i},{j}")
+        pts.append({"id": snotel_point_id(p["triplet"]), "triplet": p["triplet"], "name": p["name"],
+                    "state": p.get("state"), "lat": round(lat, 5), "lon": round(lon, 5),
+                    "elev_ft": None if p.get("elev_ft") in (None, "None") else round(float(p["elev_ft"])),
+                    "tz": state_tz(p.get("state"), lat, ccfg),
+                    "nbm_grid": {"i": i, "j": j, "elev_ft": None if e is None else round(e)}})
+    write_json(out, {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                     "source": "USDA NRCS AWDB station metadata; NBM cell elevation = USGS 3DEP mean",
+                     "count": len(pts), "points": pts}, ndigits=6)
+    log.info("wrote %s: %d SNOTEL forecast points", out, len(pts))
+    return 0

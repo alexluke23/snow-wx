@@ -164,6 +164,13 @@ def main(argv=None) -> int:
     p.add_argument("--out", default=str(REPO_ROOT / "data" / "ski_areas.json"))
     p.add_argument("--obs-dir", default="build/data", help="folder with snotel/asos.geojson for nearest-station joins")
     p.add_argument("--refresh", action="store_true", help="re-download OpenSkiMap")
+    p.add_argument("--snotel", action="store_true", help="build data/snotel_points.json (SNOTEL forecast points) instead")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("ndfd", help="NWS official forecast (NDFD) at every ski area and SNOTEL site into OUT/")
+    p.add_argument("--out", default="build/data/ndfd")
+    p.add_argument("--published", default=None, help="key already on the site; exit 0 if unchanged")
+    p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("nohrsc", help="NOHRSC snowfall analysis + SNODAS overlay layers into OUT/")
@@ -207,6 +214,10 @@ def main(argv=None) -> int:
                          github_output=args.github_output)
 
     cfg = load_config(args.config)
+    if args.cmd == "ndfd":
+        from . import ndfd
+        return ndfd.run(cfg, make_session(cfg), Path(args.out), published=args.published,
+                        github_output=args.github_output)
     if args.cmd == "nohrsc":
         from . import nohrsc
         return nohrsc.run(cfg, make_session(cfg), Path(args.out), published=args.published,
@@ -218,6 +229,8 @@ def main(argv=None) -> int:
                           max_hour=args.max_hour, workers=args.workers, github_output=args.github_output)
     if args.cmd == "catalog":
         from . import catalog
+        if args.snotel:
+            return catalog.build_snotel_points(make_session(cfg), catalog.load_catalog_config(), Path(args.obs_dir))
         return catalog.run(cfg, make_session(cfg), Path(args.out), Path(args.obs_dir), args.refresh)
     if args.cmd == "obs":
         return run_obs(cfg, Path(args.out), args.only)
