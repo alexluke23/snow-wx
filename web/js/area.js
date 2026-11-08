@@ -98,7 +98,7 @@
         <span class="rng liquid">${(t.qpf_in ?? 0).toFixed(2)} in liquid</span></div>`;
     };
     const head = P.raw
-      ? `NWS forecast for the 2.5 km grid cell (elev. ≈ ${ft(P.grid_elev_ft)}) · ${POINT_LABEL[pt]} ${ft(elev)}`
+      ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(P.grid_elev_ft)}) · ${POINT_LABEL[pt]} ${ft(elev)}`
       : `${POINT_LABEL[pt]} · ${ft(elev)} · most likely snowfall (NBM)`;
     return `<p class="tiles-for">${head}</p>
       <div class="tiles">${cell("24h", "Next 24 h")}${cell("72h", "Next 72 h")}${cell("7d", "Next 7 days")}${cell("10d", "Next 10 days")}</div>`;
@@ -294,14 +294,18 @@
   function alertBanner(refs, index, link, tz) {
     if (!refs?.length) return "";
     const until = (iso) => (iso ? `until ${localFmt(iso, tz, { weekday: "short", hour: "numeric", timeZoneName: "short" })}` : "");
-    return refs.map((r) => {
+    // winter / wind / avalanche / blizzard / cold first; nothing is hidden, the rest collapse
+    const main = refs.filter((r) => r.relevant !== false), other = refs.filter((r) => r.relevant === false);
+    const one = (r) => {
       const a = index.alerts[r.id] || {};
       return `<details class="alert-banner ${esc(r.level)}" data-id="${esc(r.id)}">
         <summary><strong>${esc(r.event)}</strong> ${esc(until(r.ends))}<span class="by">${esc(a.sender || "")}</span></summary>
         <div class="alert-body"><p class="hint">${esc(a.area || "")}</p><div class="alert-text">Loading…</div>
           <p><a href="${esc(link)}" target="_blank" rel="noopener">NWS forecast and full alert →</a></p></div>
       </details>`;
-    }).join("");
+    };
+    return main.map(one).join("") + (other.length ? `<details class="other-alerts"><summary>Other alerts (${other.length}):
+      ${other.map((r) => esc(r.event)).join(", ")}</summary>${other.map(one).join("")}</details>` : "");
   }
   async function wireAlertDetails(root) {
     let details = null;
@@ -432,10 +436,10 @@
         $("tiles").innerHTML = tiles(d, pt, d.points[pt].elev_ft);
         const dayLocal = d.points[pt].periods.find((p) => p.is_day)?.local || "about 5 AM–5 PM";
         $("period-note").textContent = src === "nws"
-          ? `NWS forecast for the 2.5 km grid cell (elev. ≈ ${ft(d.points[pt].grid_elev_ft)}), shown as issued: snowfall to 72 h already includes the forecasters' rain/snow decisions. Days are 12Z–00Z (${dayLocal}).`
+          ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), shown as issued: snowfall to 72 h already includes the forecasters' rain/snow decisions. Days are 12Z–00Z (${dayLocal}).`
           : `Bars: NBM deterministic (most likely; they add up to the totals). Whiskers: NBM probabilistic guidance — 10–90% of NBM snowfall to 48 h, then the likely range (25–75% of precipitation × snow ratio × chance of snow at this elevation). NBM calibrates these separately, so a bar can sit outside its whisker. Days are 12Z–00Z (${dayLocal}); nights lighter; hatched = extended outlook.`;
         $("met-note").textContent = src === "nws"
-          ? `NWS forecast for the 2.5 km grid cell (elev. ≈ ${ft(d.points[pt].grid_elev_ft)}), as issued — not adjusted to this elevation. Precipitation in 6-hour amounts.`
+          ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), as issued — not adjusted to this elevation. Precipitation in 6-hour amounts.`
           : "Temperatures adjusted from the 2.5-km NBM grid to each elevation (6.5 °C/km). Hourly to 36 h, then 6-hour amounts.";
       };
       const drawCharts = () => loadPlotly().then(() => {

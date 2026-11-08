@@ -13,8 +13,9 @@ precip windows, 12-h periods, totals) so the area page can toggle NBM <-> NWS.
 NWS values are shown raw for their 2.5-km grid cell (owner decision S3): no lapse
 adjustment and no snow-level scaling; NDFD snow already contains the forecasters'
 rain/snow decisions. The rain/snow label comes from NDFD's own snow:liquid ratio.
-The cell elevation shown with it is the overlapping NBM cell's 3DEP mean (NDFD files
-carry no terrain), hence "≈".
+The NDFD CONUS grid is a sub-window of the NBM grid (its origin is exactly NBM column
+200, row 0; same projection and spacing), so an NDFD cell IS an NBM cell and the cell
+elevation shown is that cell's 3DEP mean (NDFD files carry no terrain).
 """
 
 from __future__ import annotations
