@@ -119,7 +119,12 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
   percentiles only to f048/f054 but carry qmd (QPF percentiles; day blocks vary by cycle:
   18Z f072 has only 2-3 day). Selection is rule-based (`inventory.classify/select`): only
   windows ending at the file's own hour count (later files repeat earlier windows with
-  other values). The points job prefers the newest complete 01/07/13/19Z cycle. Missing
+  other values). Cycle order (S4): newest complete 01/07/13/19Z → previous full-suite
+  (≤ 12 h old) → 00/06/12/18Z. Full-suite f264 lands ~1.7 h after init (points cron
+  55 2,8,14,20); qmd lands ~7.5 h after its cycle, so liquid (QPF) percentiles come from the
+  newest synoptic cycle with complete qmd (`liquid_source`, usually 7 h older; labelled
+  `liquid_cycle`). Exceedance probabilities: NBM's own fields (`exceed` per point,
+  `exceed_summary.json`); consistent with the percentiles (docs/nbm_prob_consistency_*.md). Missing
   messages are missing data (`required_keys` counted; fail > 20 %; summary.json `quality`).
   Percentiles match the GSL NBM 1-D viewer exactly at the nearest cell (KMLP, KSMP; see
   docs/nbm_inventory.md); its exceedance probabilities are not reproducible.
