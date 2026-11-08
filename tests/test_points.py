@@ -350,3 +350,36 @@ def test_window_means_sum_periods_inside_each_window():
         (9, 12, "2026-11-10T00:00Z", 0.5), (9, "00", "x", 0)][:3]]
     assert window_means(per, ["2026-11-08T12:00Z", "2026-11-09T12:00Z"],
                         ["2026-11-09T12:00Z", "2026-11-10T12:00Z"]) == [3.5, None]   # 2nd not fully covered
+
+
+def test_window_wet_uses_only_likely_precip_periods():
+    from pipeline.points import window_wet
+    per = [{"start": "2026-11-08T12:00Z", "end": "2026-11-09T00:00Z", "pop": 0.1, "snowlvl_min_ft": 3000.0},
+           {"start": "2026-11-09T00:00Z", "end": "2026-11-09T12:00Z", "pop": 0.6, "snowlvl_min_ft": 5200.0},
+           {"start": "2026-11-09T12:00Z", "end": "2026-11-10T00:00Z", "pop": 0.3, "snowlvl_min_ft": 4800.0}]
+    # the dry period's low snow level (3000 ft) does not count
+    assert window_wet(per, "2026-11-08T12:00Z", "2026-11-10T12:00Z") == (60, 4800.0)
+    assert window_wet(per, "2026-11-08T12:00Z", "2026-11-09T00:00Z") == (10, None)       # dry window
+    assert window_wet(per, "2026-11-11T12:00Z", "2026-11-12T12:00Z") == (None, None)     # no periods
+
+
+def test_ndfd_summary_row_has_pop_and_wet_snow_level():
+    from pipeline.ndfd import summary_row
+    per = [{"start": "2026-11-08T00:00Z", "end": "2026-11-08T12:00Z", "pop": 0.7, "snowlvl_min_ft": 6100.0, "gust_max_mph": 30},
+           {"start": "2026-11-08T12:00Z", "end": "2026-11-09T00:00Z", "pop": 0.1, "snowlvl_min_ft": 4000.0, "gust_max_mph": 20}]
+    doc = {"issued": "2026-11-08T00:00Z", "points": {"summit": {"totals": {"24h": {"snow_in": 3.0}}, "periods": per}}}
+    assert summary_row("x", doc)["summit"]["24h"] == [3.0, None, None, 70, 6100.0]
+
+
+def test_series_pop_uses_synoptic_window_ends_for_odd_cycles():
+    # 01Z cycle: 6-h windows end at f005, f011, ... (valid 06Z, 12Z); hourly PoP must find them
+    init = datetime(2026, 11, 8, 1, tzinfo=timezone.utc)
+    hours = list(range(1, 12))
+    data = {h: _fake_hour(h) for h in hours}
+    for h in hours:
+        for k in ("pop6", "qpf6", "snow6"):
+            data[h].pop(k, None)
+    data[5]["pop6"] = np.full(2, 0.3)
+    data[11]["pop6"] = np.full(2, 0.8)
+    fc = point_forecast(data, hours, init, 0, elev_ft=9000, grid_ft=9000, tz=ZoneInfo("America/Denver"))
+    assert fc["series"]["pop"][:6] == [0.3] * 5 + [0.8] and fc["series"]["pop"][10] == 0.8

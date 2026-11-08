@@ -43,19 +43,8 @@
   const map = L.map("map", { zoomControl: true, preferCanvas: false });
   window.snowwx = { map, ready: false };   // debugging / benchmark handle
 
-  const tiles = (url, attribution, maxZoom = 16) => L.tileLayer(url, { attribution, maxZoom });
-  const USGS = "https://basemap.nationalmap.gov/arcgis/rest/services";
-  const baseLayers = {
-    "Shaded relief (USGS)": tiles(`${USGS}/USGSShadedReliefOnly/MapServer/tile/{z}/{y}/{x}`,
-      'Relief: <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">USGS</a>', 13),
-    "Topo (USGS)": tiles(`${USGS}/USGSTopo/MapServer/tile/{z}/{y}/{x}`,
-      'Topo: <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">USGS</a>'),
-    "Imagery + topo (USGS)": tiles(`${USGS}/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}`,
-      'Imagery: <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">USGS</a>'),
-    "OpenTopoMap": tiles("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
-      '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, SRTM | © <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)', 17),
-  };
-  baseLayers["Shaded relief (USGS)"].addTo(map);
+  // base maps with overzoom and automatic fallback (basemap.js, PLAN.md §6-C)
+  const baseLayers = snowBasemaps(map).layers;
 
   const avyLayer = L.geoJSON(null, { style: avyStyle, onEachFeature: avyPopup });
   // NOHRSC / SNODAS raster overlays (overlays.js), one at a time; o= in the URL hash.
@@ -306,7 +295,8 @@
         <tr><td>Precip 24 hr</td><td>${num(p.precip_24h, 2, '"')}</td></tr>
         <tr><td>Temp now (24-hr hi / lo)</td><td>${num(p.temp_f, 0, "°")} (${num(p.tmax_24h, 0, "°")} / ${num(p.tmin_24h, 0, "°")})</td></tr>
       </table>
-      <div id="chart"></div>
+      <div id="chart" class="st-charts"><div class="chart" id="ch-depth" style="height:210px"></div>
+        <div class="chart" id="ch-swe" style="height:200px"></div><div class="chart" id="ch-temp" style="height:200px"></div></div>
       <p class="forecast-link"><a href="area.html#snotel-${encodeURIComponent(p.triplet.replace(/:/g, "-"))}">Forecast for this site (NBM / NWS) →</a></p>
       <p class="hint"><a href="https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=${encodeURIComponent(p.id)}"
         target="_blank" rel="noopener">NRCS station page →</a></p>`;
@@ -319,33 +309,41 @@
     }
   }
 
+  // Station charts (PLAN.md §6-B, shared theme js/charts/theme.js): one idea per panel —
+  // depth (raw faint + 3-h median), SWE, temperature with a labelled 32 °F line. Times are
+  // the station's local standard time, as AWDB reports them.
   function drawChart(ts) {
-    const x = ts.times;
+    const C = SnowCharts;
+    const xs = ts.times.map((t) => t.slice(0, 16));
     const smooth = ts.SNWD_med3;   // 3-hr median; older data files may lack it
-    const traces = [
-      { x, y: ts.SNWD, name: smooth ? "Depth, raw" : "Depth (in)", type: "scatter", mode: "lines",
-        line: { color: "#2171b5", width: smooth ? 1 : 2 }, opacity: smooth ? 0.35 : 1, yaxis: "y" },
-      ...(smooth ? [{ x, y: smooth, name: "Depth (in, 3-hr median)", type: "scatter", mode: "lines",
-        line: { color: "#2171b5", width: 2.2 }, yaxis: "y" }] : []),
-      { x, y: ts.WTEQ, name: "SWE (in)", type: "scatter", mode: "lines",
-        line: { color: "#238b45", width: 2 }, yaxis: "y2" },
-      { x, y: ts.TOBS, name: "Temp (°F)", type: "scatter", mode: "lines",
-        line: { color: "#d6604d", width: 1.5 }, yaxis: "y3" },
-    ];
-    const layout = {
-      margin: { l: 44, r: 44, t: 10, b: 36 },
-      showlegend: true, legend: { orientation: "h", y: -0.18, font: { size: 11 } },
-      xaxis: { anchor: "y3", type: "date", tickfont: { size: 10 } },
-      yaxis: { domain: [0.42, 1], title: { text: "Depth", font: { size: 11 } }, tickfont: { size: 10 } },
-      yaxis2: { overlaying: "y", side: "right", title: { text: "SWE", font: { size: 11 } },
-                tickfont: { size: 10 }, showgrid: false },
-      yaxis3: { domain: [0, 0.32], title: { text: "°F", font: { size: 11 } }, tickfont: { size: 10 } },
-      shapes: [{ type: "line", xref: "paper", x0: 0, x1: 1, yref: "y3", y0: 32, y1: 32,
-                 line: { color: "#888", width: 1, dash: "dot" } }],
-      hovermode: "x unified",
+    const last = (arr) => { for (let i = (arr || []).length - 1; i >= 0; i--) if (arr[i] !== null) return arr[i]; return null; };
+    const panel = (id, h, traces, title, extra = {}) => {
+      const el = $(id);
+      const ax = C.timeAxis(xs[0], xs[xs.length - 1], el.clientWidth - C.MARGIN.l - 58);
+      return C.plot(el, traces, C.layout(h, { margin: { r: 58, b: ax.b, ...(extra.margin || {}) }, xaxis: ax.axis,
+        shapes: [...ax.shapes, ...(extra.shapes || [])], yaxis: C.yaxis(extra.yaxis || {}),
+        annotations: [C.axisTitle(title), ...(extra.annotations || [])].filter(Boolean) }));
     };
-    loadPlotly().then((P) => P.newPlot("chart", traces, layout, { displayModeBar: false, responsive: true }))
-      .catch((e) => { $("chart").textContent = `Chart unavailable (${e.message})`; });
+    loadPlotly().then(() => {
+      const dep = smooth || ts.SNWD;
+      panel("ch-depth", 210, [
+        ...(smooth ? [{ x: xs, y: ts.SNWD, mode: "lines", line: { color: SnowCharts.OI.blue, width: 1 }, opacity: 0.35,
+          hovertemplate: "raw %{y:.0f} in<extra></extra>" }] : []),
+        { x: xs, y: dep, mode: "lines", line: { color: SnowCharts.OI.blue, width: 2.4 }, hovertemplate: "depth %{y:.0f} in<extra></extra>" },
+      ], "Snow depth (in)", { yaxis: { rangemode: "tozero" },
+        annotations: [C.endLabel(xs, dep, smooth ? "median" : "Depth", SnowCharts.OI.blue)] });
+      panel("ch-swe", 200, [{ x: xs, y: ts.WTEQ, mode: "lines", line: { color: SnowCharts.OI.green, width: 2.2 },
+        hovertemplate: "SWE %{y:.1f} in<extra></extra>" }], "Snow water equivalent (in)", { yaxis: { rangemode: "tozero" } });
+      const r32 = C.refLine(32, "32 °F", { color: "#0b6e85", dash: "dot", where: "left" });
+      panel("ch-temp", 200, [{ x: xs, y: ts.TOBS, mode: "lines", line: { color: SnowCharts.OI.vermillion, width: 1.8 },
+        hovertemplate: "%{y:.0f} °F<extra></extra>" }], "Temperature (°F)", { shapes: [r32.shape], annotations: [r32.ann] });
+      const d = last(dep), w = last(ts.WTEQ), t = last(ts.TOBS);
+      C.summary($("ch-depth"), `Snow depth ${d === null ? "not reported" : `${Math.round(d)} in`} at the last report (faint line: raw sensor; bold: 3-hour median).`);
+      C.summary($("ch-swe"), `Snow water equivalent ${w === null ? "not reported" : `${w.toFixed(1)} in`} at the last report.`);
+      C.summary($("ch-temp"), `Air temperature ${t === null ? "not reported" : `${Math.round(t)} °F`} at the last report; dotted line = freezing.`);
+      C.tableToggle($("ch-temp"), "Hourly observations (local standard time)", ["Time", "Depth (in)", "SWE (in)", "Temp (°F)"],
+        xs.map((x, i) => [x, ts.SNWD?.[i] ?? "–", ts.WTEQ?.[i] ?? "–", ts.TOBS?.[i] ?? "–"]).reverse());
+    }).catch((e) => { $("chart").textContent = `Chart unavailable (${e.message})`; });
   }
 
   $("var-select").innerHTML = Object.entries(SNOTEL_VARS)
