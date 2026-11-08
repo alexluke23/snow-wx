@@ -44,8 +44,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # one job per model (keep in sync with config/models.yml) + NBM ski-area point forecasts
-        model: [hrrr, rrfs, gfs, points]
+        # one job per model (keep in sync with config/models.yml), NBM ski-area point
+        # forecasts, and NOHRSC snowfall/SNODAS overlay layers. Every job exits early
+        # when its newest input is already published, so the 3-hourly schedule also
+        # covers "daily SNODAS" (~14Z) and "after each snowfall analysis" (~12 h after
+        # 00Z/12Z).
+        model: [hrrr, rrfs, gfs, points, nohrsc]
     env:
       GH_TOKEN: ${{ github.token }}
       MODEL: ${{ matrix.model }}
@@ -93,7 +97,9 @@ jobs:
         # Writes new=true|false and cycle=... to $GITHUB_OUTPUT. Exit 0 with
         # new=false when nothing newer than the published cycle is complete.
         run: |
-          if [ "$MODEL" = points ]; then
+          if [ "$MODEL" = nohrsc ]; then
+            python -m pipeline nohrsc --out out/models/nohrsc --published "${{ steps.pub.outputs.cycle }}"
+          elif [ "$MODEL" = points ]; then
             # NBM 00/06/12/18Z cycles reach f264 (core + qmd) a few hours after init
             python -m pipeline points --out out/models/points --published "${{ steps.pub.outputs.cycle }}"
           else

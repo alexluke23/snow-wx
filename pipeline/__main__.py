@@ -60,6 +60,15 @@ def product_status(outdir: Path) -> dict:
                          "detail": f"NBM {js['cycle'][8:10]}Z run", "at": js.get("generated_at")}
     except (OSError, ValueError, KeyError):
         out["points"] = {"ok": False, "error": "no NBM point forecasts yet"}
+    nh = outdir / "data" / "nohrsc" / "index.json"
+    try:
+        js = json.loads(nh.read_text(encoding="utf-8"))
+        out["nohrsc"] = {"ok": bool(js.get("layers")), "count": len(js.get("layers", [])), "unit": "layers",
+                         "detail": f"snowfall to {(js.get('snowfall_end') or '')[5:13].replace('T', ' ')}Z, "
+                                   f"SNODAS {(js.get('snodas_valid') or '')[5:10]}",
+                         "at": js.get("generated_at")}
+    except (OSError, ValueError):
+        out["nohrsc"] = {"ok": False, "error": "no NOHRSC layers yet"}
     idx = outdir / "models" / "index.json"
     try:
         js = json.loads(idx.read_text(encoding="utf-8"))
@@ -157,6 +166,12 @@ def main(argv=None) -> int:
     p.add_argument("--refresh", action="store_true", help="re-download OpenSkiMap")
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("nohrsc", help="NOHRSC snowfall analysis + SNODAS overlay layers into OUT/")
+    p.add_argument("--out", default="build/data/nohrsc")
+    p.add_argument("--published", default=None, help="key already on the site; exit 0 if unchanged")
+    p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("points", help="NBM point forecasts for every ski area into OUT/<id>.json")
     p.add_argument("--out", default="build/data/points")
     p.add_argument("--cycle", help="NBM cycle YYYYMMDDHH (default: newest complete 00/06/12/18Z)")
@@ -192,6 +207,10 @@ def main(argv=None) -> int:
                          github_output=args.github_output)
 
     cfg = load_config(args.config)
+    if args.cmd == "nohrsc":
+        from . import nohrsc
+        return nohrsc.run(cfg, make_session(cfg), Path(args.out), published=args.published,
+                          github_output=args.github_output)
     if args.cmd == "points":
         from .nbm.run import run_points
         cycle = datetime.strptime(args.cycle, "%Y%m%d%H") if args.cycle else None

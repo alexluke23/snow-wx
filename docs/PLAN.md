@@ -291,6 +291,10 @@ screenshots checked. Suggested session grouping in brackets.
 - ✔ Performance done (S2): canvas symbols; 4x-CPU benchmark per zoom step 300–385 ms
   of long tasks -> 64–83 ms, pans 57–67 ms -> 0 ms, DOM 6,146 -> 227 elements; clicks
   first frame < 40 ms, chart 160–190 ms; Lighthouse 46 -> 72 (TBT 1,270 -> 132 ms).
+- ✔ NOHRSC overlays done (S2): §5.4 layer system (EPSG:3857 value PNGs, browser colorizer,
+  hover/tap readout, legend, opacity, one at a time, valid time); NOHRSC 24/48/72 h
+  snowfall (3 km cells) + SNODAS SWE, depth, 24 h SWE change (1.5 km). SNODAS SWE vs
+  SNOTEL (211 sites ≥ 1 in): r 0.87, MAE 0.67 in. Ski-area pages show both at base/summit.
 
 **M4 — Powder Finder** [Session 2–3]
 - Map + sortable/filterable table (state/region; 24 h / 72 h / 7 d; range;

@@ -58,6 +58,9 @@
   baseLayers["Shaded relief (USGS)"].addTo(map);
 
   const avyLayer = L.geoJSON(null, { style: avyStyle, onEachFeature: avyPopup });
+  // NOHRSC / SNODAS raster overlays (overlays.js), one at a time; o= in the URL hash.
+  const overlays = SnowOverlays(map, { panel: document.getElementById("overlays"), onChange: () => writeHash() });
+
   // SNOTEL, ASOS and ski areas share one canvas (points-canvas.js); the layer
   // control gets one toggle per group.
   const points = new PointsCanvas({ lowZoom: LOW_ZOOM });
@@ -231,7 +234,7 @@
   // s is a SNOTEL triplet (766:UT:SNTL), asos:<id> (asos:SLC) or area:<id> (area:alta-ski-area).
   function readHash() {
     const q = new URLSearchParams(location.hash.replace(/^#/, ""));
-    const out = { v: q.get("v"), s: q.get("s") };
+    const out = { v: q.get("v"), s: q.get("s"), o: q.get("o") };
     const m = (q.get("map") || "").split("/").map(Number);
     if (m.length === 3 && m.every(Number.isFinite)) out.view = { zoom: m[0], center: [m[1], m[2]] };
     return out;
@@ -245,6 +248,7 @@
     const parts = [`v=${encodeURIComponent(currentVar)}`,
       `map=${map.getZoom()}/${c.lat.toFixed(4)}/${c.lng.toFixed(4)}`];
     if (selected) parts.push(`s=${encodeURIComponent(selected).replace(/%3A/gi, ":")}`);
+    if (overlays.current()) parts.push(`o=${encodeURIComponent(overlays.current())}`);
     const h = `#${parts.join("&")}`;
     if (h !== location.hash) history.replaceState(null, "", h);
   }
@@ -545,6 +549,7 @@
     if (sno.status === "fulfilled") { snotelData = sno.value; drawSnotel(); }
     if (aso.status === "fulfilled") drawAsos(aso.value);
     if (ski.status === "fulfilled") drawSkiAreas(ski.value);
+    overlays.load(initialHash.o);
     buildIndex(sno.value, aso.value, ski.value);
 
     hashReady = true;
@@ -570,6 +575,7 @@
       currentVar = h.v; $("var-select").value = currentVar; drawSnotel();
     }
     if (h.view) map.setView(h.view.center, h.view.zoom);
+    if ((h.o || null) !== overlays.current()) overlays.set(h.o || null);
     if (h.s && h.s !== selected) openFromHash(h, false);
   });
 

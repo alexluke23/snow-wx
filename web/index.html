@@ -38,6 +38,8 @@
         <div id="legend" class="legend"></div>
       </section>
 
+      <section id="overlays" class="overlays"></section>
+
       <section id="station" class="station">
         <p class="hint">Click a SNOTEL station for its 7-day chart, or an airport (wind barb) or avalanche zone for details.</p>
       </section>
@@ -52,7 +54,7 @@
   <footer>
     Data: <a href="https://www.nrcs.usda.gov/wps/portal/wcc/home/" target="_blank" rel="noopener">USDA NRCS SNOTEL</a> ·
     <a href="https://mesonet.agron.iastate.edu/" target="_blank" rel="noopener">Iowa Environmental Mesonet</a> (ASOS) ·
-    <a href="https://avalanche.org/" target="_blank" rel="noopener">avalanche.org</a> ·
+    <a href="https://avalanche.org/" target="_blank" rel="noopener">avalanche.org</a> · NOAA/NWS NOHRSC ·
     Basemaps: USGS, OpenTopoMap.
     <strong>Not a substitute for your local avalanche forecast.</strong> Sensor data are provisional.
   </footer>
@@ -60,6 +62,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/colors.js"></script>
   <script src="js/points-canvas.js"></script>
+  <script src="js/overlays.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

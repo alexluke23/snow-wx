@@ -199,3 +199,15 @@ main.area h4 { margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
 
 /* canvas point symbols (points-canvas.js) */
 .leaflet-container.points-hover { cursor: pointer; }
+
+/* raster overlays (overlays.js) */
+.overlays select { width: 100%; padding: 6px; font-size: 14px; }
+.overlay-meta .legend { margin-top: 8px; }
+.overlays .opacity { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-top: 6px; }
+.overlays .opacity input { flex: 1; }
+.overlays .readout { font-weight: 600; font-size: 14px; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
+.overlays .credit { margin-top: 6px; }
+
+.metrics.nohrsc { width: 100%; font-variant-numeric: tabular-nums; }
+.metrics.nohrsc th { font-size: 12px; color: var(--muted); font-weight: 600; text-align: right; }
+.metrics.nohrsc td:not(:first-child) { text-align: right; }

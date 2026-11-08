@@ -226,6 +226,22 @@
       xaxis: { type: "date", fixedrange: true } }), PLOT_CFG);
   }
 
+  // NOHRSC snowfall analysis + SNODAS at the area's base and summit (data/nohrsc/ski.json).
+  async function nohrscObs(el, a, tz) {
+    let js;
+    try { js = await getJSON("data/nohrsc/ski.json"); } catch { return; }
+    const r = js.areas?.[a.id];
+    if (!r) return;
+    const f = (v, d = 1) => (v === null || v === undefined ? "–" : `${Number(v).toFixed(d)}"`);
+    const when = (iso) => (iso ? localFmt(iso, tz, { weekday: "short", hour: "numeric", timeZoneName: "short" }) : "–");
+    const row = (k) => `<tr><td>${POINT_LABEL[k]} ${ft(a[k].elev_ft)}</td><td>${f(r[k].sf24)}</td><td>${f(r[k].sf48)}</td>
+      <td>${f(r[k].sf72)}</td><td>${f(r[k].depth, 0)}</td><td>${f(r[k].swe)}</td></tr>`;
+    el.innerHTML = `<table class="metrics nohrsc"><thead><tr><th></th><th>24 h</th><th>48 h</th><th>72 h</th>
+        <th>Depth</th><th>SWE</th></tr></thead><tbody>${row("summit")}${row("base")}</tbody></table>
+      <p class="note">Observed snowfall: NOAA/NWS NOHRSC National Snowfall Analysis, windows ending ${esc(when(js.snowfall_end))}.
+        Depth and SWE: SNODAS, ${esc(when(js.snodas_valid))}. Analyses on ~1–4 km grids, not measurements at the lifts.</p>`;
+  }
+
   function avalanche(a, ratings) {
     if (!a) return `<p class="hint">Outside the avalanche-center forecast zones.</p>`;
     const p = ratings?.[String(a.zone_id)];
@@ -309,7 +325,7 @@
         <p class="note">Temperatures adjusted from the 2.5-km NBM grid to each elevation (6.5 °C/km).
           Hourly to 36 h, then 6-hour amounts.</p></section>`
       : `<p class="hint">The NBM point forecast is not available yet.</p>`}
-      <section><h3>Recent observations</h3><div id="obs"></div></section>
+      <section><h3>Recent observations</h3><div id="nohrsc-obs"></div><div id="obs"></div></section>
       <section><h3>Avalanche danger</h3>${avalanche(a.avalanche, avyR.status === "fulfilled" ? avyR.value : null)}</section>
       <section><h3>More</h3>
         <p>NWS point forecast: <a href="${nwsLink(a.summit)}" target="_blank" rel="noopener">summit</a> ·
@@ -350,6 +366,7 @@
         main.querySelectorAll(".chart .hint").forEach((h) => { h.textContent = `Charts unavailable: ${e.message}`; });
       }));
     }
+    nohrscObs($("nohrsc-obs"), a, tz);
     recentObs($("obs"), a);
   }
 

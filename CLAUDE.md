@@ -157,6 +157,12 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       points win over avalanche polygons), Plotly lazy + idle prefetch. Benchmark:
       `tools/mapbench.py URL` (CDP, 4x CPU). Lighthouse obs map 46 -> 72, TBT 1270 -> 132 ms.
       Keyboard focus on individual markers is gone (search box is the keyboard path).
-- [ ] M3.5 C NOHRSC overlays · D SNOTEL/NDFD forecasts
+- [x] M3.5 C NOHRSC overlays: `python -m pipeline nohrsc` -> build/data/nohrsc/ (6 layers,
+      ~0.9 MB, 25 s; CI `nohrsc` in the models.yml matrix). Layer system = `pipeline/layers.py`
+      (EPSG:3857 grid, nearest regrid, 16-bit value code in R/G of an RGBA PNG, alpha =
+      no data) + `web/js/overlays.js` (decode once with createImageBitmap(premultiplyAlpha:
+      none, colorSpaceConversion: none), colourize with colors.js palettes, exact hover value).
+      SNODAS glacier cells are capped at 32767 mm (shown as "glacier / permanent snow").
+- [ ] M3.5 D SNOTEL/NDFD forecasts
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.
