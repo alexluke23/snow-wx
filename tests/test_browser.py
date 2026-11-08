@@ -14,7 +14,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("SNOWWX_BROWSER") != "1",
                                 reason="set SNOWWX_BROWSER=1 (needs Chrome + a built site)")
 
 
-@pytest.mark.parametrize("check", ["basemap", "fallback", "layout"])
+@pytest.mark.parametrize("check", ["basemap", "fallback", "layout", "search"])
 def test_site_in_headless_chrome(check):
     pytest.importorskip("websocket")
     import browser_check

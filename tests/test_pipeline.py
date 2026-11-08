@@ -137,3 +137,17 @@ def test_meta_merges_partial_runs_and_products(cfg, tmp_path):
     assert st["points"] == {"ok": True, "count": 2, "unit": "ski areas", "detail": "NBM 12Z run",
                             "at": "2026-11-07T15:00:00Z"}
     assert st["models"]["ok"] is False
+
+
+def test_search_index_lists_areas_and_snotel_with_page_ids(tmp_path):
+    import json
+    from pipeline.search import build_index
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "ski_areas.json").write_text(json.dumps({"areas": [
+        {"id": "alta-ski-area", "name": "Alta Ski Area", "region": "Wasatch", "state": "UT"}]}))
+    (tmp_path / "data" / "snotel_points.json").write_text(json.dumps({"points": [
+        {"id": "snotel-766-UT-SNTL", "triplet": "766:UT:SNTL", "name": "Snowbird", "state": "UT", "elev_ft": 9177}]}))
+    items = build_index(tmp_path)["items"]
+    assert items[0] == {"k": "area", "id": "alta-ski-area", "n": "Alta Ski Area", "s": "Ski area · Wasatch, UT"}
+    assert items[1]["id"] == "snotel-766-UT-SNTL" and items[1]["x"] == ["766", "766:UT:SNTL"]
+    assert items[1]["s"] == "SNOTEL 766 · UT · 9,177 ft"
