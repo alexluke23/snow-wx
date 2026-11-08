@@ -36,15 +36,134 @@ def test_parse_idx_kinds_windows_lengths():
     assert inv.find(msgs, S("x", "core", "ASNOW", "surface", 6), 24) is None
 
 
-def test_selections_and_hours():
-    hours = inv.forecast_hours(264)
-    assert hours[:3] == [1, 2, 3] and 36 in hours and 37 not in hours and 39 in hours
-    assert 72 in hours and 75 not in hours and hours[-1] == 264 and len(hours) == 36 + 12 + 32
-    keys = lambda h, c=12: {s.key for s, _ in inv.selections(h, c)}  # noqa: E731
-    assert {"qpf1", "snow1", "t2m"} <= keys(5) and "qpf6" not in keys(5)
-    assert {"qpf6", "snow6", "qpf12_p50", "qpf_0_1d_p50"} <= keys(24)       # 12Z+24 = 12Z
-    assert "qpf12_p50" not in keys(18) and "qpf12_p50" in keys(18, 6)        # 06Z+18 = 00Z
-    assert {"qpf_0_3d_p10", "qpf_0_3d_p90"} <= keys(72) and "qpf1" not in keys(72)
+# idx excerpts in the layouts seen in docs/nbm_inventory.md (7 Nov 2026)
+SYN_F072 = """\
+1:0:d=2026110718:TMP:2 m above ground:72 hour fcst:
+2:100:d=2026110718:WIND:10 m above ground:72 hour fcst:
+3:200:d=2026110718:WDIR:10 m above ground:72 hour fcst:
+4:300:d=2026110718:GUST:10 m above ground:72 hour fcst:
+5:400:d=2026110718:TCDC:surface:72 hour fcst:
+6:500:d=2026110718:SNOWLVL:0 m above mean sea level:72 hour fcst:
+7:600:d=2026110718:SNOWLR:surface:72 hour fcst:
+8:700:d=2026110718:APCP:surface:66-72 hour acc fcst:
+9:800:d=2026110718:ASNOW:surface:66-72 hour acc fcst:
+10:900:d=2026110718:END:surface:72 hour fcst:
+"""
+QMD_18Z_F072 = """\
+1:0:d=2026110718:APCP:surface:66-72 hour acc fcst:10% level
+2:100:d=2026110718:APCP:surface:60-72 hour acc fcst:10% level
+3:200:d=2026110718:APCP:surface:2-3 day acc fcst:10% level
+4:300:d=2026110718:APCP:surface:2-3 day acc fcst:90% level
+5:400:d=2026110718:END:surface:72 hour fcst:
+"""
+ODD_F077 = """\
+1:0:d=2026110801:ASNOW:surface:53-77 hour acc@(fcst,dt=24 hour),missing=0:10% level
+2:100:d=2026110801:ASNOW:surface:5-77 hour acc@(fcst,dt=72 hour),missing=0:90% level
+3:200:d=2026110801:ASNOW:surface:71-77 hour acc@(fcst,dt=6 hour),missing=0:50% level
+4:300:d=2026110801:ASNOW:surface:29-53 hour acc fcst:prob >0.0254:prob fcst 255/255
+5:400:d=2026110801:ASNOW:surface:23-47 hour acc@(fcst,dt=24 hour),missing=0:10% level
+6:500:d=2026110801:ASNOW:surface:71-77 hour acc fcst:
+7:600:d=2026110801:END:surface:77 hour fcst:
+"""
+
+
+def test_select_is_inventory_driven():
+    syn = {k for k in inv.select(inv.parse_idx(SYN_F072), 72, 18, "core").values()}
+    assert {"t2m", "wind", "wdir", "gust", "sky", "snowlvl", "slr", "qpf6", "snow6"} <= syn
+    # 18Z qmd f072 carries only the 2-3 day block (no 0-3 day): selected, nothing required
+    q = inv.select(inv.parse_idx(QMD_18Z_F072), 72, 18, "qmd")
+    assert set(q.values()) == {"qpf_2_3d_p10", "qpf_2_3d_p90"}
+    # 01Z full suite: 24/72/6-h snowfall percentiles; windows ending earlier (repeated in
+    # later files, sometimes with other values) are ignored
+    odd = set(inv.select(inv.parse_idx(ODD_F077), 77, 1, "core").values())
+    assert odd == {"snow24_p10", "snow72_p90", "snow6_p50", "snow6"}
+
+
+def test_required_keys_and_sample_hours():
+    assert {"qpf1", "snow1"} <= inv.required_keys(5, 1) and "qpf6" not in inv.required_keys(5, 1)
+    assert {"qpf6", "snow6"} <= inv.required_keys(11, 1) and "qpf6" not in inv.required_keys(10, 1)
+    assert "qpf1" not in inv.required_keys(72, 0) and "qpf6" in inv.required_keys(72, 0)
+    syn = inv.sample_hours(list(range(1, 49)) + list(range(51, 193, 3)) + list(range(198, 265, 6)), 0)
+    assert syn == inv.forecast_hours(264)                       # synoptic layout unchanged
+    odd = inv.sample_hours(list(range(1, 265)), 1)
+    assert odd[:3] == [1, 2, 3] and 38 in odd and 39 not in odd and 77 in odd and 78 not in odd
+    assert all((1 + h) % 6 == 0 for h in odd if h > 72) and odd[-1] == 263
+
+
+class FakeResp:
+    def __init__(self, status=200, text="", content=b""):
+        self.status_code, self.text, self.content, self.ok = status, text, content, status == 200
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(self.status_code)
+
+
+class FakeSession:
+    """core idx with one basic field missing; no qmd idx at all."""
+    def __init__(self, idx_text):
+        self.idx_text = idx_text
+
+    def get(self, u, headers=None, timeout=None):
+        if u.endswith(".idx"):
+            return FakeResp(200, self.idx_text) if "/core/" in u else FakeResp(404)
+        return FakeResp(200, content=b"x" * 2000)
+
+    def head(self, u, timeout=None):
+        return FakeResp(200)
+
+
+def test_fetch_hour_fail_soft_missing_message_and_product(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from pipeline.nbm import run as R
+    monkeypatch.setattr(R, "decode_at", lambda part, ij, grid: np.array([1.0]))
+    idx = SYN_F072.replace("4:300:d=2026110718:GUST:10 m above ground:72 hour fcst:\n", "")   # gust missing
+    out, missing = R.fetch_hour(FakeSession(idx), datetime(2026, 11, 7, 18, tzinfo=timezone.utc), 72,
+                                (np.array([0]), np.array([0])), {"nx": 1}, tmp_path)
+    assert "t2m" in out and "gust" not in out and missing == ["gust"]
+    out2, missing2 = R.fetch_hour(None, datetime(2026, 11, 7, 18, tzinfo=timezone.utc), 72, None, {}, tmp_path)
+    assert missing2 == ["gust"] and set(out2) == set(out)        # read back from the cache
+    q = R.data_quality({72: ["gust"], 66: []}, 18)
+    assert q["missing"] == 1 and q["required"] == 18 and q["by_field"] == {"gust": 1}
+
+
+def test_latest_cycle_prefers_full_suite_and_falls_back():
+    from datetime import datetime, timezone
+    from pipeline.nbm.run import latest_cycle
+    now = datetime(2026, 11, 8, 4, 30, tzinfo=timezone.utc)
+    # newest full-suite cycle (01Z) incomplete -> previous full-suite cycle (19Z)
+    done = {datetime(2026, 11, 7, 19, tzinfo=timezone.utc), datetime(2026, 11, 8, 0, tzinfo=timezone.utc)}
+    c = latest_cycle(None, now, 264, complete=lambda s, t, h: t in done)
+    assert c == datetime(2026, 11, 7, 19, tzinfo=timezone.utc)
+    # no full-suite cycle complete in the lookback -> newest complete synoptic cycle
+    c = latest_cycle(None, now, 264, complete=lambda s, t, h: t.hour == 0)
+    assert c == datetime(2026, 11, 8, 0, tzinfo=timezone.utc)
+    assert latest_cycle(None, now, 264, complete=lambda s, t, h: False) is None
+
+
+def test_odd_cycle_totals_use_nbm_snowfall_percentiles():
+    from datetime import timezone
+    init = datetime(2026, 11, 8, 1, tzinfo=timezone.utc)
+    hours = inv.sample_hours(list(range(1, 81)), 1, 80)
+    data = {}
+    for h in hours:
+        d = {"t2m": np.full(1, 30.0), "wind": np.full(1, 10.0), "gust": np.full(1, 20.0), "wdir": np.full(1, 270.0),
+             "sky": np.full(1, 80.0), "snowlvl": np.full(1, 5000.0), "slr": np.full(1, 12.0)}
+        if h <= 36:
+            d.update(qpf1=np.full(1, 0.02), snow1=np.full(1, 0.2))
+        if (1 + h) % 6 == 0 and h >= 11:
+            d.update(qpf6=np.full(1, 0.1), snow6=np.full(1, 1.0), snow6_p10=np.full(1, 0.2), snow6_p90=np.full(1, 2.0))
+        if h == 29:
+            d.update(snow24_p10=np.full(1, 2.0), snow24_p90=np.full(1, 6.0))
+        if h == 77:
+            d.update(snow72_p10=np.full(1, 5.0), snow72_p90=np.full(1, 20.0))
+        data[h] = d
+    fc = point_forecast(data, hours, init, 0, elev_ft=9000, grid_ft=9000, tz=ZoneInfo("America/Denver"))
+    t24, t72 = fc["totals"]["24h"], fc["totals"]["72h"]
+    assert t24["from"] == "2026-11-08T06:00Z" and t24["snow_in"] == 4.0          # 4 x 6-h means
+    assert (t24["snow_lo"], t24["snow_hi"]) == (2.0, 6.0) and t24["range"] == "NBM 10-90"   # real 24-h window
+    assert (t72["snow_lo"], t72["snow_hi"]) == (5.0, 20.0) and t72["extended"] is False     # real 72-h window
+    assert fc["periods"][0]["start"] == "2026-11-08T12:00Z" and not fc["periods"][0]["extended"]
 
 
 def test_merge_ranges():
@@ -187,12 +306,16 @@ def test_flat_index_alternative_row_scanning():
 
 def test_calibration_report_counts_means_outside_ranges():
     from pipeline.nbm.run import calibration_report
-    per = lambda m, lo, hi, ext, elo=None, ehi=None: {"snow_in": m, "snow_lo": lo, "snow_hi": hi,  # noqa: E731
-                                                      "extended": ext, "snow_ext_lo": elo, "snow_ext_hi": ehi}
+    def per(m, lo, hi, end, rng="NBM 10-90", elo=None, ehi=None):
+        return {"snow_in": m, "snow_lo": lo, "snow_hi": hi, "end": end, "range": rng,
+                "snow_ext_lo": elo, "snow_ext_hi": ehi}
     files = {"a": {"points": {"summit": {"periods": [
-        per(2.0, 1.0, 4.0, False, 0.5, 1.5), per(5.0, 1.0, 4.0, False, 3.0, 6.0),   # 0-48 h
-        per(3.0, 1.0, 2.0, True), per(1.5, 1.0, 2.0, True), per(0.0, 0.0, 0.1, True)]}}}}  # >48 h
-    r = calibration_report(files, "2026110712")
-    assert r["first_48h"]["periods"] == 2 and r["first_48h"]["mean_inside_nbm_10_90"] == 0.5
-    assert r["first_48h"]["mean_inside_likely_25_75"] == 0.5
-    assert r["beyond_48h"] == {"periods": 2, "mean_inside_likely_25_75": 0.5, "mean_below": 0.0, "mean_above": 0.5}
+        per(2.0, 1.0, 4.0, "2026-11-08T12:00Z", elo=0.5, ehi=1.5),          # 0-48 h: in NBM, above likely
+        per(5.0, 1.0, 4.0, "2026-11-09T00:00Z"),                            # 0-48 h: above NBM
+        per(3.0, 1.0, 2.0, "2026-11-12T00:00Z", rng="likely 25-75"),        # beyond: above likely
+        per(1.5, 1.0, 2.0, "2026-11-12T12:00Z"),                            # beyond: inside NBM
+        per(0.0, 0.0, 0.1, "2026-11-13T00:00Z")]}}}}                        # dry: skipped
+    r = calibration_report(files, "2026110800")
+    assert r["first_48h"]["nbm_10_90"]["periods"] == 2 and r["first_48h"]["nbm_10_90"]["mean_inside"] == 0.5
+    assert r["first_48h"]["likely_25_75"]["mean_above"] == 1.0
+    assert r["beyond_48h"]["likely_25_75"]["mean_above"] == 1.0 and r["beyond_48h"]["nbm_10_90"]["mean_inside"] == 1.0
