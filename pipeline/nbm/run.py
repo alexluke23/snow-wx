@@ -390,6 +390,7 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
         summary.append({
             "id": a["id"], "name": a["name"], "state": a["state"], "region": a["region"],
             "major": a.get("major", False), "lat": a["summit"]["lat"], "lon": a["summit"]["lon"],
+            "elev": {"summit": a["summit"]["elev_ft"], "base": a["base"]["elev_ft"]},
             # [most likely (mean), 10th, 90th] snow in inches per window
             "summit": brief(tot["summit"]), "base": brief(tot["base"]), "checks": doc["checks"],
             "p_snow_base_72h": tot["base"].get("72h", {}).get("p_snow"),
