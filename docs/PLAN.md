@@ -320,6 +320,10 @@ screenshots checked. Suggested session grouping in brackets.
   methods/attribution page.
 - ✅ when: a test area under an active alert shows the banner; NDFD and NBM
   render side by side without mixing.
+- ✔ Part 1 done (S3): active NWS alerts (one api.weather.gov call for 11 states, hourly with the
+  obs build) matched by NWS zone/county codes and polygons → banner on area pages (expandable
+  text), badge in Powder Finder, red ring + popup list on the obs map. Checked with a recorded
+  sample (no winter alert touched a ski area on 7 Nov).
 
 **M6 — Interactive model layers** [Session 3]
 - 3857 value PNGs + client colorizer + hover readout for HRRR/RRFS surface

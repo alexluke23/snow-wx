@@ -75,7 +75,7 @@
       const c = colorFor(SNOWFALL, r.snow) || "#f4f6f8";
       const rng = r.hi === null || r.hi === undefined ? "" : `<small>${fmt(r.lo)}–${fmt(r.hi)}</small>`;
       const slTxt = r.sl === null ? "–" : r.slVsBase <= 0 ? `<span class="tobase">to base</span>` : `+${kft(r.slVsBase)}`;
-      const badge = r.alerts.length ? `<span class="alert-badge" title="${esc(r.alerts.map((x) => x.event).join(", "))}">${esc(r.alerts[0].short || "Alert")}</span>` : "";
+      const badge = r.alerts.length ? `<span class="alert-badge ${esc(r.alerts[0].level)}" title="${esc(r.alerts.map((x) => x.event).join(", "))}">${esc(r.alerts[0].short || "Alert")}</span>` : "";
       return `<div class="frow" role="listitem">
         <button type="button" class="star${fav.has(r.a.id) ? " on" : ""}" data-id="${esc(r.a.id)}" aria-pressed="${fav.has(r.a.id)}"
           title="Favorite">${fav.has(r.a.id) ? "★" : "☆"}<span class="sr"> favorite ${esc(r.a.name)}</span></button>
@@ -111,9 +111,15 @@
     s.onload = () => resolve(window.L); s.onerror = () => reject(new Error("map failed to load"));
     document.head.appendChild(s);
   }));
+  let lastFit = "";
   function drawMap(list) {
     if (!map) return;
     layer.clearLayers();
+    const fitKey = `${st.state}|${st.region}|${st.fav}`;   // re-frame only when the filter changes
+    if (fitKey !== lastFit && list.length) {
+      lastFit = fitKey;
+      map.fitBounds(L.latLngBounds(list.map((r) => [r.a.lat, r.a.lon])).pad(0.15), { maxZoom: 9 });
+    }
     for (const r of [...list].reverse()) {          // biggest last = on top
       const c = colorFor(SNOWFALL, r.snow) || "#f4f6f8";
       L.circleMarker([r.a.lat, r.a.lon], { radius: r.a.major ? 7 : 5, color: "#1b2a4a", weight: 1, fillColor: c, fillOpacity: 0.95 })
@@ -128,7 +134,6 @@
     L.tileLayer("https://basemap.nationalmap.gov/arcgis/rest/services/USGSShadedReliefOnly/MapServer/tile/{z}/{y}/{x}",
       { maxZoom: 13, attribution: "Relief: USGS" }).addTo(map);
     layer = L.layerGroup().addTo(map);
-    map.fitBounds(L.latLngBounds(rows.map((r) => [r.a.lat, r.a.lon])).pad(0.05));
     render();
   }
 

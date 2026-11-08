@@ -176,6 +176,10 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       `web/js/finder.js`; data: points/summary.json, ndfd/summary.json, nohrsc/ski.json,
       alerts/index.json). Keep its first paint static: buttons are in the HTML and the list
       reserves height, otherwise Lighthouse CLS jumps to 0.7.
-- [ ] M5 alerts (S3 part B), AFD + ridge-top wind (part C).
+- [x] M5 part 1 alerts: `pipeline/alerts.py` is an obs SOURCE (runs in every hourly build) ->
+      build/data/alerts/index.json (+ details.json). Matching needs each point's NWS forecast
+      zone + county: ski areas `nws.<pt>.zone/county`, SNOTEL `nws.zone/county`
+      (`python -m pipeline catalog --snotel` fetches /points). Most winter alerts have no polygon.
+- [ ] AFD + ridge-top wind (S3 part C).
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.
