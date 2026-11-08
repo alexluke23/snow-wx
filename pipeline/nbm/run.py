@@ -22,7 +22,7 @@ import numpy as np
 
 from .. import points as P
 from ..common import REPO_ROOT, utcnow, write_json
-from .inventory import Sel, find, forecast_hours, parse_idx, selections
+from .inventory import FULL_SUITE_CYCLES, parse_idx, required_keys, sample_hours, select
 
 log = logging.getLogger("snow-wx.nbm")
 
@@ -30,7 +30,7 @@ BUCKET = "https://noaa-nbm-grib2-pds.s3.amazonaws.com"
 CACHE = REPO_ROOT / "data_cache" / "nbm"
 CATALOG = REPO_ROOT / "data" / "ski_areas.json"
 SOURCE = "NOAA/NWS National Blend of Models (NBM) via NOAA Open Data Dissemination (AWS)"
-SELECTION_VERSION = 3          # bump when inventory.selections changes (invalidates the sample cache)
+SELECTION_VERSION = 4          # bump when inventory.selections changes (invalidates the sample cache)
 
 K_TO_F = lambda k: (k - 273.15) * 1.8 + 32.0  # noqa: E731
 MS_TO_MPH = 2.236936
@@ -77,17 +77,48 @@ def _get(session, u, headers=None, attempts=4):
             time.sleep(3 * (i + 1))
 
 
-def latest_cycle(session, now: datetime, max_hour: int, lookback_h: int = 30) -> datetime | None:
-    """Newest 00/06/12/18Z cycle whose core and qmd files reach max_hour."""
+MAX_MISSING_SHARE = 0.20     # fail the run when more required messages than this are missing
+
+
+def cycle_complete(session, t: datetime, max_hour: int) -> bool:
+    """A cycle is usable once its last core file (f<max_hour>) is published."""
+    try:
+        return session.head(url(t, "core", max_hour) + ".idx", timeout=30).status_code == 200
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def latest_cycle(session, now: datetime, max_hour: int, lookback_h: int = 36,
+                 complete=cycle_complete) -> datetime | None:
+    """Newest complete full-suite cycle (01/07/13/19Z: NBM snowfall percentiles and
+    exceedances to ~day 11, see docs/nbm_inventory.md); if none is complete within the
+    lookback, the newest complete 00/06/12/18Z cycle. An incomplete newest cycle simply
+    falls back to the previous complete one."""
     t = now.replace(minute=0, second=0, microsecond=0)
-    t -= timedelta(hours=t.hour % 6)
-    for _ in range(lookback_h // 6 + 1):
-        ok = all(session.head(url(t, p, max_hour) + ".idx", timeout=30).status_code == 200
-                 for p in ("core", "qmd"))
-        if ok:
-            return t
-        t -= timedelta(hours=6)
-    return None
+    fallback = None
+    for k in range(lookback_h + 1):
+        c = t - timedelta(hours=k)
+        if c.hour in FULL_SUITE_CYCLES and complete(session, c, max_hour):
+            return c
+        if fallback is None and c.hour % 6 == 0 and complete(session, c, max_hour):
+            fallback = c
+    return fallback
+
+
+def list_hours(session, cycle: datetime) -> list[int]:
+    """Forecast hours published for the cycle's core product (S3 listing)."""
+    import re
+    hours, token = set(), None
+    while True:
+        params = {"list-type": 2, "prefix": f"blend.{cycle:%Y%m%d}/{cycle:%H}/core/"}
+        if token:
+            params["continuation-token"] = token
+        t = session.get(f"{BUCKET}/", params=params, timeout=60).text
+        hours |= {int(x) for x in re.findall(r"core\.f(\d{3})\.co\.grib2\.idx</Key>", t)}
+        m = re.search(r"<NextContinuationToken>([^<]+)", t)
+        if not m:
+            return sorted(hours)
+        token = m.group(1)
 
 
 def merge_ranges(msgs, gap: int = 0):
@@ -141,39 +172,41 @@ def _decode_at(blob: bytes, ij: tuple[np.ndarray, np.ndarray], grid: dict) -> np
 
 
 def fetch_hour(session, cycle: datetime, fhour: int, ij: tuple, grid: dict,
-               cache_dir: Path) -> dict[str, np.ndarray]:
+               cache_dir: Path) -> tuple[dict[str, np.ndarray], list[str]]:
+    """({key: values at the cells}, [missing required keys]) for one forecast hour.
+
+    Fail-soft: a missing idx/product or message is missing data for this hour, never
+    an exception; the caller counts and judges the share."""
     path = cache_dir / f"f{fhour:03d}.npz"
     if path.exists():
         with np.load(path) as z:
-            return {k: z[k] for k in z.files}
-    sels = selections(fhour, cycle.hour)
+            out = {k: z[k] for k in z.files if k != "__missing__"}
+            return out, [str(x) for x in z["__missing__"]] if "__missing__" in z.files else []
     out: dict[str, np.ndarray] = {}
     for product in ("core", "qmd"):
-        mine = [(s, req) for s, req in sels if s.file == product]
-        if not mine:
-            continue
+        if product == "qmd" and cycle.hour % 6:
+            continue                                  # qmd exists only for 00/06/12/18Z
         r = _get(session, url(cycle, product, fhour) + ".idx")
         if r is None:
-            raise FileNotFoundError(f"{product} f{fhour:03d} idx missing")
-        inv = parse_idx(r.text)
-        chosen = {}
-        for s, req in mine:
-            m = find(inv, s, fhour)
-            if m is None:
-                if req:
-                    raise KeyError(f"{product} f{fhour:03d}: no {s.var} {s.level} {s.hours}h {s.kind} {s.value}")
-                continue
-            if m.length is None:
-                raise ValueError("last message in file; length unknown")
-            chosen[m] = s.key
+            log.debug("%s f%03d: no idx", product, fhour)
+            continue
+        chosen = {m: k for m, k in select(parse_idx(r.text), fhour, cycle.hour, product).items() if m.length}
         for start, end, members in merge_ranges(list(chosen)):
-            blob = _get(session, url(cycle, product, fhour), {"Range": f"bytes={start}-{end}"}).content
+            try:
+                blob = _get(session, url(cycle, product, fhour), {"Range": f"bytes={start}-{end}"}).content
+            except Exception as e:  # noqa: BLE001
+                log.warning("%s f%03d: byte range failed (%s)", product, fhour, e)
+                continue
             for m in members:
                 part = blob[m.offset - start: m.offset - start + m.length]
-                out[chosen[m]] = convert(chosen[m], decode_at(part, ij, grid))
+                try:
+                    out[chosen[m]] = convert(chosen[m], decode_at(part, ij, grid))
+                except Exception as e:  # noqa: BLE001
+                    log.warning("f%03d %s: decode failed (%s)", fhour, chosen[m], e)
+    missing = sorted(required_keys(fhour, cycle.hour) - set(out))
     cache_dir.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(path, **out)
-    return out
+    np.savez_compressed(path, __missing__=np.array(missing, dtype="U16"), **out)
+    return out, missing
 
 
 # ---------------------------------------------------------------- assemble
@@ -245,9 +278,10 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
         anyv = [x for x in (v(h, "slr") for h in steps) if x is not None and x > 0]
         return max(anyv) if anyv else None
 
-    # 6-h windows: the unit that periods and totals are summed from
+    # 6-h windows (ending at valid 00/06/12/18Z, whatever the cycle hour): the unit that
+    # periods and totals are summed from
     W: dict[int, dict | None] = {}
-    for e in [h for h in hours if h % 6 == 0]:
+    for e in [h for h in hours if v(h, "qpf6") is not None or v(h, "snow6") is not None]:
         q, raw = v(e, "qpf6"), v(e, "snow6")
         if q is None or raw is None:
             W[e] = None
@@ -260,7 +294,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
                 "slr": slr_in(e - 6, e)}
 
     def windows(s, e):
-        ws = [W.get(h) for h in range(s + 6, e + 1, 6)]
+        ws = [W.get(h) for h in range(e, s, -6)][::-1]
         return None if not ws or any(w is None for w in ws) else ws
 
     def qpct(key, e, lo_p=10, hi_p=90):
@@ -285,7 +319,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
             q, raw, n, pop = v(h, "qpf1"), v(h, "snow1"), 1, v(h, "pop1")
             dry = bool(w6) and w6["qpf"] < P.WET_IN
             snow = None if raw is None else (0.0 if dry else raw * (ps.get(h) or 0.0))
-        elif h % 6 == 0 and W.get(h):
+        elif W.get(h):
             q, snow, pop, n = W[h]["qpf"], W[h]["snow"], v(h, "pop6"), 6
         else:
             continue
@@ -318,7 +352,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
         sls = [series["snowlvl_ft"][k] for k in idx if series["snowlvl_ft"][k] is not None]
         snowy_gusts = [series["gust_mph"][k] for k, h in zip(idx, steps)
                        if series["gust_mph"][k] is not None and raw_snow_at(h) > 0]
-        pops = [x for x in (v(h, "pop6") for h in range(s + 6, e + 1, 6)) if x is not None]
+        pops = [x for x in (v(h, "pop6") for h in range(e, s, -6)) if x is not None]
         out_periods.append({
             **P.period_label(init, s, e, tz),
             "snow_in": _r(snow, 1),
@@ -342,15 +376,62 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
     qblocks = {"24h": [("qpf_0_1d", 24)], "72h": [("qpf_0_3d", 72)],
                "7d": [("qpf_0_3d", 72), ("qpf_3_5d", 120), ("qpf_5_7d", 168)],
                "10d": [("qpf_0_3d", 72), ("qpf_3_5d", 120), ("qpf_5_7d", 168), ("qpf_7_10d", 240)]}
-    for name, end in (("24h", 24), ("72h", 72), ("7d", 168), ("10d", 240)):
-        ws = windows(0, end)
+    # Totals start at the first valid 00/06/12/18Z (f000 for synoptic cycles, f005 for 01/07Z ...)
+    t0 = (min(W) - 6) if W else 0
+
+    def nbm_cover(s, e):
+        """Rank-sum of NBM snowfall-percentile windows (72/48/24/6 h) that exactly tile
+        (s, e]; None if they can't. Scaled by P(snow at the point). Tiles greedily with the
+        longest window first, so a longer total extends the shorter one's windows (the 7-day
+        range starts with the same 72-h window as the 72-h total); fewest-pieces search
+        only if the greedy tiling dead-ends."""
+        have = lambda L, end2: end2 <= e and v(end2, f"snow{L}_p10" if L > 6 else "snow6_p10") is not None  # noqa: E731
+        pos, greedy = s, []
+        while pos < e:
+            L = next((L for L in (72, 48, 24, 6) if have(L, pos + L)), None)
+            if L is None:
+                greedy = None
+                break
+            greedy.append((L, pos + L))
+            pos += L
+        best = {s: []}
+        for pos in range(s, e, 6):
+            if pos not in best:
+                continue
+            for L in (72, 48, 24, 6):
+                end2 = pos + L
+                if end2 > e or v(end2, f"snow{L}_p10" if L > 6 else "snow6_p10") is None:
+                    continue
+                cand = best[pos] + [(L, end2)]
+                if end2 not in best or len(cand) < len(best[end2]):
+                    best[end2] = cand
+        tiles = greedy if greedy is not None else best.get(e)
+        if tiles is None:
+            return None
+        parts = []
+        for L, end2 in tiles:
+            ws = windows(end2 - L, end2) or []
+            pw = P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws]) if ws else 1.0
+            key = "snow6" if L == 6 else f"snow{L}"
+            lo, hi = v(end2, f"{key}_p10"), v(end2, f"{key}_p90")
+            parts.append(None if lo is None or hi is None else (lo * (pw or 0), hi * (pw or 0)))
+        return P.rank_sum(parts)
+
+    for name, L in (("24h", 24), ("72h", 72), ("7d", 168), ("10d", 240)):
+        end = t0 + L
+        ws = windows(t0, end)
         if end not in hset or ws is None:
             continue
         q = sum(w["qpf"] for w in ws)
         snow = 0.0 if q < P.WET_IN else sum(w["snow"] for w in ws)
-        if end <= 48:          # NBM snowfall percentiles 10-90, 6-h windows added rank by rank
-            srng = P.rank_sum([w["rng"] for w in ws])
-            qrng = P.rank_sum([qpct(k, e) for k, e in qblocks[name]])
+        cover = nbm_cover(t0, end)
+        if cover is not None:  # NBM's own snowfall percentiles (all horizons on 01/07/13/19Z cycles)
+            srng = cover
+            qrng = P.rank_sum([qpct(k, e) for k, e in qblocks[name]]) if t0 == 0 and L <= 48 else None
+        elif L <= 48:
+            srng, qrng = None, P.rank_sum([qpct(k, e) for k, e in qblocks[name]])
+        elif t0 != 0:          # day blocks are cycle-relative (f000): only for synoptic cycles
+            srng = qrng = None
         else:                  # "likely range": QPF 25-75 x SLR x P(snow), blocks added rank by rank
             srng = P.rank_sum([extended_range(qpct(k, e, 25, 75), windows(e - {72: 72, 120: 48, 168: 48, 240: 72}[e], e))[0]
                                for k, e in qblocks[name]])
@@ -360,7 +441,9 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
                         "qpf_in": _r(q, 2),
                         "qpf_lo": _r(qrng[0], 2) if qrng else None, "qpf_hi": _r(qrng[1], 2) if qrng else None,
                         "p_snow": _r(P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws]), 2),
-                        "extended": end > 48, "range": "likely 25-75" if end > 48 else "NBM 10-90"}
+                        "extended": cover is None and L > 48,
+                        "range": "NBM 10-90" if cover is not None else ("likely 25-75" if srng else None),
+                        "from": (init + timedelta(hours=t0)).strftime("%Y-%m-%dT%H:%MZ")}
     return {"series": series, "precip": precip, "periods": out_periods, "totals": totals}
 
 
@@ -405,44 +488,56 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
 def calibration_report(files: dict, cid: str, min_in: float = 0.5) -> dict:
     """How the deterministic snow sits against the ranges (kept to recheck after storms).
 
-    Over every point and 12-h period with a wet range (upper end >= min_in):
-    - 0-48 h: share of NBM means inside NBM's 10-90 snowfall range and inside the
-      "likely" 25-75 QPF x SLR x P(snow) range, and the two ranges' mean bounds;
-    - beyond 48 h: share of means inside the likely range.
-    NBM's deterministic and probabilistic fields are calibrated separately, so a
-    mean outside its range is legitimate; this report tracks how often it happens.
+    Over every point and 12-h period with a wet range (upper end >= min_in), split by
+    lead (period end <= 48 h or later) and by range type: share of NBM means inside
+    NBM's own 10-90 snowfall range, inside the derived "likely" 25-75 range, and the
+    mean bounds. NBM's deterministic and probabilistic fields are calibrated
+    separately, so a mean outside its range is legitimate; this tracks how often.
     """
-    near = {"n": 0, "in_nbm": 0, "in_likely": 0, "nbm_lo": 0.0, "nbm_hi": 0.0, "lik_lo": 0.0, "lik_hi": 0.0, "mean": 0.0}
-    far = {"n": 0, "in_likely": 0, "below": 0, "above": 0}
+    from datetime import datetime as _dt
+    init = _dt.strptime(cid, "%Y%m%d%H")
+
+    def bucket():
+        return {"periods": 0, "inside": 0, "below": 0, "above": 0, "lo": 0.0, "hi": 0.0, "mean": 0.0}
+    acc = {(lead, kind): bucket() for lead in ("first_48h", "beyond_48h") for kind in ("nbm_10_90", "likely_25_75")}
     for doc in files.values():
         for pt in doc["points"].values():
             for per in pt["periods"]:
-                m, lo, hi = per["snow_in"], per["snow_lo"], per["snow_hi"]
-                if m is None or lo is None or hi is None:
-                    continue
-                if not per["extended"]:
-                    elo, ehi = per.get("snow_ext_lo"), per.get("snow_ext_hi")
-                    if max(hi, ehi or 0) < min_in or elo is None:
+                lead = (_dt.strptime(per["end"], "%Y-%m-%dT%H:%MZ") - init).total_seconds() / 3600
+                lead = "first_48h" if lead <= 48 else "beyond_48h"
+                ranges = [("nbm_10_90" if per.get("range") == "NBM 10-90" else "likely_25_75", per["snow_lo"], per["snow_hi"])]
+                if per.get("snow_ext_lo") is not None:          # derived range kept for comparison
+                    ranges.append(("likely_25_75", per["snow_ext_lo"], per["snow_ext_hi"]))
+                m = per["snow_in"]
+                for kind, lo, hi in ranges:
+                    if m is None or lo is None or hi is None or hi < min_in:
                         continue
-                    near["n"] += 1
-                    near["in_nbm"] += lo <= m <= hi
-                    near["in_likely"] += elo <= m <= ehi
-                    for k, x in (("nbm_lo", lo), ("nbm_hi", hi), ("lik_lo", elo), ("lik_hi", ehi), ("mean", m)):
-                        near[k] += x
-                elif hi >= min_in:
-                    far["n"] += 1
-                    far["in_likely"] += lo <= m <= hi
-                    far["below"] += m < lo
-                    far["above"] += m > hi
-    n0, n1 = max(near["n"], 1), max(far["n"], 1)
-    return {"cycle": cid, "min_in": min_in,
-            "first_48h": {"periods": near["n"], "mean_inside_nbm_10_90": round(near["in_nbm"] / n0, 3),
-                          "mean_inside_likely_25_75": round(near["in_likely"] / n0, 3),
-                          "avg_mean_in": round(near["mean"] / n0, 2),
-                          "avg_nbm_10_90_in": [round(near["nbm_lo"] / n0, 2), round(near["nbm_hi"] / n0, 2)],
-                          "avg_likely_25_75_in": [round(near["lik_lo"] / n0, 2), round(near["lik_hi"] / n0, 2)]},
-            "beyond_48h": {"periods": far["n"], "mean_inside_likely_25_75": round(far["in_likely"] / n1, 3),
-                           "mean_below": round(far["below"] / n1, 3), "mean_above": round(far["above"] / n1, 3)}}
+                    b = acc[(lead, kind)]
+                    b["periods"] += 1
+                    b["inside"] += lo <= m <= hi
+                    b["below"] += m < lo
+                    b["above"] += m > hi
+                    b["lo"] += lo; b["hi"] += hi; b["mean"] += m
+    out = {"cycle": cid, "min_in": min_in}
+    for (lead, kind), b in acc.items():
+        n = b["periods"]
+        out.setdefault(lead, {})[kind] = {"periods": n} if not n else {
+            "periods": n, "mean_inside": round(b["inside"] / n, 3), "mean_below": round(b["below"] / n, 3),
+            "mean_above": round(b["above"] / n, 3), "avg_range_in": [round(b["lo"] / n, 2), round(b["hi"] / n, 2)],
+            "avg_mean_in": round(b["mean"] / n, 2)}
+    return out
+
+
+def data_quality(missing: dict[int, list[str]], cycle_hour: int) -> dict:
+    """Counts of required messages and of missing ones (shown in meta.json status)."""
+    required = sum(len(required_keys(h, cycle_hour)) for h in missing)
+    n = sum(len(v) for v in missing.values())
+    by_field: dict[str, int] = {}
+    for v in missing.values():
+        for k in v:
+            by_field[k] = by_field.get(k, 0) + 1
+    return {"hours": len(missing), "required": required, "missing": n,
+            "share": round(n / required, 4) if required else 1.0, "by_field": by_field}
 
 
 def station_outputs(stations: list[dict], data, hours, init, col, generated) -> dict:
@@ -493,7 +588,11 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
                    | {(s["nbm_grid"]["i"], s["nbm_grid"]["j"]) for s in stations})
     col = {c: n for n, c in enumerate(cells)}
     ij = (np.array([c[0] for c in cells]), np.array([c[1] for c in cells]))
-    hours = [h for h in forecast_hours(max_hour)]
+    hours = sample_hours(list_hours(session, cycle), cycle.hour, max_hour)
+    if not hours:
+        log.error("NBM %s: no forecast hours listed", cid)
+        emit(new="false")
+        return 1
     # samples are columns in cell order: key the cache on the cell list and the selections
     import hashlib
     key = hashlib.md5(repr((cells, SELECTION_VERSION)).encode()).hexdigest()[:10]
@@ -502,11 +601,20 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
              len(cat["areas"]), len(stations))
     t0 = time.time()
     data: dict[int, dict] = {}
+    missing: dict[int, list[str]] = {}
     with ThreadPoolExecutor(workers) as ex:
         futs = {h: ex.submit(fetch_hour, session, cycle, h, ij, grid, cache_dir) for h in hours}
         for h, fut in futs.items():
-            data[h] = fut.result()
+            data[h], missing[h] = fut.result()
     log.info("NBM fetch+decode %.0f s", time.time() - t0)
+    quality = data_quality(missing, cycle.hour)
+    if quality["missing"]:
+        log.warning("NBM %s: %d of %d required messages missing (%.1f%%): %s", cid, quality["missing"],
+                    quality["required"], 100 * quality["share"], quality["by_field"])
+    if quality["share"] > MAX_MISSING_SHARE or not any("t2m" in d for d in data.values()):
+        log.error("NBM %s: too much data missing (%.0f%%); not publishing", cid, 100 * quality["share"])
+        emit(new="false")
+        return 1
 
     generated = utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     files, summary = build_outputs(cat, data, hours, cycle, col, generated)
@@ -522,7 +630,7 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
     cal = calibration_report(files, cid)
     write_json(out / "calibration.json", cal)
     log.info("calibration: %s", json.dumps({k: v for k, v in cal.items() if k in ("first_48h", "beyond_48h")}))
-    write_json(out / "summary.json", {"cycle": cid, "issued": cycle.strftime("%Y-%m-%dT%H:%MZ"),
+    write_json(out / "summary.json", {"cycle": cid, "quality": quality, "issued": cycle.strftime("%Y-%m-%dT%H:%MZ"),
                                       "generated_at": generated, "source": SOURCE, "areas": summary})
     log.info("NBM %s: wrote %d area files (max %.0f KB, total %.1f MB) + summary.json",
              cid, len(files), max(sizes) / 1024, sum(sizes) / 1e6)

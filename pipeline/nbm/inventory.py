@@ -100,52 +100,96 @@ QPF_PCTS = (10, 25, 50, 75, 90)   # qmd QPF: 10/90 to 48 h, 25/75 = "likely rang
 T2, SFC, W10 = "2 m above ground", "surface", "10 m above ground"
 
 
-def selections(fhour: int, cycle_hour: int) -> list[tuple[Sel, bool]]:
-    """(selection, required) for one forecast hour. Optional ones are taken when
-    the inventory has them (e.g. percentiles that stop near f048)."""
-    h = fhour
-    s: list[tuple[Sel, bool]] = []
-    req = lambda *a, **k: s.append((Sel(*a, **k), True))   # noqa: E731
-    opt = lambda *a, **k: s.append((Sel(*a, **k), False))  # noqa: E731
-    req("t2m", "core", "TMP", T2, None)
-    req("wind", "core", "WIND", W10, None)
-    req("wdir", "core", "WDIR", W10, None)
-    req("gust", "core", "GUST", W10, None)
-    req("sky", "core", "TCDC", SFC, None)
-    req("snowlvl", "core", "SNOWLVL", "0 m above mean sea level", None)
-    req("slr", "core", "SNOWLR", SFC, None)
-    opt("p_snow_type", "core", "PTYPE", SFC, None, "prob", ">=5 <7")
-    opt("p_rain_type", "core", "PTYPE", SFC, None, "prob", ">=1 <2")
-    for p in PCTS:
-        opt(f"snowlvl_p{p}", "core", "SNOWLVL", SFC, None, "pct", p)
+FULL_SUITE_CYCLES = (1, 7, 13, 19)   # core carries ASNOW 6/24/48/72-h percentiles + exceedances to f263
+SYNOPTIC_CYCLES = (0, 6, 12, 18)     # qmd (QPF percentiles) exists only here; snow percentiles to ~f054
+DAY_SPANS = {(0, 24): "qpf_0_1d", (0, 72): "qpf_0_3d", (48, 72): "qpf_2_3d", (72, 120): "qpf_3_5d",
+             (120, 168): "qpf_5_7d", (168, 240): "qpf_7_10d"}
+BASICS = ("t2m", "wind", "wdir", "gust", "sky", "snowlvl", "slr")
+
+
+def synoptic_end(h: int, cycle_hour: int, step: int = 6) -> bool:
+    """True when forecast hour h is valid at 00/06/12/18Z (step 6) or every 3 h (step 3)."""
+    return (cycle_hour + h) % step == 0
+
+
+def required_keys(h: int, cycle_hour: int) -> set[str]:
+    """Fields the forecast cannot do without at hour h (fail-soft accounting). Every
+    percentile, probability and qmd field is optional: cycles differ in what they carry."""
+    req = set(BASICS)
     if h <= 36:
-        req("qpf1", "core", "APCP", SFC, 1)
-        req("snow1", "core", "ASNOW", SFC, 1)
-        opt("pop1", "core", "APCP", SFC, 1, "prob", ">0.254")
-    if h % 6 == 0:
-        req("qpf6", "core", "APCP", SFC, 6)
-        req("snow6", "core", "ASNOW", SFC, 6)
-        opt("pop6", "core", "APCP", SFC, 6, "prob", ">0.254")
-        for p in PCTS:
-            opt(f"snow6_p{p}", "core", "ASNOW", SFC, 6, "pct", p)
-        if h == 6:
-            for p in QPF_PCTS:
-                req(f"qpf6_p{p}", "qmd", "APCP", SFC, 6, "pct", p)
-        # 12-h day/night periods end at 00Z and 12Z
-        if (cycle_hour + h) % 12 == 0 and h >= 12:
-            for p in QPF_PCTS:
-                req(f"qpf12_p{p}", "qmd", "APCP", SFC, 12, "pct", p)
-        if (cycle_hour + h) % 12 == 0:
-            opt("tmax12", "core", "TMAX", T2, 12, value=None)
-            opt("tmin12", "core", "TMIN", T2, 12, value=None)
-    for span, name in (((0, 24), "qpf_0_1d"), ((0, 72), "qpf_0_3d"), ((48, 72), "qpf_2_3d"), ((72, 120), "qpf_3_5d"),
-                       ((120, 168), "qpf_5_7d"), ((168, 240), "qpf_7_10d")):
-        if h == span[1]:
-            for p in QPF_PCTS:
-                req(f"{name}_p{p}", "qmd", "APCP", SFC, None, "pct", p, span=span)
-    return s
+        req |= {"qpf1", "snow1"}
+    if h >= 6 and synoptic_end(h, cycle_hour):
+        req |= {"qpf6", "snow6"}
+    return req
+
+
+def classify(m: Msg, h: int, cycle_hour: int, product: str) -> str | None:
+    """Our field key for message m in file f<h>, or None. Inventory-driven: whatever the
+    cycle carries is used; only windows ending at this file's hour count (later files
+    repeat some earlier windows, sometimes with different values)."""
+    win = None if m.start is None else m.end - m.start
+    if m.start is not None and m.end != h:
+        return None
+    if product == "qmd":
+        if m.var != "APCP" or m.level != SFC or m.kind != "pct" or m.value not in QPF_PCTS:
+            return None
+        if (m.start, m.end) in DAY_SPANS:                    # 1-day and multi-day blocks
+            return f"{DAY_SPANS[(m.start, m.end)]}_p{m.value}"
+        if win == 12 and h >= 12 and synoptic_end(h, cycle_hour, 12):
+            return f"qpf12_p{m.value}"                        # 12-h day/night periods
+        if win == 6 and m.start == 0:
+            return f"qpf6_p{m.value}"                         # partial first period (06/18Z cycles)
+        return None
+    v, lev, k = m.var, m.level, m.kind
+    if win is None:
+        if k == "det":
+            return {("TMP", T2): "t2m", ("WIND", W10): "wind", ("WDIR", W10): "wdir", ("GUST", W10): "gust",
+                    ("TCDC", SFC): "sky", ("SNOWLVL", "0 m above mean sea level"): "snowlvl",
+                    ("SNOWLR", SFC): "slr"}.get((v, lev))
+        if v == "SNOWLVL" and lev == SFC and k == "pct" and m.value in PCTS:
+            return f"snowlvl_p{m.value}"
+        if v == "PTYPE" and k == "prob":
+            return {">=5 <7": "p_snow_type", ">=1 <2": "p_rain_type"}.get(m.value)
+        return None
+    if v in ("TMAX", "TMIN") and lev == T2 and win == 12 and k == "det":
+        return "tmax12" if v == "TMAX" else "tmin12"
+    if lev != SFC or v not in ("APCP", "ASNOW"):
+        return None
+    if win == 1 and h <= 36:
+        if k == "det":
+            return "qpf1" if v == "APCP" else "snow1"
+        if v == "APCP" and k == "prob" and m.value == ">0.254":
+            return "pop1"
+    if win == 6 and synoptic_end(h, cycle_hour):
+        if k == "det":
+            return "qpf6" if v == "APCP" else "snow6"
+        if v == "APCP" and k == "prob" and m.value == ">0.254":
+            return "pop6"
+        if v == "ASNOW" and k == "pct" and m.value in PCTS:
+            return f"snow6_p{m.value}"
+    if v == "ASNOW" and win in (24, 48, 72) and k == "pct" and m.value in PCTS and synoptic_end(h, cycle_hour):
+        return f"snow{win}_p{m.value}"
+    return None
+
+
+def select(inv: list[Msg], h: int, cycle_hour: int, product: str) -> dict:
+    """{Msg: key} for one idx (first occurrence of each key wins)."""
+    out, seen = {}, set()
+    for m in inv:
+        k = classify(m, h, cycle_hour, product)
+        if k and k not in seen:
+            seen.add(k)
+            out[m] = k
+    return out
+
+
+def sample_hours(available: list[int], cycle_hour: int, max_h: int = 264) -> list[int]:
+    """Hourly to 36 h, then every 3 h of valid time to 72 h, then 00/06/12/18Z valid times
+    (works for 3-hourly synoptic-cycle files and hourly odd-cycle files alike)."""
+    return [h for h in sorted(available) if 1 <= h <= max_h and
+            (h <= 36 or (h <= 72 and synoptic_end(h, cycle_hour, 3)) or synoptic_end(h, cycle_hour))]
 
 
 def forecast_hours(max_h: int = 264) -> list[int]:
-    """Hourly to 36 h, 3-hourly to 72 h, 6-hourly to max_h (PLAN.md §3 defaults)."""
+    """Synoptic-cycle default (hourly to 36 h, 3-hourly to 72 h, 6-hourly after)."""
     return list(range(1, 37)) + list(range(39, 73, 3)) + list(range(78, max_h + 1, 6))
