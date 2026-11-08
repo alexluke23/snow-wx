@@ -30,7 +30,7 @@ BUCKET = "https://noaa-nbm-grib2-pds.s3.amazonaws.com"
 CACHE = REPO_ROOT / "data_cache" / "nbm"
 CATALOG = REPO_ROOT / "data" / "ski_areas.json"
 SOURCE = "NOAA/NWS National Blend of Models (NBM) via NOAA Open Data Dissemination (AWS)"
-SELECTION_VERSION = 2          # bump when inventory.selections changes (invalidates the sample cache)
+SELECTION_VERSION = 3          # bump when inventory.selections changes (invalidates the sample cache)
 
 K_TO_F = lambda k: (k - 273.15) * 1.8 + 32.0  # noqa: E731
 MS_TO_MPH = 2.236936
@@ -263,8 +263,8 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
         ws = [W.get(h) for h in range(s + 6, e + 1, 6)]
         return None if not ws or any(w is None for w in ws) else ws
 
-    def qpct(key, e):
-        lo, hi = v(e, f"{key}_p10"), v(e, f"{key}_p90")
+    def qpct(key, e, lo_p=10, hi_p=90):
+        lo, hi = v(e, f"{key}_p{lo_p}"), v(e, f"{key}_p{hi_p}")
         return None if lo is None or hi is None else (lo, hi)
 
     def extended_range(qp, ws):
@@ -303,11 +303,14 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
         q = sum(w["qpf"] for w in ws)
         snow = 0.0 if q < P.WET_IN else sum(w["snow"] for w in ws)
         pmean = P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws])
-        qp = qpct("qpf12" if e - s == 12 else "qpf6", e)
-        ext_rng, slr = extended_range(qp, ws)
-        nbm_rng = P.rank_sum([w["rng"] for w in ws])
+        key = "qpf12" if e - s == 12 else "qpf6"
+        # Ranges are NOT forced to contain the deterministic mean (owner S3): NBM's
+        # deterministic and probabilistic fields are calibrated separately.
+        ext_rng, slr = extended_range(qpct(key, e, 25, 75), ws)       # "likely range"
+        nbm_rng = P.rank_sum([w["rng"] for w in ws])                   # NBM snowfall 10-90
         extended = nbm_rng is None
-        rng = P.with_mean(ext_rng if extended else nbm_rng, snow)
+        rng = ext_rng if extended else nbm_rng
+        qp = qpct(key, e, 25, 75) if extended else qpct(key, e)
         steps = steps_in(s, e)
         idx = [hours.index(h) for h in steps]
         temps = [series["t_f"][k] for k in idx if series["t_f"][k] is not None]
@@ -320,12 +323,12 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
             **P.period_label(init, s, e, tz),
             "snow_in": _r(snow, 1),
             "snow_lo": _r(rng[0], 1) if rng else None, "snow_hi": _r(rng[1], 1) if rng else None,
-            "extended": extended,
-            # 0-48 h only: the extended-outlook range too, to compare the two methods
+            "extended": extended, "range": "likely 25-75" if extended else "NBM 10-90",
+            # 0-48 h only: the extended-outlook (likely) range too, for the calibration report
             "snow_ext_lo": _r(ext_rng[0], 1) if (ext_rng and not extended) else None,
             "snow_ext_hi": _r(ext_rng[1], 1) if (ext_rng and not extended) else None,
             "qpf_in": _r(q, 2),
-            "qpf_lo": _r(min(qp[0], q), 2) if qp else None, "qpf_hi": _r(max(qp[1], q), 2) if qp else None,
+            "qpf_lo": _r(qp[0], 2) if qp else None, "qpf_hi": _r(qp[1], 2) if qp else None,
             "p_snow": _r(pmean, 2), "type": P.precip_type(q, pmean),
             "pop": _r(max(pops), 2) if pops else None,
             "slr": _r(slr, 1),
@@ -339,26 +342,26 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
     qblocks = {"24h": [("qpf_0_1d", 24)], "72h": [("qpf_0_3d", 72)],
                "7d": [("qpf_0_3d", 72), ("qpf_3_5d", 120), ("qpf_5_7d", 168)],
                "10d": [("qpf_0_3d", 72), ("qpf_3_5d", 120), ("qpf_5_7d", 168), ("qpf_7_10d", 240)]}
-    sblocks = [("qpf_2_3d", 48, 72), ("qpf_3_5d", 72, 120), ("qpf_5_7d", 120, 168), ("qpf_7_10d", 168, 240)]
     for name, end in (("24h", 24), ("72h", 72), ("7d", 168), ("10d", 240)):
         ws = windows(0, end)
         if end not in hset or ws is None:
             continue
         q = sum(w["qpf"] for w in ws)
         snow = 0.0 if q < P.WET_IN else sum(w["snow"] for w in ws)
-        parts = [P.rank_sum([w["rng"] for w in (windows(0, min(end, 48)) or [{"rng": None}])])]
-        for key, s, e in sblocks:
-            if e <= end:
-                parts.append(extended_range(qpct(key, e), windows(s, e))[0])
-        srng = P.with_mean(P.rank_sum(parts), snow)
-        qrng = P.with_mean(P.rank_sum([qpct(k, e) for k, e in qblocks[name]]), q)
+        if end <= 48:          # NBM snowfall percentiles 10-90, 6-h windows added rank by rank
+            srng = P.rank_sum([w["rng"] for w in ws])
+            qrng = P.rank_sum([qpct(k, e) for k, e in qblocks[name]])
+        else:                  # "likely range": QPF 25-75 x SLR x P(snow), blocks added rank by rank
+            srng = P.rank_sum([extended_range(qpct(k, e, 25, 75), windows(e - {72: 72, 120: 48, 168: 48, 240: 72}[e], e))[0]
+                               for k, e in qblocks[name]])
+            qrng = P.rank_sum([qpct(k, e, 25, 75) for k, e in qblocks[name]])
         totals[name] = {"snow_in": _r(snow, 1),
                         "snow_lo": _r(srng[0], 1) if srng else None, "snow_hi": _r(srng[1], 1) if srng else None,
                         "qpf_in": _r(q, 2),
                         "qpf_lo": _r(qrng[0], 2) if qrng else None, "qpf_hi": _r(qrng[1], 2) if qrng else None,
                         "p_snow": _r(P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws]), 2),
-                        "extended": end > 48}
-    return {"series": series, "precip": precip, "periods": out_periods, "totals": P.monotone_totals(totals)}
+                        "extended": end > 48, "range": "likely 25-75" if end > 48 else "NBM 10-90"}
+    return {"series": series, "precip": precip, "periods": out_periods, "totals": totals}
 
 
 def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: datetime,
@@ -396,6 +399,49 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
                                     default=None),
         })
     return files, summary
+
+
+def calibration_report(files: dict, cid: str, min_in: float = 0.5) -> dict:
+    """How the deterministic snow sits against the ranges (kept to recheck after storms).
+
+    Over every point and 12-h period with a wet range (upper end >= min_in):
+    - 0-48 h: share of NBM means inside NBM's 10-90 snowfall range and inside the
+      "likely" 25-75 QPF x SLR x P(snow) range, and the two ranges' mean bounds;
+    - beyond 48 h: share of means inside the likely range.
+    NBM's deterministic and probabilistic fields are calibrated separately, so a
+    mean outside its range is legitimate; this report tracks how often it happens.
+    """
+    near = {"n": 0, "in_nbm": 0, "in_likely": 0, "nbm_lo": 0.0, "nbm_hi": 0.0, "lik_lo": 0.0, "lik_hi": 0.0, "mean": 0.0}
+    far = {"n": 0, "in_likely": 0, "below": 0, "above": 0}
+    for doc in files.values():
+        for pt in doc["points"].values():
+            for per in pt["periods"]:
+                m, lo, hi = per["snow_in"], per["snow_lo"], per["snow_hi"]
+                if m is None or lo is None or hi is None:
+                    continue
+                if not per["extended"]:
+                    elo, ehi = per.get("snow_ext_lo"), per.get("snow_ext_hi")
+                    if max(hi, ehi or 0) < min_in or elo is None:
+                        continue
+                    near["n"] += 1
+                    near["in_nbm"] += lo <= m <= hi
+                    near["in_likely"] += elo <= m <= ehi
+                    for k, x in (("nbm_lo", lo), ("nbm_hi", hi), ("lik_lo", elo), ("lik_hi", ehi), ("mean", m)):
+                        near[k] += x
+                elif hi >= min_in:
+                    far["n"] += 1
+                    far["in_likely"] += lo <= m <= hi
+                    far["below"] += m < lo
+                    far["above"] += m > hi
+    n0, n1 = max(near["n"], 1), max(far["n"], 1)
+    return {"cycle": cid, "min_in": min_in,
+            "first_48h": {"periods": near["n"], "mean_inside_nbm_10_90": round(near["in_nbm"] / n0, 3),
+                          "mean_inside_likely_25_75": round(near["in_likely"] / n0, 3),
+                          "avg_mean_in": round(near["mean"] / n0, 2),
+                          "avg_nbm_10_90_in": [round(near["nbm_lo"] / n0, 2), round(near["nbm_hi"] / n0, 2)],
+                          "avg_likely_25_75_in": [round(near["lik_lo"] / n0, 2), round(near["lik_hi"] / n0, 2)]},
+            "beyond_48h": {"periods": far["n"], "mean_inside_likely_25_75": round(far["in_likely"] / n1, 3),
+                           "mean_below": round(far["below"] / n1, 3), "mean_above": round(far["above"] / n1, 3)}}
 
 
 def station_outputs(stations: list[dict], data, hours, init, col, generated) -> dict:
@@ -472,6 +518,9 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
         p = out / f"{aid}.json"
         write_json(p, doc)
         sizes.append(p.stat().st_size)
+    cal = calibration_report(files, cid)
+    write_json(out / "calibration.json", cal)
+    log.info("calibration: %s", json.dumps({k: v for k, v in cal.items() if k in ("first_48h", "beyond_48h")}))
     write_json(out / "summary.json", {"cycle": cid, "issued": cycle.strftime("%Y-%m-%dT%H:%MZ"),
                                       "generated_at": generated, "source": SOURCE, "areas": summary})
     log.info("NBM %s: wrote %d area files (max %.0f KB, total %.1f MB) + summary.json",

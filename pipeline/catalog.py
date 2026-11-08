@@ -341,7 +341,8 @@ def dem_cell_mean(session, ccfg, envs: dict[str, tuple], cache: JsonCache, worke
                            "spatialReference": {"wkid": 4326}})
         js = _get_json(session, ccfg["services"]["dem_stats"],
                        params={"geometry": geom, "geometryType": "esriGeometryEnvelope",
-                               "pixelSize": json.dumps({"x": 90, "y": 90,
+                               # 300 m samples: ~120 per 2.5-km cell, 3x faster than 90 m, mean within ~2 m
+                               "pixelSize": json.dumps({"x": 300, "y": 300,
                                                         "spatialReference": {"wkid": 3857}}),
                                "f": "json"})
         st = (js.get("statistics") or [{}])[0]
@@ -626,9 +627,9 @@ def state_tz(state: str, lat: float, ccfg: dict) -> str:
     return (ccfg.get("state_tz") or {}).get(state, "America/Denver")
 
 
-def build_snotel_points(session, ccfg: dict, obs_dir: Path, out: Path = SNOTEL_OUT, workers: int = 8) -> int:
+def build_snotel_points(session, ccfg: dict, obs_dir: Path, out: Path = SNOTEL_OUT, workers: int = 12) -> int:
     """Every SNOTEL station as a single-elevation forecast point: NBM cell (i, j) and the
-    cell's mean 3DEP elevation (for the lapse adjustment). On demand, like the catalog."""
+    cell's full-average 3DEP elevation (for the lapse adjustment). On demand, like the catalog."""
     feats = json.loads((obs_dir / "snotel.geojson").read_text(encoding="utf-8"))["features"]
     grid = json.loads(OUT.read_text(encoding="utf-8"))["nbm_grid"]
     rows, envs = [], {}
@@ -641,22 +642,9 @@ def build_snotel_points(session, ccfg: dict, obs_dir: Path, out: Path = SNOTEL_O
             continue
         envs[f"{i},{j}"] = cell_envelope(i, j, grid)
         rows.append((p, lat, lon, i, j))
-    # Cell elevation for ~800 SNOTEL cells: the full-cell 3DEP statistics call (used for ski
-    # areas) runs at ~17 cells/min, so use the mean of 5 batched point samples per cell
-    # (centre + quadrant centres). Exact cell means are used where already cached.
-    stats = JsonCache(CACHE / "dem_cells.json").data
-    pts5 = {}
-    for key, (x0, y0, x1, y1) in envs.items():
-        if key in stats:
-            continue
-        cx, cy, dx, dy = (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 4, (y1 - y0) / 4
-        pts5[key] = [(cy, cx), (cy - dy, cx - dx), (cy - dy, cx + dx), (cy + dy, cx - dx), (cy + dy, cx + dx)]
-    dem = dem_elevations(session, ccfg, [q for v in pts5.values() for q in v], JsonCache(CACHE / "dem_points.json"),
-                         batch=8, workers=workers)
-    cell_elev = {k: stats[k] for k in envs if k in stats}
-    for key, qs in pts5.items():
-        vals = [dem[_key(*q)] for q in qs if dem.get(_key(*q)) is not None]
-        cell_elev[key] = sum(vals) / len(vals) if vals else None
+    # Full 3DEP cell average, same as the ski areas (owner decision S3: no shortcut).
+    # Slow once (~10 s per cell, cached in data_cache/catalog/dem_cells.json), then instant.
+    cell_elev = dem_cell_mean(session, ccfg, envs, JsonCache(CACHE / "dem_cells.json"), workers=workers)
     pts = []
     for p, lat, lon, i, j in rows:
         e = cell_elev.get(f"{i},{j}")
