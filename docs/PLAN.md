@@ -1,4 +1,4 @@
-# Snow-Wx — Product Plan & Development Framework (v0.4, Nov 7 2026)
+# Snow-Wx — Product Plan & Development Framework (v0.5, Nov 8 2026)
 
 > Drop this file into the repo as `docs/PLAN.md`. Claude Code should read it
 > together with `CLAUDE.md` at the start of every session and tick off
@@ -34,7 +34,7 @@ percentiles, snow level method, verification).
 
 ---
 
-## 2. Status (Nov 7 2026)
+## 2. Status (Nov 8 2026)
 
 - **Live:** https://alexluke23.github.io/snow-wx/ — repo `alexluke23/snow-wx`.
 - **Observations map:** SNOTEL (837), ASOS (545), avalanche danger (70 zones);
@@ -46,6 +46,16 @@ percentiles, snow level method, verification).
   3DEP elevations); M2 NBM points (fixed NBM alternating-row decode bug;
   matches NBM bulletins); M3 area page v1 reviewed — consistent with NWS.
 - **Done since:** NDFD, NOHRSC overlays, Powder Finder (+ chance-of view, S4), alerts.
+- **dev4 merged (Nov 8, PR #5):** NBM full-suite snowfall percentiles to day 10–11, Powder
+  Finder "Chance of", AFDs, about.html, ridge-top wind. Verified on GitHub (Model maps #8 green).
+- **Session 5 (dev5, Nov 8):** M9-prep forecast archive + local cache pruning, bugs B1–B7
+  (§8 M3.6), chart readability (§6-B), then Sno-Parks (M4.5). M6 zoomable layers and the HRRR
+  pressure-level file are deferred to session 6.
+- **Session 6 handoff (M6 + HRRR prs), measured Nov 8:** release tars HRRR 98.0 MB, RRFS
+  82.6 MB, GFS 23.4 MB; CI "Render maps" HRRR 111–117 s, RRFS 115–181 s before ridge wind
+  (3 m 21 s with it), GFS 66–68 s. HRRR `wrfprs` has 25-mb levels 1000–50 mb; per forecast hour,
+  the 21 levels 1000–500 mb cost TMP 12.3 MB, RH 16.6 MB (DPT 22.6 MB), HGT 15.3 MB,
+  UGRD+VGRD 25.7 MB (byte ranges from the idx).
 - **Not started:** ECMWF.
 - **CI housekeeping:** Node 20 deprecation warnings (bump action versions);
   `ubuntu-latest` → Ubuntu 26 migration notice (pin `ubuntu-24.04`).
@@ -91,6 +101,17 @@ percentiles, snow level method, verification).
 | Nov 8 (S4) | 3. Alerts: show all types (never hide a warning), sorted winter / wind / avalanche / blizzard / extreme cold first; others collapsed under "Other alerts (n)". |
 | Nov 8 (S4) | 4. Powder Finder: default 72 h summit for first-time visitors, then each visitor's last choice (localStorage, try/catch); a shared URL overrides. |
 | Nov 8 (S4) | 5. Powder Finder snow level shows "–" when little precipitation is expected in the window (same rule as the area page: chance of precip < 20 %). |
+| Nov 8 (S5) | 1. Liquid (QPF) ranges from the newest complete 00/06/12/18Z cycle (~7 h older than the snowfall), labelled with that cycle: accepted. Never delay the snow forecast to wait for the companion cycle. |
+| Nov 8 (S5) | 2. Exceedance chances stay per 2.5 km grid cell (no elevation adjustment), with the existing note. |
+| Nov 8 (S5) | 3. HRRR pressure-level file (25 mb) approved for ridge wind, Kuchera Tmax and the wet-bulb snow level — deferred to session 6. |
+| Nov 8 (S5) | 4. M6 zoomable model layers approved — deferred to session 6. |
+| Nov 8 | dev4 verified on GitHub: Model maps #8 all green; RRFS job 3 m 50 s total (render 3 m 21 s) with ridge wind — no runtime concern. |
+| Nov 8 | Forecast archive stores **all daily leads**: every 24 h window ending 12Z (days 1–10) + every 72 h window, det/p10/p50/p90/P(≥4/8/12"), plus NDFD. ~30–40 MB/month gzipped, kept as GitHub release assets (never on the owner's PC, never in git history). |
+| Nov 8 | **Chart readability is a priority.** Adopt the chart standards in §6-B site-wide before adding more charts. |
+| Nov 8 | **Basemaps must never go blank.** Overzoom + automatic fallback provider (§6-C). |
+| Nov 8 | **Add Sno-Parks / winter recreation points** (snowmobile, snowshoe, XC ski, sledding) as a new point type alongside ski areas and SNOTEL (§5.6, milestone M4.5). |
+| Nov 8 | Keep local disk use small: auto-prune `data_cache` (> 2 days) at the start of local runs; report project disk use in summaries. |
+| Nov 8 (S5) | Approval amendments: Sno-Park NBM cell elevation = full 3DEP cell average (as SNOTEL); push dev5 right after the archive so it can be merged early; area-page charts below the fold render lazily (Lighthouse performance ≥ 90); Sno-Park sources public-domain and key-free first (USFS EDW, state lists, OSM gap-fill) — Recreation.gov RIDB only after asking, key as an Actions secret. |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
@@ -212,6 +233,31 @@ ski-area summit/base: cumulative snowfall + QPF + snow level per model on one
 chart ("Precipitation by model"). Later: ensemble members (GEFS, ECMWF ENS,
 REFS) as a true plume — the University of Utah style product.
 
+### 5.6 Sno-Parks & winter recreation points (new, Nov 8)
+- **Point type `snopark`** in a recreation catalog (`data/rec_points.json`),
+  sharing the ski-area machinery (alerts zone/county, avalanche zone,
+  nearest SNOTEL/ASOS, NBM/NDFD cells, 3DEP elevation). NBM cell elevation =
+  full 3DEP cell average (as for SNOTEL).
+- **Sources (verify availability and license before use; prefer public
+  domain, key-free):** state Sno-Park programs (e.g. Oregon, Washington, California
+  Sno-Parks; Idaho Park N' Ski), USFS recreation-site data (EDW) for winter
+  trailheads, and OpenStreetMap (ODbL) to fill gaps. Recreation.gov RIDB only
+  after asking the owner (API key would be a GitHub Actions secret, never in
+  code). Record the source of every point.
+- **Fields:** name, state, managing agency, permit required, activities
+  (snowmobile, XC ski, snowshoe, sled/tubing, dog sled), groomed (if known),
+  lat/lon, elevation (3DEP), link.
+- **Forecast view:** reuse the area page. Elevations: the trailhead, plus an
+  optional clearly-labeled "high terrain" point (e.g. highest DEM elevation
+  within ~5 km or a mapped route high point).
+- **Recreation-relevant extras:** wind chill / apparent temperature, snow
+  depth at the trailhead (SNODAS), new snow, NWS alerts (travel), avalanche
+  danger shown prominently (snowmobilers are a high-risk group).
+- **Integration:** Powder Finder gets a **Type** filter (Ski areas / Sno-Parks
+  / All) with distinct map symbols; obs map gets a Sno-Parks layer.
+- **Budget:** check the points job runtime and site size with the added
+  points.
+
 ---
 
 ## 6. Visualization standards ("clean and sharp")
@@ -241,6 +287,50 @@ so every page looks like one product.
   visibly greyed.
 - Accessibility: alt text on images, keyboard navigation for viewers, contrast
   AA.
+
+### 6-B Chart readability & accessibility (applies to every chart; Nov 8)
+- **Text size:** tick labels ≥ 13 px desktop / 12 px mobile; axis titles
+  13–14 px, written horizontally at the top-left of each panel with units,
+  e.g. "Snow (in)". No rotated axis titles.
+- **Time axes:** weekday + date ("Mon 9"), local time zone stated once,
+  faint vertical day separators, subtle night shading. Every stacked panel
+  shares the same x-range and left margin so times line up.
+- **One idea per panel, ≤ 3 series per panel.** Prefer direct labels at
+  line ends over legends; if a legend is needed, put it above the chart.
+- **Bars:** value labels ≥ 12 px placed so they never collide with
+  whiskers; whiskers visibly thinner than bars.
+- **Probabilities:** replace the multi-line "Chance of at least…" chart with
+  a **heat table** (rows = thresholds, columns = days/windows) with the %
+  printed in every cell, a color-blind-safe sequential palette and
+  auto-contrast text. Same component in Powder Finder popups if useful.
+- **Accumulation periods:** one period per axis. Next-36 h hourly chart and
+  6-hourly extended chart are separate, or both shown as rate (in/hr) with
+  the period stated.
+- **Color:** color-blind-safe palettes (e.g. Okabe–Ito for categories);
+  never rely on color alone — summit vs base use solid vs dashed lines too;
+  WCAG AA contrast (4.5:1) for all text, including chart labels and the
+  pale snowfall swatches.
+- **Reference lines labeled in place:** 32 °F, base/summit elevations, zero.
+- **Mobile:** each panel ≥ 200 px tall at 375 px width; tap tooltips with
+  large targets; disable chart drag/zoom on touch so the page scrolls
+  normally. Charts below the fold render lazily when scrolled into view.
+- **Every chart has** a one-sentence summary above it (also used as its
+  aria-label) and a **"View as table"** toggle.
+- Implement once as a shared theme/helpers module (e.g.
+  `web/js/charts/theme.js`); keep Plotly unless it truly can't meet these
+  standards.
+- **Acceptance:** Lighthouse accessibility ≥ 95 on every page; screenshots
+  at 375 and 1280 px; a "5-second test" note per chart (what a skier reads
+  first).
+
+### 6-C Basemap reliability (Nov 8)
+- Set `maxNativeZoom` per tile layer and allow overzoom so tiles scale up
+  instead of disappearing (USGS shaded relief tops out well below street
+  zooms).
+- Watch `tileerror`; after repeated failures switch automatically to a
+  fallback provider and update the attribution. Check each provider's
+  usage terms before adding it.
+- Log tile failure counts in a debug panel or console during testing.
 
 ---
 
@@ -314,6 +404,24 @@ screenshots checked. Suggested session grouping in brackets.
   official) for every ski area and SNOTEL site from AWS GRIB2 with an NBM ↔ NWS toggle;
   linked from the SNOTEL panel on the obs map.
 
+**M3.6 — Chart readability, accessibility & basemap reliability** [Session 5]
+- Fix bugs B1–B7 (Nov 8 live review, below); apply §6-B to every existing chart; §6-C basemaps.
+- ✅ when: Lighthouse accessibility ≥ 95 on all pages; no blank basemap at
+  any zoom; before/after screenshots for each chart.
+- Bugs found in the Nov 8 live review:
+  1. Basemap tiles go blank when zooming in on the obs map and Powder Finder
+     (seen on Powder Finder with Shaded relief).
+  2. Powder Finder "Ridge" column shows "– mph" for every area, even for windows
+     inside the HRRR/RRFS range.
+  3. Powder Finder snow level shows "–" while the same row says 32% chance of ≥ 8" —
+     the "dry" rule uses the wrong window or field. Snow level should show whenever
+     meaningful precip is likely in the selected window.
+  4. Snow-level chart caption is stale ("first 48 h"; the band now runs to day 10–11),
+     and the band and the "snow to the base" zone use nearly the same blue.
+  5. Hourly chart mixes 1-h and 6-h amounts on one axis. Never mix accumulation periods.
+  6. Ridge-top wind stops after ~24–30 h; show HRRR then RRFS with a labeled handoff, or explain.
+  7. "hatched = extended outlook" is in the bar-chart caption but no hatching is visible.
+
 **M4 — Powder Finder** [Session 2–3]
 - Map + sortable/filterable table (state/region; 24 h / 72 h / 7 d; range;
   snow level; wind), favorites first.
@@ -328,6 +436,10 @@ screenshots checked. Suggested session grouping in brackets.
   ⓘ → about.html. Shows NBM's mean over the same window as "most likely". URL: m, pw, px, pd.
   Data: points/exceed_summary.json (lazy, ~220 KB). Area pages: "Chance of at least…" chart
   (24/48/72 h, lines per threshold). Lighthouse mobile 98 (FCP 1.1 s, LCP 2.3 s, TBT 78 ms, CLS 0).
+
+**M4.5 — Sno-Parks & winter recreation points** [Session 5+]
+- §5.6. ✅ when: western Sno-Parks cataloged with sources; each opens a
+  forecast view; Powder Finder Type filter works on mobile.
 
 **M5 — NWS official** [Session 3]
 - NDFD base/summit, alerts banner, AFD link; NBM ↔ NWS toggle; about.html
@@ -358,6 +470,17 @@ screenshots checked. Suggested session grouping in brackets.
 
 **M7 — Precipitation by model at each area** [Session 4]
 **M8 — ECMWF IFS/AIFS** (synoptic charts + point sampling; CC BY 4.0 credit) [Session 4]
+**M9-prep — Forecast archive** [Session 5, small, time-sensitive]
+- All daily leads (Decisions log, Nov 8). ✅ when: first monthly file appears in
+  the `verification` release and docs/verification.md documents the format.
+- ✔ Code done (S5): `pipeline/archive.py` + `python -m pipeline archive`, run by update-site.yml after
+  every build (continue-on-error). Monthly `nbm|ndfd|snotel-YYYYMM.csv.gz` + `state.json` on the
+  `verification` prerelease; NBM points now carry per-window cell percentiles and the cell mean.
+  Local dry run (01Z 8 Nov): 20,826 NBM rows (154 KB gz), 2,314 NDFD, 5,691 SNOTEL; rerun adds
+  nothing. Starts collecting once merged to main.
+- ✔ Local disk hygiene (S5): every run prunes data_cache files older than 2 days (keeps catalog/
+  and openskimap/) and logs disk use (`pipeline/cache.py`, settings `cache:`).
+
 **M9 — Verification & bias correction**: score NBM/NDFD/models vs SNOTEL 24 h
 snow & temps by area/elevation; publish on about.html; later a per-site
 bias correction (MOS-lite) [later]

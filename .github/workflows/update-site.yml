@@ -14,7 +14,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write   # forecast archive: create/update assets of the "verification" prerelease
   pages: write
   id-token: write
 
@@ -72,6 +72,16 @@ jobs:
           echo "site size: ${size} MB (limit ${limit} MB; GitHub Pages max 1 GB)"
           du -sm build/* | sort -rn | head
           if [ "$size" -gt "$limit" ]; then echo "::error::site is ${size} MB > ${limit} MB"; exit 1; fi
+
+      - name: Forecast archive (verification release)
+        # M9 prep (docs/verification.md): append this build's NBM/NDFD forecasts (every
+        # 24/72-h window ending 12Z) and SNOTEL 12Z depth/SWE to monthly CSVs on the
+        # "verification" prerelease. Existing monthly files are downloaded and merged
+        # before they are replaced; state.json skips cycles already archived. Never
+        # blocks the deploy.
+        continue-on-error: true
+        shell: bash -el {0}
+        run: python -m pipeline archive --data build/data
 
       - uses: actions/configure-pages@v6
 
