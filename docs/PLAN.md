@@ -56,6 +56,7 @@ percentiles, snow level method, verification).
   (3 m 21 s with it), GFS 66–68 s. HRRR `wrfprs` has 25-mb levels 1000–50 mb; per forecast hour,
   the 21 levels 1000–500 mb cost TMP 12.3 MB, RH 16.6 MB (DPT 22.6 MB), HGT 15.3 MB,
   UGRD+VGRD 25.7 MB (byte ranges from the idx).
+- **Session 9 (dev9, Nov 8):** snow forecast overlays on the obs map (Track 2 item 7), "My mountains" favorites page (Track 1 item 4). Powder quality and M7 not started.
 - **Session 7 (dev7, Nov 8):** "Expected" rename done; hour-by-hour temperature/wind to day 10 (6-hourly,
   shaded); Sno-Park source research written up (docs/sources_recreation.md), awaiting approval.
 - **Session 6 (dev6, Nov 8):** Part A fixes 1–9 from the dev5 live review done (PLAN.md §8 M3.6); Part B
@@ -388,7 +389,7 @@ rename, day-10 temp/wind panels, Sno-Park research).
    model pipeline. Meteorologist-grade but readable (§6-B).
 3. **Powder quality** indicator (SLR + wind, §5.2 heuristic), clearly
    labeled as a heuristic, on area pages and in the finder.
-4. **"My mountains" home view**: favorites dashboard (next 24/72 h
+4. ✔ (S9) **"My mountains" home view** — mine.html + js/mine.js: one card per favorite (ski areas, Sno-Parks, SNOTEL): expected 24/72 h with NBM 10–90 %, chance of ≥ 6" (first 24/72-h windows), lowest snow level while precip is likely vs the base, alerts, avalanche danger; empty state explains ☆; remove from the card. Nav link "★ My mountains" on every page (short labels on phones). Lighthouse 100. Landing-page question open. Original text:: favorites dashboard (next 24/72 h
    expected + chance of ≥ 6", snow level, alerts) as the landing page for
    returning visitors.
 5. **Point verification panel** (after ~4–6 weeks of archive data): "How

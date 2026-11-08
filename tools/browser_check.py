@@ -204,7 +204,7 @@ LAYOUT = """(() => { const d = document.scrollingElement, f = document.querySele
 
 
 def check_layout(b: Browser, base: str, log):
-    pages = {"area": "area.html#alta-ski-area", "finder": "finder.html", "about": "about.html"}
+    pages = {"area": "area.html#alta-ski-area", "finder": "finder.html", "about": "about.html", "mine": "mine.html"}
     apps = {"obs map": "index.html", "models": "models.html"}
     for width, height, zoom in ((1280, 800, 1.0), (375, 740, 1.0), (1280, 800, 0.8), (1280, 800, 1.5)):
         for name, path in pages.items():
@@ -372,7 +372,28 @@ def check_forecast_overlays(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays}
+def check_mine(b: Browser, base: str, log):
+    """Track 1 item 4: "My mountains" empty state, favorite cards, removing a favorite."""
+    b.open(f"{base}/mine.html", wait=4)
+    st = b.eval("(() => ({empty: !!document.querySelector('.mine-empty'), text: (document.querySelector('.mine-empty h3') || {}).textContent}))()")
+    log(f"  mine empty: {st}")
+    need(st["empty"] and "No favorites" in (st["text"] or ""), f"no empty state: {st}")
+    b.eval("localStorage.setItem('snowwx.favorites', JSON.stringify(['alta-ski-area','sp-dutchman-flat-snowpark','snotel-917-MT-SNTL'])); location.reload(); 1")
+    time.sleep(5)
+    st = b.eval("""(() => ({cards: document.querySelectorAll('.mcard[data-id]').length,
+        vals: [...document.querySelectorAll('.mcard[data-id]')].map(c => c.querySelectorAll('.mgrid b').length + '/' + c.querySelectorAll('.pchip').length)}))()""")
+    log(f"  mine cards: {st}")
+    need(st["cards"] == 3 and all(v.startswith("2/") for v in st["vals"]), f"cards: {st}")
+    b.eval("document.querySelector('.mcard .unfav').click(); 1")
+    time.sleep(2)
+    n = b.eval("JSON.parse(localStorage.getItem('snowwx.favorites')).length + ':' + document.querySelectorAll('.mcard[data-id]').length")
+    log(f"  after removing one: {n}")
+    need(n == "2:2", f"remove failed: {n}")
+    b.eval("localStorage.removeItem('snowwx.favorites'); 1")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine}
 
 
 def main(argv=None) -> int:
