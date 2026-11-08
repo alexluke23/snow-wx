@@ -29,9 +29,13 @@
   const pick = (k, def) => q.get(k) ?? saved[k] ?? def;
   const st = { m: pick("m", "amount"), w: pick("w", "72h"), e: pick("e", "summit"), src: pick("src", "nbm"),
                state: pick("st", ""), region: pick("r", ""), sort: pick("sort", "snow"), fav: pick("fav", "0") === "1",
-               pw: pick("pw", "24h"), px: Number(pick("px", "6")), pd: Number(pick("pd", "0")) };
+               pw: pick("pw", "24h"), px: Number(pick("px", "6")), pd: Number(pick("pd", "0")), t: pick("t", "ski") };
+  // Sno-Parks (kind "snopark") reuse the ski-area fields: summit = high terrain, base = trailhead
+  const isRec = (a) => a.kind === "snopark";
+  const ELEV_LABEL = { ski: ["Summit", "Base"], snopark: ["High terrain", "Trailhead"], all: ["Summit / high terrain", "Base / trailhead"] };
+  const TYPE_WORD = { ski: "ski areas", snopark: "Sno-Parks and winter recreation sites", all: "ski areas and Sno-Parks" };
   const writeHash = () => {
-    const p = new URLSearchParams({ m: st.m, e: st.e });
+    const p = new URLSearchParams({ t: st.t, m: st.m, e: st.e });
     if (st.m === "prob") { p.set("pw", st.pw); p.set("px", String(st.px)); p.set("pd", String(st.pd)); }
     else { p.set("w", st.w); p.set("src", st.src); p.set("sort", st.sort); }
     if (st.state) p.set("st", st.state);
@@ -40,7 +44,7 @@
     history.replaceState(null, "", `#${p}`);
     try {
       localStorage.setItem(PREF_KEY, JSON.stringify({ m: st.m, w: st.w, e: st.e, src: st.src, st: st.state, r: st.region,
-        sort: st.sort, fav: st.fav ? "1" : "0", pw: st.pw, px: String(st.px), pd: String(st.pd) }));
+        sort: st.sort, fav: st.fav ? "1" : "0", pw: st.pw, px: String(st.px), pd: String(st.pd), t: st.t }));
     } catch { /* private mode */ }
   };
 
@@ -97,7 +101,8 @@
     $("win").hidden = prob; $("pwin").hidden = !prob; $("thr").hidden = !prob; $("pday-wrap").hidden = !prob;
     $("sort-wrap").hidden = prob; $("src-note").hidden = !prob;
     segment($("win"), WINDOWS.map(([v, l]) => [v, l, st.src === "nws" && (v === "7d" || v === "10d")]), "w", update);
-    segment($("elev"), [["summit", "Summit"], ["base", "Base"]], "e", update);
+    segment($("type"), [["ski", "Ski areas"], ["snopark", "Sno-Parks"], ["all", "All"]], "t", update);
+    segment($("elev"), [["summit", ELEV_LABEL[st.t][0]], ["base", ELEV_LABEL[st.t][1]]], "e", update);
     segment($("src"), [["nbm", "NBM"], ["nws", "NWS", !nws || prob, prob ? "Chances are NBM-only: the NWS forecast has no probabilistic snowfall" : ""]], "src", () => {
       if (st.src === "nws" && (st.w === "7d" || st.w === "10d")) st.w = "72h";
       update();
@@ -118,7 +123,8 @@
     writeHash();
     renderControls();
     const fav = favs(), prob = st.m === "prob";
-    const list = rows.filter((r) => (!st.state || r.a.state === st.state) && (!st.region || r.a.region === st.region)
+    const list = rows.filter((r) => (st.t === "all" || (st.t === "snopark") === isRec(r.a))
+      && (!st.state || r.a.state === st.state) && (!st.region || r.a.region === st.region)
       && (!st.fav || fav.has(r.a.id)));
     const val = (x) => (x === null || x === undefined ? -1 : x);
     const by = prob ? (x, y) => val(y.prob) - val(x.prob) || val(y.pmean) - val(x.pmean) : {
@@ -145,8 +151,8 @@
       return `<div class="frow" role="listitem">
         <button type="button" class="star${fav.has(r.a.id) ? " on" : ""}" data-id="${esc(r.a.id)}" aria-pressed="${fav.has(r.a.id)}"
           title="Favorite">${fav.has(r.a.id) ? "★" : "☆"}<span class="sr"> favorite ${esc(r.a.name)}</span></button>
-        <span class="who"><a href="area.html#${encodeURIComponent(r.a.id)}">${esc(r.a.name)}</a>${badge}
-          <small>${esc(r.a.region)}, ${esc(r.a.state)}</small></span>
+        <span class="who">${isRec(r.a) ? `<i class="kind-sp" title="${esc(r.a.type_label || "Sno-Park")}" aria-hidden="true">P</i>` : ""}<a href="area.html#${encodeURIComponent(r.a.id)}">${esc(r.a.name)}</a>${badge}
+          <small>${isRec(r.a) ? `${esc(r.a.type_label || "Sno-Park")} · ` : ""}${esc(r.a.region)}, ${esc(r.a.state)}</small></span>
         <span class="num snow"><i class="sw" style="background:${c}"></i>${main}</span>
         <span class="details">
           <span class="num" data-label="Obs 24 h">${r.obs === null ? "–" : `${fmt(r.obs)}"`}</span>
@@ -155,7 +161,7 @@
           ${ridgeCell(r.a.id)}
         </span>
       </div>`;
-    }).join("") : `<p class="hint">No ski areas match these filters.</p>`;
+    }).join("") : `<p class="hint">No ${TYPE_WORD[st.t]} match these filters.</p>`;
     $("legend-note").textContent = prob
       ? `Chance of at least ${st.px}" of snow in ${st.pw.replace("h", " h")} (${dayLabel(st.pd).replace("Next: ", "")}) at the ${st.e}, from NBM's ` +
         `probabilistic guidance for the 2.5 km grid cell. ${SEPARATE} Small number: NBM's expected amount in the same window (about a 1-in-3 chance of reaching it). ` +
@@ -230,10 +236,10 @@
   let map = null, layer = null, leafletP = null, lastFit = "";
   const loadLeaflet = () => (leafletP ||= new Promise((resolve, reject) => {
     const css = document.createElement("link");
-    css.rel = "stylesheet"; css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    css.rel = "stylesheet"; css.href = "vendor/leaflet-1.9.4/leaflet.css";
     document.head.appendChild(css);
     const s = document.createElement("script");
-    s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; s.async = true;
+    s.src = "vendor/leaflet-1.9.4/leaflet.js"; s.async = true;
     s.onload = () => resolve(window.L); s.onerror = () => reject(new Error("map failed to load"));
     document.head.appendChild(s);
   }));
@@ -249,7 +255,10 @@
     for (const r of [...list].reverse()) {
       const c = prob ? colorFor(PROB, r.prob) || "#f4f6f8" : colorFor(SNOWFALL, r.snow) || "#f4f6f8";
       const txt = prob ? `${r.prob ?? "–"}% chance ≥ ${st.px}"${r.pmean === null ? "" : ` (expected ${fmt(r.pmean)}")`}` : `expected ${fmt(r.snow)}"${r.hi === null || r.hi === undefined ? "" : ` (${fmt(r.lo)}–${fmt(r.hi)}")`}`;
-      L.circleMarker([r.a.lat, r.a.lon], { radius: r.a.major ? 7 : 5, color: "#1b2a4a", weight: 1, fillColor: c, fillOpacity: 0.95 })
+      (isRec(r.a)
+        ? L.marker([r.a.lat, r.a.lon], { icon: L.divIcon({ className: "sp-icon", html: `<span style="background:${c}"></span>`, iconSize: [11, 11] }),
+            keyboard: false, title: r.a.name })
+        : L.circleMarker([r.a.lat, r.a.lon], { radius: r.a.major ? 7 : 5, color: "#1b2a4a", weight: 1, fillColor: c, fillOpacity: 0.95 }))
         .bindTooltip(`${esc(r.a.name)}: ${txt}`, { direction: "top" })
         .bindPopup(`<strong>${esc(r.a.name)}</strong><br>${txt}<br><a href="area.html#${encodeURIComponent(r.a.id)}">Forecast →</a>`)
         .addTo(layer);

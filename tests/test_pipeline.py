@@ -156,3 +156,14 @@ def test_search_index_lists_areas_and_snotel_with_page_ids(tmp_path):
 def test_plural():
     from pipeline.common import plural
     assert plural(1, "ski area") == "1 ski area" and plural(0, "ski area") == "0 ski areas" and plural(2, "office") == "2 offices"
+
+
+def test_search_index_includes_snoparks(tmp_path):
+    import json
+    from pipeline.search import build_index
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "ski_areas.json").write_text(json.dumps({"areas": []}))
+    (tmp_path / "data" / "rec_points.json").write_text(json.dumps({"areas": [
+        {"id": "sp-dutchman-flat-or", "name": "Dutchman Flat", "type_label": "Sno-Park", "region": "Oregon Cascades", "state": "OR"}]}))
+    assert build_index(tmp_path)["items"] == [{"k": "snopark", "id": "sp-dutchman-flat-or", "n": "Dutchman Flat",
+                                                "s": "Sno-Park · Oregon Cascades, OR"}]

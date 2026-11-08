@@ -56,7 +56,7 @@
   function headline(fc, keys) {
     const pt = keys[0], s = fc.points[pt].totals["72h"];
     if (!s) return "";
-    const where = keys.length > 1 ? " at the summit" : "";
+    const where = keys.length > 1 ? ` at the ${POINT_LABEL[pt].toLowerCase()}` : "";
     let txt;
     const rng = (t) => (t.snow_hi === null || t.snow_hi === undefined ? "" : ` (${rangeName(t)} ${range(t.snow_lo, t.snow_hi)})`);
     if ((s.snow_hi ?? s.snow_in ?? 0) < 0.5) {
@@ -64,8 +64,9 @@
     } else {
       txt = `Next 72 h${where}: expected <strong>${inches(s.snow_in)} in</strong> ${expectedInfo()}` +
             `<span class="rng">${rng(s)}</span>.`;
-      const b = keys.includes("base") ? fc.points.base.totals["72h"] : null;
-      if (b) txt += ` Base: ${inches(b.snow_in)} in${rng(b)}.`;
+      const other = keys.find((k) => k !== pt);
+      const b = other ? fc.points[other].totals["72h"] : null;
+      if (b) txt += ` ${POINT_LABEL[other]}: ${inches(b.snow_in)} in${rng(b)}.`;
     }
     // rain vs snow by elevation, from the wet day/night periods in the first 72 h
     const wet = (k) => fc.points[k].periods.slice(0, 6).filter((p) => (p.qpf_in ?? 0) >= 0.05);
@@ -74,7 +75,7 @@
       const bt = types("base"), st = types("summit");
       if ((bt.has("mostly rain") || bt.has("mixed")) && st.has("snow")) {
         const sl = wet("summit").map((p) => p.snowlvl_min_ft).filter((v) => v !== null);
-        txt += ` <span class="mixnote">Rain or mixed at the base, snow up top${sl.length ? ` (snow level down to ~${ft(Math.min(...sl))})` : ""}.</span>`;
+        txt += ` <span class="mixnote">Rain or mixed at the ${POINT_LABEL.base.toLowerCase()}, snow ${POINT_LABEL.summit === "Summit" ? "up top" : "on the high terrain"}${sl.length ? ` (snow level down to ~${ft(Math.min(...sl))})` : ""}.</span>`;
       } else if (bt.has("mostly rain") && st.has("mostly rain")) {
         txt += ` <span class="mixnote">Precipitation mostly rain, even at the summit.</span>`;
       }
@@ -222,7 +223,10 @@
       return p;
     });
   }
-  const WET = 0.2;     // "precipitation likely": same rule as Powder Finder and the pipeline
+  const WET = 0.2;
+  /** NWS wind chill (°F) for T <= 50 °F and wind >= 3 mph, else the air temperature. */
+  const windChill = (t, v) => (t === null || v === null || t === undefined || v === undefined ? null
+    : t <= 50 && v >= 3 ? Math.round(35.74 + 0.6215 * t - 35.75 * v ** 0.16 + 0.4275 * t * v ** 0.16) : Math.round(t));     // "precipitation likely": same rule as Powder Finder and the pipeline
 
   function snowLevelChart(el, fc, keys, tz) {
     const s = fc.points[keys[0]].series, t = fc.times;
@@ -316,18 +320,25 @@
     const ext = extendedShade(D);
     const traces = keys.map((k) => ({ x: xs, y: P[k].series.t_f, name: POINT_LABEL[k], mode: "lines",
       line: { color: PT_STYLE[k].color, width: 2.2, dash: PT_STYLE[k].dash }, hovertemplate: `${POINT_LABEL[k]} %{y:.0f} °F<extra></extra>` }));
+    const rec = fc.area?.kind === "snopark";
+    const wck = rec ? (keys.includes("summit") ? "summit" : keys[0]) : null;
+    const wc = rec ? P[wck].series.t_f.map((t, i) => windChill(t, P[wck].series.wind_mph[i])) : null;
+    if (rec) traces.push({ x: xs, y: wc, name: "Wind chill", mode: "lines", line: { color: C.OI.purple, width: 1.6, dash: "dot" },
+      hovertemplate: `wind chill (${POINT_LABEL[wck].toLowerCase()}) %{y} °F<extra></extra>` });
     const r32 = C.refLine(32, "32 °F", { color: "#0b6e85", dash: "dot", where: "left" });
     const lay = C.layout(220, { margin: { r: 70, b: ax.b }, shapes: [...ax.shapes, ext.shape, r32.shape], xaxis: ax.axis });
-    const yr = C.extent([...keys.map((k) => P[k].series.t_f), [32]], { min: 10 });
+    const yr = C.extent([...keys.map((k) => P[k].series.t_f), [32], ...(wc ? [wc] : [])], { min: 10 });
     lay.yaxis = C.yaxis({ dtick: 10, range: yr });
-    lay.annotations = [C.axisTitle("Temperature (°F)"), r32.ann, ext.ann, ...C.endLabels(keys.map((k) => ({ xs, ys: P[k].series.t_f,
-      text: POINT_LABEL[k], color: PT_STYLE[k].color })), { yrange: yr, plotHeight: C.plotH(lay) })];
+    lay.annotations = [C.axisTitle(rec ? "Temperature and wind chill (°F)" : "Temperature (°F)"), r32.ann, ext.ann,
+      ...C.endLabels([...keys.map((k) => ({ xs, ys: P[k].series.t_f, text: POINT_LABEL[k], color: PT_STYLE[k].color })),
+        ...(wc ? [{ xs, ys: wc, text: "Wind chill", color: "#9c3d78" }] : [])], { yrange: yr, plotHeight: C.plotH(lay) })];
     C.plot(el, traces, lay);
     const rng = (k) => rangeOf(P[k].series.t_f.slice(0, D.n));
     const later = rangeOf(P[keys[0]].series.t_f.slice(D.n));
     C.summary(el, keys.map((k) => { const r = rng(k); return r ? `${POINT_LABEL[k]} ${r[0]} to ${r[1]} °F` : ""; }).filter(Boolean).join(", ") +
       ` over the next ${Math.round(HOURS_DETAIL / 24 * 2) / 2} days${keys.some((k) => (rng(k)?.[1] ?? 99) < 32) ? ", staying below freezing" : ""}` +
-      `${later ? `; later (6-hourly) ${POINT_LABEL[keys[0]].toLowerCase()} ${later[0]} to ${later[1]} °F` : ""}.`);
+      `${later ? `; later (6-hourly) ${POINT_LABEL[keys[0]].toLowerCase()} ${later[0]} to ${later[1]} °F` : ""}.` +
+      (wc ? ` Coldest wind chill on the ${POINT_LABEL[wck].toLowerCase()}: ${Math.min(...wc.slice(0, D.n).filter((v) => v !== null))} °F in the next 3½ days.` : ""));
     C.tableToggle(el, "Temperature (°F) and sky cover", ["Time", ...keys.map((k) => `${POINT_LABEL[k]} °F`), "Sky cover"],
       fc.times.map((x, i) => [localDT(x, tz), ...keys.map((k) => plain(P[k].series.t_f[i])),
         P[keys[0]].series.sky[i] === null ? "–" : `${P[keys[0]].series.sky[i]}%`]));
@@ -529,6 +540,10 @@
     try { js = await getJSON("data/nohrsc/ski.json"); } catch { return; }
     const r = js.areas?.[a.id];
     if (!r) return;
+    if ($("rk-depth") && r.base) {             // Sno-Park key facts: SNODAS depth at the trailhead
+      $("rk-depth").textContent = r.base.depth === null || r.base.depth === undefined ? "–" : `${Math.round(r.base.depth)}"`;
+      if (js.snodas_valid) $("rk-depth").nextElementSibling.textContent = `SNODAS, ${localFmt(js.snodas_valid, tz, { weekday: "short", hour: "numeric" })}`;
+    }
     const f = (v, d = 1) => (v === null || v === undefined ? "–" : `${Number(v).toFixed(d)}"`);
     const when = (iso) => (iso ? localFmt(iso, tz, { weekday: "short", hour: "numeric", timeZoneName: "short" }) : "–");
     const row = (k) => `<tr><th scope="row">${POINT_LABEL[k]} ${ft(a[k].elev_ft)}</th><td>${f(r[k].sf24)}</td><td>${f(r[k].sf48)}</td>
@@ -631,16 +646,37 @@
       if (!a) return listPage(cat);
     }
     document.title = `Snow-Wx · ${a.name}`;
+    const isRec = a.kind === "snopark";
+    POINT_LABEL.summit = isRec ? "High terrain" : "Summit";
+    POINT_LABEL.base = isRec ? "Trailhead" : "Base";
     const tz = a.tz || "America/Denver";
     let src = nbm ? "nbm" : nws ? "nws" : null;
     const doc = () => (src === "nws" ? nws : nbm);
-    const keysOf = (d) => (d ? ["summit", "base", "point"].filter((k) => d.points[k]) : []);
+    const keysOf = (d) => (d ? (isRec ? ["base", "summit"] : ["summit", "base", "point"]).filter((k) => d.points[k]) : []);
     let pt = keysOf(doc())[0];
     const isFav = favs().includes(a.id);
     const nwsLink = (p) => `https://forecast.weather.gov/MapClick.php?lat=${p.lat}&lon=${p.lon}`;
     const sub = isStation
       ? `SNOTEL ${esc(a.triplet)} · ${esc(a.state)} · ${ft(a.elev_ft)}`
-      : `${esc(a.region)}, ${esc(a.state)} · Summit ${ft(a.summit.elev_ft)} · Base ${ft(a.base.elev_ft)} · ${ft(a.vertical_ft)} vertical`;
+      : isRec
+        ? `${esc(a.type_label || "Sno-Park")} · ${esc(a.region)}, ${esc(a.state)} · Trailhead ${ft(a.base.elev_ft)} · High terrain ${ft(a.summit.elev_ft)} <span class="hint">(highest ground within 5 km)</span>`
+        : `${esc(a.region)}, ${esc(a.state)} · Summit ${ft(a.summit.elev_ft)} · Base ${ft(a.base.elev_ft)} · ${ft(a.vertical_ft)} vertical`;
+    const srcName = a.source === "osm" ? "OpenStreetMap" : "USDA Forest Service";
+    const recFacts = isRec ? `<section class="rec-key" aria-label="Key facts">
+        <div class="rk-avy"><span class="label">Avalanche danger</span>${avalanche(a.avalanche, avyR.status === "fulfilled" ? avyR.value : null)}
+          <p class="hint">Snowmobilers and backcountry travellers: read the full avalanche forecast before you go.</p></div>
+        <div class="rk-cells">
+          <div><span class="label">Snow depth at the trailhead</span><b id="rk-depth">–</b><small>SNODAS analysis</small></div>
+          <div><span class="label">Coldest wind chill, 24 h</span><b id="rk-wc">–</b><small id="rk-wc-where">NBM</small></div>
+        </div>
+        <ul class="rk-info">
+          <li><b>Type:</b> ${esc(a.type_label || "Sno-Park")}</li>
+          ${a.activities?.length ? `<li><b>Activities</b> (as listed by the source): ${esc(a.activities.join(", "))}</li>` : ""}
+          <li><b>Permit:</b> ${a.permit ? esc(a.permit)
+            : `Parking permits may be required — check ${a.permit_check?.url ? `<a href="${safeUrl(a.permit_check.url)}" target="_blank" rel="noopener">${esc(a.permit_check.name)}</a>` : "with the land manager"}.`}</li>
+          ${a.agency ? `<li><b>Managed by:</b> ${esc(a.agency)}${a.url ? ` · <a href="${safeUrl(a.url)}" target="_blank" rel="noopener">site page</a>` : ""}</li>` : ""}
+          <li><b>Source:</b> ${srcName}. Check conditions and closures with the land manager.</li>
+        </ul></section>` : "";
     const srcSeg = nbm && nws ? `<div class="seg" role="group" aria-label="Forecast source">
         <button type="button" data-src="nbm" class="on" aria-pressed="true">NBM blend</button>
         <button type="button" data-src="nws" aria-pressed="false">NWS official</button></div>` : "";
@@ -653,8 +689,11 @@
         </div>
       </div>
       <p class="sub">${sub}</p>
-      ${alR.status === "fulfilled" ? alertBanner((isStation ? alR.value.points : alR.value.areas)?.[a.id], alR.value,
-        nwsLink(isStation ? a : a.summit), tz) : ""}
+      ${!isStation && a.nws && !a.nws.base && !a.nws.summit
+        ? `<p class="note no-nws">NWS alerts not available for this location (it has no NWS forecast grid point).</p>`
+        : alR.status === "fulfilled" ? alertBanner((isStation ? alR.value.points : alR.value.areas)?.[a.id], alR.value,
+          nwsLink(isStation ? a : a.summit), tz) : ""}
+      ${recFacts}
       ${src ? `<p class="headline" id="headline"></p>
       <p class="fresh" id="fresh"></p>
       <div class="sec-head seg-row">${srcSeg}<span id="elev-seg"></span></div>
@@ -666,7 +705,7 @@
         <div class="seg" role="group" aria-label="Window" id="ex-win"><button type="button" class="on" data-w="24h" aria-pressed="true">24 h</button><button type="button" data-w="48h" aria-pressed="false">48 h</button><button type="button" data-w="72h" aria-pressed="false">72 h</button></div>
         <div id="ex-chart" class="heat-box"><p class="hint">Loading…</p></div>
         <p class="note" id="ex-note"></p></section>
-      <section><h3>Snow level vs the ${isStation ? "station" : "mountain"}</h3>
+      <section><h3>Snow level vs the ${isStation ? "station" : isRec ? "trailhead and high terrain" : "mountain"}</h3>
         <div class="chart" id="sl-chart" style="height:260px"><p class="hint">Loading chart…</p></div>
         <p class="note" id="sl-note"></p></section>
       <section><h3>Hour by hour <span class="h3sub" id="hbh-sub"></span></h3><p class="note" id="ridge-note"></p>
@@ -677,7 +716,7 @@
       : `<p class="hint">No point forecast is available for this site yet.</p>`}
       <section id="afd"></section>
       <section><h3>Recent observations</h3><div id="nohrsc-obs"></div><div id="obs"></div></section>
-      ${isStation ? "" : `<section><h3>Avalanche danger</h3>${avalanche(a.avalanche, avyR.status === "fulfilled" ? avyR.value : null)}</section>`}
+      ${isStation || isRec ? "" : `<section><h3>Avalanche danger</h3>${avalanche(a.avalanche, avyR.status === "fulfilled" ? avyR.value : null)}</section>`}
       <section><h3>More</h3>
         ${isStation
           ? `<p>NWS point forecast: <a href="${nwsLink(a)}" target="_blank" rel="noopener">this site</a> ·
@@ -708,6 +747,20 @@
     if (src) {
       const drawNumbers = () => {
         const d = doc(), keys = keysOf(d);
+        if (isRec && $("rk-wc")) {               // coldest wind chill in the next 24 h, either point
+          const t0 = Date.now(), t1 = t0 + 24 * 3.6e6;
+          let best = null;
+          for (const k of keys) {
+            const se = d.points[k].series;
+            d.times.forEach((iso, i) => {
+              const ms = new Date(iso).getTime();
+              const w = ms >= t0 - 3.6e6 && ms <= t1 ? windChill(se.t_f?.[i], se.wind_mph?.[i]) : null;
+              if (w !== null && (!best || w < best.w)) best = { w, k, iso };
+            });
+          }
+          $("rk-wc").textContent = best ? `${best.w} °F` : "–";
+          $("rk-wc-where").textContent = best ? `${POINT_LABEL[best.k].toLowerCase()}, ${localDT(best.iso, tz)} (${src === "nws" ? "NWS" : "NBM"})` : "";
+        }
         if (!keys.includes(pt)) pt = keys[0];
         const stale = (Date.now() - new Date(d.issued)) / 3.6e6 > (src === "nws" ? 12 : 18);
         $("headline").innerHTML = headline(d, keys);
