@@ -43,19 +43,8 @@
   const map = L.map("map", { zoomControl: true, preferCanvas: false });
   window.snowwx = { map, ready: false };   // debugging / benchmark handle
 
-  const tiles = (url, attribution, maxZoom = 16) => L.tileLayer(url, { attribution, maxZoom });
-  const USGS = "https://basemap.nationalmap.gov/arcgis/rest/services";
-  const baseLayers = {
-    "Shaded relief (USGS)": tiles(`${USGS}/USGSShadedReliefOnly/MapServer/tile/{z}/{y}/{x}`,
-      'Relief: <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">USGS</a>', 13),
-    "Topo (USGS)": tiles(`${USGS}/USGSTopo/MapServer/tile/{z}/{y}/{x}`,
-      'Topo: <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">USGS</a>'),
-    "Imagery + topo (USGS)": tiles(`${USGS}/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}`,
-      'Imagery: <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">USGS</a>'),
-    "OpenTopoMap": tiles("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
-      '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, SRTM | © <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)', 17),
-  };
-  baseLayers["Shaded relief (USGS)"].addTo(map);
+  // base maps with overzoom and automatic fallback (basemap.js, PLAN.md §6-C)
+  const baseLayers = snowBasemaps(map).layers;
 
   const avyLayer = L.geoJSON(null, { style: avyStyle, onEachFeature: avyPopup });
   // NOHRSC / SNODAS raster overlays (overlays.js), one at a time; o= in the URL hash.

@@ -227,8 +227,7 @@
   async function initMap() {
     try { await loadLeaflet(); } catch { $("fmap").innerHTML = `<p class="hint">Map unavailable.</p>`; return; }
     map = L.map("fmap", { preferCanvas: true, zoomControl: true, attributionControl: true }).setView([41.5, -113], 5);
-    L.tileLayer("https://basemap.nationalmap.gov/arcgis/rest/services/USGSShadedReliefOnly/MapServer/tile/{z}/{y}/{x}",
-      { maxZoom: 13, attribution: "Relief: USGS" }).addTo(map);
+    snowBasemaps(map);                        // shaded relief, overzoom + fallback (basemap.js)
     layer = L.layerGroup().addTo(map);
     render();
   }
