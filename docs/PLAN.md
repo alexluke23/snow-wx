@@ -56,6 +56,8 @@ percentiles, snow level method, verification).
   (3 m 21 s with it), GFS 66–68 s. HRRR `wrfprs` has 25-mb levels 1000–50 mb; per forecast hour,
   the 21 levels 1000–500 mb cost TMP 12.3 MB, RH 16.6 MB (DPT 22.6 MB), HGT 15.3 MB,
   UGRD+VGRD 25.7 MB (byte ranges from the idx).
+- **Session 6 (dev6, Nov 8):** Part A fixes 1–9 from the dev5 live review done (PLAN.md §8 M3.6); Part B
+  (hour-by-hour to day 10, Sno-Park source research) next.
 - **Not started:** ECMWF.
 - **CI housekeeping:** Node 20 deprecation warnings (bump action versions);
   `ubuntu-latest` → Ubuntu 26 migration notice (pin `ubuntu-24.04`).
@@ -431,6 +433,28 @@ screenshots checked. Suggested session grouping in brackets.
   used to squash charts to 200 px). Found and fixed: hourly PoP was empty for 01/07/13/19Z cycles, so the
   snow-level "likely" line never showed. Lighthouse a11y 100 on all six pages (was 95–100); performance area
   91→91–94, SNOTEL page 91→94–98, obs map 47→71 (header CLS 0.33→0.02), models 81→90, finder 97–98.
+- S6 (dev6) Part A, fixes from the owner's live review of dev5 (each with a headless-browser check in
+  `tools/browser_check.py`, opt-in pytest `SNOWWX_BROWSER=1`):
+  1. Grey map with an overlay at high zoom: not tile errors (0 errors, base layer never removed) but the
+     L.ImageOverlay element growing to 267,986 × 285,569 px at z14 (beyond GPU limits). Overlays now draw on a
+     view-sized canvas (`ViewOverlay`); fallback only reacts to the active base layer; ResizeObserver →
+     invalidateSize. Powder Finder could not be made to fail headless (no overlay; possible inner-scroll/sticky
+     cause removed by fix 2) — owner to recheck.
+  2. One scrollbar: area/finder/about use document scrolling (`body.doc-page`), footer at the end; obs map and
+     models keep the app layout. Checked at 1280/375 px and browser zoom 80/150 %.
+  3. Header search on every page (`pipeline/search.py` → data/search.json, `web/js/search.js`; shared ranking with
+     the obs-map search; combobox a11y; "/" shortcut; icon on mobile).
+  4. Snow-level wet/dry: per-hour chance of precip with fallbacks (6-h PoP → 12-h period PoP → NBM P(≥0.1" snow)).
+  5. Ridge wind: the note explains, the wind-panel summary carries both numbers (whole panel + next 24 h).
+  6. End labels: collision-free placement (theme `endLabels`, explicit y ranges).
+  7. SNOTEL depth and SWE: separate panels with their own axes from 0.
+  8. Chances vs ranges (Timberline 72 h "most likely 4 in, 13–15 % ≥ 4 in"): legitimate. Same window/cell
+     (idx: both "35-59 hour acc"). NBM's deterministic amount is above NBM's median in 99 % of wet windows;
+     P(≥ deterministic) ≈ 32 % (24 h) / 38 % (72 h). NBM's percentile and probability products disagree > 10
+     points in only 0.1–0.4 % of checks (Timberline day 2 is one). about.html explains; wording is an owner decision.
+  9. "1 ski areas" → singular; no-snow statement instead of an empty snow-rate chart.
+  Follow-up: area pages reserve the viewport height (footer jump, CLS 0.098 → 0) and write the first chart's
+  summary before Plotly loads (SNOTEL page LCP 4.8 → 2.1 s).
 - 5-second test (what a skier reads first): day/night bars — the tallest bar and the number on it; heat table —
   the darkest cell (best odds) and its day; snow level — whether the solid line is under the Base line, and
   when; temperature — summit/base above or below the labelled 32 °F line; wind — the green ridge-top line's

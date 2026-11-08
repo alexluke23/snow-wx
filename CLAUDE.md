@@ -37,6 +37,8 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 - `web/` — static site (Leaflet + Plotly from CDN, plain JS, no build step).
   `web/js/colors.js` holds color scales/legends.
 - `tests/` — pytest; extend `tests/fakes.py` with canned responses for new sources.
+- `pipeline/search.py` — header search index (data/search.json); `web/js/search.js` (header + shared ranking).
+- `tools/browser_check.py` — headless-Chrome regression checks (basemap, fallback, layout, search, charts).
 - `pipeline/archive.py` — forecast archive for verification (docs/verification.md);
   `pipeline/cache.py` — data_cache pruning at the start of every run.
 - `config/models.yml` + `pipeline/models/` — model maps (see below); `web/models.html`
@@ -218,6 +220,12 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       Lighthouse: scratchpad lh_all.sh pattern (perf + a11y, 6 pages). Element screenshots: CDP clip after
       scrollIntoView WITHOUT captureBeyondViewport (that resizes the viewport and Plotly re-lays out).
 - [x] Archive live: PR #6 merged, verification release has nbm/ndfd/snotel-202611.csv.gz.
+- [x] S6 Part A (dev6): fixes 1-9 from the dev5 live review (PLAN.md §8 M3.6). Browser regression checks:
+      `C:/miniforge3/envs/snow-wx/python.exe tools/browser_check.py [-v] [--only basemap,fallback,layout,search,charts]`
+      (serves build/ itself, real headless Chrome via CDP; `SNOWWX_BROWSER=1 pytest` runs them too). Copy web/* to
+      build/ first. Notes: Page.navigate with only a hash change does not reload (open() goes via about:blank);
+      blocked URLs need cache off + an unvisited view. Overlays draw on a view-sized canvas (overlays.js ViewOverlay),
+      never an L.ImageOverlay of the whole West (GPU limit -> grey map). Document pages: body.doc-page.
 - [ ] S6 first: area page "Hour by hour" — extend temperature + wind panels to day 10 with NBM 3/6-hourly values,
       lightly shaded and labelled "extended (6-hourly)"; hourly detail stays ~3.5 days; snow stays as
       day/night bars beyond 3.5 days (owner decision S5-2).
