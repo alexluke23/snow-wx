@@ -434,7 +434,7 @@
     return `<strong>${esc(a.name)}</strong>
         <div class="hint">${esc(a.type_label || "Sno-Park")} · ${esc(a.region)}, ${esc(a.state)}</div>${al ? `<div class="popup-alerts">${al}</div>` : ""}
         <p>Trailhead ${ft(a.base.elev_ft)} · high terrain ${ft(a.summit.elev_ft)}${a.avalanche ? `<br>Avalanche zone: ${esc(a.avalanche.zone)}` : ""}
-        ${a.permit ? `<br><span class="hint">${esc(a.permit)}</span>` : ""}</p>
+        ${a.permit ? `<br><span class="hint">Permit: ${esc(a.permit)}</span>` : `<br><span class="hint">Parking permits may be required</span>`}</p>
         <a href="area.html#${encodeURIComponent(a.id)}">Forecast and details →</a>`;
   }
   const openSp = (it) => openItemPopup(it, spPopup(it.area), `sp:${it.area.id}`);

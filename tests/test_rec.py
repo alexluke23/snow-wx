@@ -31,14 +31,15 @@ def test_dedupe_prefers_edw_and_merges_nearby_osm():
     assert [s["name"] for s in out] == ["Gold Creek", "Hyak Sno-Park"] and out[0]["link"] == "https://x"
 
 
-def test_activities_and_permit():
-    s = {"name": "Mount Spokane Nordic", "subtype": "nordic", "source_activities": []}
-    assert R.activities(s) == (["cross-country skiing"], True)
+def test_activities_and_permit_only_as_stated():
+    assert R.activities({"name": "Mount Spokane Nordic", "subtype": "nordic", "source_activities": []}) == []   # no inference
     s2 = {"name": "X", "subtype": "snopark", "source_activities": ["snowshoeing", "ice & snowcraft travel"]}
-    assert R.activities(s2) == (["snowmobiling", "snowshoeing"], False)
-    assert R.permit_for("OR", {"subtype": "snopark", "passes": None}).startswith("Likely: Oregon Sno-Park permit")
-    assert R.permit_for("UT", {"subtype": "snopark", "passes": None, "fee": False}) is None
-    assert R.permit_for("WA", {"subtype": "snopark", "passes": "Sno-Park permit required"}) == "Sno-Park permit required"
+    assert R.activities(s2) == ["snowmobiling", "snowshoeing"]
+    assert R.permit_for({"passes": None}) is None
+    assert R.permit_for({"passes": "Sno-Park permit required"}) == "Sno-Park permit required"
+    assert R.permit_check("OR", {})["url"].startswith("https://www.oregon.gov/odot/")
+    assert R.permit_check("UT", {"link": "https://www.fs.usda.gov/r04/x"}) == {"name": "the managing agency", "url": "https://www.fs.usda.gov/r04/x"}
+    assert R.permit_check("CO", {})["url"] == "https://www.fs.usda.gov/"
 
 
 def test_high_point_within_radius():
