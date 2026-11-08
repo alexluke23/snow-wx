@@ -50,8 +50,8 @@
   const rangeName = (t) => (t?.range === "derived 25-75" || t?.range === "likely 25-75" ? "derived range (fallback)" : "NBM 10–90%");
   const outside = (t) => t && t.snow_lo !== null && t.snow_lo !== undefined && t.snow_hi !== null && t.snow_hi !== undefined
     && t.snow_in !== null && (t.snow_in < t.snow_lo - 0.05 || t.snow_in > t.snow_hi + 0.05);
-  const SEPARATE = "NBM's deterministic (most likely) and probabilistic forecasts are calibrated separately, " +
-    "so the most-likely amount can fall outside the range.";
+  const SEPARATE = "NBM's expected amount (its deterministic forecast) and its probabilistic forecasts are calibrated separately, " +
+    "so the expected amount can fall outside the range.";
 
   function headline(fc, keys) {
     const pt = keys[0], s = fc.points[pt].totals["72h"];
@@ -62,7 +62,7 @@
     if ((s.snow_hi ?? s.snow_in ?? 0) < 0.5) {
       txt = `No significant snow in the next 72 hours${where}.`;
     } else {
-      txt = `Next 72 h${where}: most likely <strong>${inches(s.snow_in)} in</strong>` +
+      txt = `Next 72 h${where}: expected <strong>${inches(s.snow_in)} in</strong> ${expectedInfo()}` +
             `<span class="rng">${rng(s)}</span>.`;
       const b = keys.includes("base") ? fc.points.base.totals["72h"] : null;
       if (b) txt += ` Base: ${inches(b.snow_in)} in${rng(b)}.`;
@@ -98,7 +98,7 @@
     };
     const head = P.raw
       ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(P.grid_elev_ft)}) · ${POINT_LABEL[pt]} ${ft(elev)}`
-      : `${POINT_LABEL[pt]} · ${ft(elev)} · most likely snowfall (NBM)`;
+      : `${POINT_LABEL[pt]} · ${ft(elev)} · expected snowfall (NBM) ${expectedInfo()}`;
     return `<p class="tiles-for">${head}</p>
       <div class="tiles">${cell("24h", "Next 24 h")}${cell("72h", "Next 72 h")}${cell("7d", "Next 7 days")}${cell("10d", "Next 10 days")}</div>`;
   }
@@ -149,7 +149,7 @@
     const tot = fc.points[pt].totals["10d"] || fc.points[pt].totals["7d"] || fc.points[pt].totals["72h"];
     const big = per.reduce((b, p) => ((p.snow_in ?? 0) > (b?.snow_in ?? 0) ? p : b), null);
     return big && big.snow_in >= 0.5
-      ? `Snowiest period: ${big.label} (${big.local}), most likely ${inches(big.snow_in)} in${big.snow_hi !== null && big.snow_hi !== undefined ? ` (${range(big.snow_lo, big.snow_hi)})` : ""}. Total over ${per.length / 2} days: ${inches(tot?.snow_in)} in.`
+      ? `Snowiest period: ${big.label} (${big.local}), expected ${inches(big.snow_in)} in${big.snow_hi !== null && big.snow_hi !== undefined ? ` (${range(big.snow_lo, big.snow_hi)})` : ""}. Total over ${per.length / 2} days: ${inches(tot?.snow_in)} in.`
       : `Little or no snow in any day or night period of the next ${Math.round(per.length / 2)} days.`;
   }
 
@@ -165,7 +165,7 @@
     const colors = per.map((p, i) => colorFor(SNOWFALL, y[i]) || "#e9edf2");
     const ticks = per.map((p, i) => [i, p]).filter(([, p]) => p.is_day);
     const hover = per.map((p) =>
-      `<b>${esc(p.label)}</b> (${esc(p.local)})<br>Most likely ${p.snow_in ?? "–"} in` +
+      `<b>${esc(p.label)}</b> (${esc(p.local)})<br>Expected ${p.snow_in ?? "–"} in` +
       (p.snow_hi !== null && p.snow_hi !== undefined ? ` · ${rangeName(p)}: ${range(p.snow_lo, p.snow_hi)}` : "") +
       (outside(p) ? `<br><i>${SEPARATE.replace("so the", "<br>so the")}</i>` : "") +
       `<br>Liquid ${p.qpf_in ?? "–"} in${p.pop !== null && p.pop !== undefined ? ` · chance of precip ${Math.round(p.pop * 100)}%` : ""}` +
@@ -200,7 +200,7 @@
                ticktext: ticks.map(([, p]) => C.dayName(C.wall(p.start, tz).slice(0, 10), two)) } }));
     C.summary(el, periodSummary(fc, pt));
     C.tableToggle(el, `Snowfall by day and night (${POINT_LABEL[pt].toLowerCase()})`,
-      ["Period", "Local time", "Most likely (in)", "Range (in)", "Liquid (in)", "Chance of precip"],
+      ["Period", "Local time", "Expected (in)", "Range (in)", "Liquid (in)", "Chance of precip"],
       per.map((p) => [p.label, p.local, plain(p.snow_in), p.snow_hi === null || p.snow_hi === undefined ? "–" : range(p.snow_lo, p.snow_hi),
         plain(p.qpf_in), p.pop === null || p.pop === undefined ? "–" : `${Math.round(p.pop * 100)}%`]));
     return firstExt >= 0;
@@ -427,8 +427,8 @@
     rate.forEach((v, j) => { if (v !== null && (bi < 0 || v > rate[bi])) bi = j; });
     const total = keep.reduce((a, i) => a + (pr.snow_in[i] ?? 0), 0);
     C.summary(el, bi >= 0 && rate[bi] >= 0.05
-      ? `Heaviest snow about ${rate[bi].toFixed(2)} in per hour (${text[bi].split(":")[0]}); about ${inches(total)} in in the next ${Math.round(HOURS_DETAIL / 24 * 2) / 2} days (most likely).`
-      : `Little or no snow in the next ${Math.round(HOURS_DETAIL / 24 * 2) / 2} days (most likely ${inches(total)} in).`);
+      ? `Heaviest snow about ${rate[bi].toFixed(2)} in per hour (${text[bi].split(":")[0]}); about ${inches(total)} in in the next ${Math.round(HOURS_DETAIL / 24 * 2) / 2} days (expected).`
+      : `Little or no snow in the next ${Math.round(HOURS_DETAIL / 24 * 2) / 2} days (expected ${inches(total)} in).`);
     C.tableToggle(el, `Snow and liquid precipitation (${POINT_LABEL[pt].toLowerCase()})`, ["Period", "Hours", "Snow (in)", "Liquid (in)", "Chance of precip"],
       keep.map((i, j) => [text[j].split(":")[0], pr.hours[i], plain(pr.snow_in[i]), plain(pr.qpf_in[i]),
         pr.pop?.[i] === null || pr.pop?.[i] === undefined ? "–" : `${Math.round(pr.pop[i] * 100)}%`]));
@@ -706,9 +706,9 @@
         const dayLocal = d.points[pt].periods.find((p) => p.is_day)?.local || "about 5 AM–5 PM";
         $("period-note").textContent = src === "nws"
           ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), shown as issued: snowfall to 72 h already includes the forecasters' rain/snow decisions. Days are 12Z–00Z (${dayLocal}).`
-          : `Bars: NBM deterministic (most likely; they add up to the totals). Whiskers: NBM's own snowfall percentiles (10–90%). Only when the newest NBM run lacks them does a "derived range (fallback)" appear (25–75% of precipitation × snow ratio × chance of snow). NBM calibrates these separately, so a bar can sit outside its whisker. Days are 12Z–00Z (${dayLocal}); night bars are lighter and unlabelled.${d.points[pt].periods.some((p) => p.extended) ? " Hatched bars = extended outlook (derived range)." : ""}`;
+          : `Bars: expected snowfall (NBM's deterministic forecast, an average of possible outcomes; they add up to the totals). Whiskers: NBM's own snowfall percentiles (10–90%). Only when the newest NBM run lacks them does a "derived range (fallback)" appear (25–75% of precipitation × snow ratio × chance of snow). NBM calibrates these separately, so a bar can sit outside its whisker. Days are 12Z–00Z (${dayLocal}); night bars are lighter and unlabelled.${d.points[pt].periods.some((p) => p.extended) ? " Hatched bars = extended outlook (derived range)." : ""}`;
         $("ex-sec").hidden = src === "nws" || !d.points[pt].exceed || !Object.keys(d.points[pt].exceed).length;
-        $("ex-note").innerHTML = `NBM's own chance of at least each amount for the 2.5 km grid cell around the ${POINT_LABEL[pt].toLowerCase()}, in ${exWin.replace("h", " h")} windows from about 5 AM (12Z); columns are labelled with the day the window starts (hover for exact times). Separate from the most-likely bars, so they can disagree. NBM only. <a href="about.html#probabilities">How they work →</a>`;
+        $("ex-note").innerHTML = `NBM's own chance of at least each amount for the 2.5 km grid cell around the ${POINT_LABEL[pt].toLowerCase()}, in ${exWin.replace("h", " h")} windows from about 5 AM (12Z); columns are labelled with the day the window starts (hover for exact times). Separate from the expected-amount bars, so they can disagree. NBM only. <a href="about.html#probabilities">How they work →</a>`;
         $("hbh-sub").textContent = `next ${Math.round(HOURS_DETAIL / 24 * 2) / 2} days · times ${tzName(tz)}`;
         $("sl-note").textContent = `Below the line precipitation falls as rain. The line is solid where precipitation is likely (≥ 20% chance) and dotted where it is not; the orange band is NBM's 10–90% range${src === "nws" ? "" : " (as far as NBM provides it, about 10 days)"}. Times ${tzName(tz)}.`;
         $("met-note").textContent = src === "nws"

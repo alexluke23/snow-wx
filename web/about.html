@@ -46,25 +46,27 @@
     </nav>
 
     <section id="nbm">
-      <h3>NBM forecasts: "most likely" and probabilistic</h3>
+      <h3>NBM forecasts: "Expected" and probabilistic</h3>
       <p>The ski-area and SNOTEL forecasts come from NOAA's <b>National Blend of Models (NBM)</b>, a 2.5-km grid
         that blends dozens of weather models and ensembles and corrects them against observations. NBM produces two
         separate kinds of guidance:</p>
       <ul>
-        <li><b>Deterministic</b> fields — one best estimate per hour. We call these "most likely". The bars on the
+        <li><b>Deterministic</b> fields — one best estimate per hour. We call these <b>"Expected"</b>: NBM's forecast amount, an average of possible
+          outcomes. You typically have about a 1-in-3 chance of reaching it; the 10–90% range shows what's typical. The bars on the
           area pages and the Powder Finder amounts are these values, added up over 12-hour day and night periods, so
           the bars add up to the totals.</li>
         <li><b>Probabilistic</b> fields — percentiles (for example "10% chance of less than 2 inches, 90% chance of
           less than 9 inches") and exceedance probabilities ("40% chance of at least 6 inches"), built from the
           ensemble members.</li>
       </ul>
-      <p>NOAA calibrates the two separately, so they can disagree. The most-likely amount is not the median and can
+      <p>NOAA calibrates the two separately, so they can disagree. The expected amount is not the median and can
         even fall outside the 10–90% range. This is expected; we show both as published rather than forcing one to
         fit the other. When they differ a lot, the forecast is uncertain.</p>
       <p>In practice NBM's deterministic snowfall behaves like an <i>expected</i> (average) amount: snowfall outcomes are
         skewed toward a few big totals, so the average sits above the middle outcome. In one full NBM run (8 Nov 2026) it
         was above NBM's own median in 99% of snowy 24- and 72-hour windows, and NBM's chance of getting at least that
-        much was typically 30–40%. So "most likely 4 in, 13–35% chance of at least 4 in" is consistent, not an error.</p>
+        much was typically 30–40%. So "expected 4 in, 13–35% chance of at least 4 in" is consistent, not an error. (We used to call this amount
+        "most likely"; that was misleading and was renamed "Expected" in November 2026.)</p>
     </section>
 
     <section id="probabilities">
@@ -91,7 +93,7 @@
       <h3>Snow level and chance of snow</h3>
       <p>The snow level is the elevation where precipitation changes from rain to snow. NBM forecasts it with
         percentiles. From the 10th, 50th and 90th percentiles we estimate the chance that the snow level is below
-        the summit or base (after 48 hours, a ±800 ft ramp around the most-likely snow level is used). Snowfall at
+        the summit or base (after 48 hours, a ±800 ft ramp around NBM's deterministic snow level is used). Snowfall at
         the point is NBM's snowfall × that chance, so a base below the snow level gets less snow than the summit.
         The snow-level chart is drawn solid where precipitation is likely (at least 20% chance) and dotted where it
         is unlikely. Powder Finder shows the lowest snow level while precipitation is likely in the selected window, and
