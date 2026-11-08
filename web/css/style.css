@@ -420,3 +420,13 @@ body.mine-page > main { min-height: 100vh; min-height: 100dvh; }
 .mline .tobase { color: #1f5fa8; }
 .mine-empty { background: #fff; border: 1px dashed #b9c3cf; border-radius: 10px; padding: 14px 16px; max-width: 640px; }
 .mine-empty h3 { margin-top: 0; }
+/* obs-map "My mountains" banner (owner S9) */
+.home-banner { background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  padding: 10px 34px 10px 12px; max-width: 280px; position: relative; font-size: 14px; }
+.home-banner p { margin: 0 0 8px; }
+.home-banner .btn { display: inline-block; margin: 0 6px 6px 0; padding: 7px 10px; border-radius: 6px; background: #1f5fa8; color: #fff;
+  text-decoration: none; border: 1px solid #1f5fa8; font-size: 13.5px; cursor: pointer; min-height: 40px; box-sizing: border-box; }
+.home-banner .btn.ghost { background: #fff; color: #1f5fa8; }
+.home-banner .close { position: absolute; top: 2px; right: 2px; border: 0; background: transparent; font-size: 20px; min-width: 40px; min-height: 40px; cursor: pointer; color: #4a5666; }
+.home-pref { font-size: 13.5px; margin: 0 0 10px; }
+.site-feedback { white-space: nowrap; }

@@ -130,6 +130,9 @@ percentiles, snow level method, verification).
 | Nov 8 (S8) | 3. Sno-Park activities only as the source states them (no inferred list: motorized vs non-motorized mistakes matter); otherwise show the site type and a link to the managing agency. |
 | Nov 8 (S8) | 4. Sno-Park permits: the source's permit text only; otherwise "Parking permits may be required — check [official state program or managing national forest]" with the link. Never "Likely". |
 | Nov 8 (S8) | 5. Sites with no NWS grid point show "NWS alerts not available for this location". |
+| Nov 8 (S9) | 1. Landing: a visitor with favorites who opens the obs map directly (no link hash, not from another Snow-Wx page) gets a dismissible banner: "Go to My mountains", "Always open My mountains" (localStorage `snowwx.home`, try/catch; turn off on My mountains), dismiss (for the session). Shared links and new visitors land on the map. |
+| Nov 8 (S9) | 2. Forecast overlays carry the note "Grid values (2.5 km); site pages adjust for elevation."; near-zero snowfall (< 0.1 in) and chances < 5 % stay transparent. |
+| Nov 8 (S9) | 3. "Send feedback" link (mailto) in the footer of every page. |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;

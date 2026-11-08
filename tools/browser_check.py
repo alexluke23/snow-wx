@@ -369,6 +369,15 @@ def check_forecast_overlays(b: Browser, base: str, log):
         log(f"  {lid}: {st}")
         need(st["size"] and st["size"][0] <= st["view"][0] + 2, f"{lid}: overlay not drawn view-sized ({st})")
         need(any(ch.isdigit() for ch in st["read"]) and "run" in (st["meta"] or ""), f"{lid}: no value / no run info ({st})")
+        # dry grid cells stay clear (owner S9): alpha 0 where the value is below the threshold
+        clear = b.eval("""(() => { const m = window.snowwx.map, o = window.snowwx.overlays.layer(), c = o._canvas;
+          const ctx = c.getContext('2d'), dpr = c.width / m.getSize().x; let n = 0, clear = 0;
+          for (let x = 5; x < m.getSize().x; x += 40) for (let y = 5; y < m.getSize().y; y += 40) {
+            const ll = m.containerPointToLatLng([x, y]);
+            const a = ctx.getImageData(Math.floor(x * dpr), Math.floor(y * dpr), 1, 1).data[3]; n++; if (a === 0) clear++; }
+          return [clear, n]; })()""")
+        log(f"  {lid}: clear pixels {clear[0]}/{clear[1]}")
+        need(clear[0] > 0, f"{lid}: no transparent (dry) pixels at all")
     need(not b.errors, f"JS errors: {b.errors}")
 
 
@@ -389,7 +398,26 @@ def check_mine(b: Browser, base: str, log):
     n = b.eval("JSON.parse(localStorage.getItem('snowwx.favorites')).length + ':' + document.querySelectorAll('.mcard[data-id]').length")
     log(f"  after removing one: {n}")
     need(n == "2:2", f"remove failed: {n}")
-    b.eval("localStorage.removeItem('snowwx.favorites'); 1")
+    # landing banner (owner S9): favorites + direct visit -> banner; "Always" -> redirect; off again on mine.html
+    b.open(f"{base}/index.html", wait=6)
+    st = b.eval("(() => ({banner: !!document.querySelector('.home-banner'), url: location.pathname}))()")
+    log(f"  map with favorites, direct visit: {st}")
+    need(st["banner"], f"no My mountains banner: {st}")
+    b.open(f"{base}/index.html#map=8/40.6/-111.6", wait=5)
+    need(not b.eval("!!document.querySelector('.home-banner')"), "banner shown on a shared link")
+    b.open(f"{base}/index.html", wait=6)
+    b.eval("document.querySelector('.home-banner [data-act=always]').click(); 1")
+    time.sleep(3)
+    need(b.eval("location.pathname").endswith("mine.html"), "Always did not open My mountains")
+    b.open(f"{base}/index.html", wait=4)
+    url = b.eval("location.pathname")
+    log(f"  direct visit with 'always': {url}")
+    need(url.endswith("mine.html"), f"no redirect with the preference set ({url})")
+    b.eval("(() => { const c = document.getElementById('home-pref'); c.checked = false; c.dispatchEvent(new Event('change')); return 1; })()")
+    b.open(f"{base}/index.html", wait=6)
+    need(b.eval("location.pathname").endswith("index.html") and b.eval("!!document.querySelector('.home-banner')"),
+         "turning the preference off did not restore the map + banner")
+    b.eval("localStorage.removeItem('snowwx.favorites'); localStorage.removeItem('snowwx.home'); 1")
     need(not b.errors, f"JS errors: {b.errors}")
 
 
