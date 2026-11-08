@@ -56,6 +56,8 @@ percentiles, snow level method, verification).
   (3 m 21 s with it), GFS 66–68 s. HRRR `wrfprs` has 25-mb levels 1000–50 mb; per forecast hour,
   the 21 levels 1000–500 mb cost TMP 12.3 MB, RH 16.6 MB (DPT 22.6 MB), HGT 15.3 MB,
   UGRD+VGRD 25.7 MB (byte ranges from the idx).
+- **Session 7 (dev7, Nov 8):** "Expected" rename done; hour-by-hour temperature/wind to day 10 (6-hourly,
+  shaded); Sno-Park source research written up (docs/sources_recreation.md), awaiting approval.
 - **Session 6 (dev6, Nov 8):** Part A fixes 1–9 from the dev5 live review done (PLAN.md §8 M3.6); Part B
   (hour-by-hour to day 10, Sno-Park source research) next.
 - **Not started:** ECMWF.
@@ -480,6 +482,8 @@ screenshots checked. Suggested session grouping in brackets.
 **M4.5 — Sno-Parks & winter recreation points** [Session 5+]
 - §5.6. ✅ when: western Sno-Parks cataloged with sources; each opens a
   forecast view; Powder Finder Type filter works on mobile.
+- S7: source research done → docs/sources_recreation.md (USFS EDW public domain: 375 western winter sites;
+  OSM ODbL: 182; WA/OR/CA/ID state lists have unstated or "All Rights Reserved" terms). Waiting for owner approval.
 
 **M5 — NWS official** [Session 3]
 - NDFD base/summit, alerts banner, AFD link; NBM ↔ NWS toggle; about.html
