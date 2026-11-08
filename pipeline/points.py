@@ -7,9 +7,10 @@ Methods (owner decisions, PLAN.md §3, session 2; documented for about.html):
 - Point snow = NBM snowfall × P(snow level below the point), the probability taken
   from NBM's snow-level percentiles (10/50/90, linear tails) to 48 h and from a
   ±800 ft ramp on the deterministic snow level after that.
-- 10–90 % ranges: 0–48 h NBM snowfall percentiles (6-h windows added rank by rank,
+- Ranges: 0–48 h NBM snowfall percentiles 10–90 (6-h windows added rank by rank,
   i.e. a slightly wide range); beyond 48 h ("extended outlook") NBM QPF percentiles
-  × SNOWLR (clamped 4–25) × P(snow). Ranges always include the mean.
+  × SNOWLR (clamped 4–25) × P(snow) — the 25th–75th "likely range" (owner S3). Ranges are
+  not forced to contain the deterministic mean: NBM calibrates the two separately.
 - Temperature: NBM value at the 2.5-km cell moved to the point with 6.5 °C/km
   (height change capped at 4000 ft).
 - Periods: 12 h, 00Z–12Z (night) and 12Z–00Z (day), labelled in local time.
@@ -83,13 +84,6 @@ def rank_sum(ranges):
     return lo, hi
 
 
-def with_mean(rng, mean):
-    """Widen a (lo, hi) range so it contains the mean."""
-    if rng is None or mean is None:
-        return rng
-    return min(rng[0], mean), max(rng[1], mean)
-
-
 def weighted_mean(values, weights):
     pairs = [(v, w) for v, w in zip(values, weights) if v is not None]
     if not pairs:
@@ -159,22 +153,3 @@ def window_sum(series: dict[int, float | None], start_h: int, end_h: int, step: 
             return None
         total, n = total + v, n + 1
     return total if n else None
-
-
-def monotone_totals(totals: dict, order=("24h", "72h", "7d", "10d"),
-                    fields=("qpf_lo", "qpf_hi", "snow_lo", "snow_hi")) -> dict:
-    """Longer windows can't hold less than shorter ones: each window's percentile is
-    raised to at least the previous window's (separate NBM blocks and snow ratios
-    can otherwise disagree slightly)."""
-    prev = None
-    for name in order:
-        cur = totals.get(name)
-        if cur is None:
-            continue
-        if prev is not None:
-            for f in fields:
-                v, pv = cur.get(f), prev.get(f)
-                if v is not None and pv is not None and v < pv:
-                    cur[f] = pv
-        prev = cur
-    return totals

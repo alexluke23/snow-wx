@@ -10,8 +10,11 @@ NDFD's 2145x1377 Lambert grid uses alternativeRowScanning like NBM core.
 
 Output: data/ndfd/<id>.json in the same shape as the NBM point files (series, 6-h
 precip windows, 12-h periods, totals) so the area page can toggle NBM <-> NWS.
-NWS values are shown for their grid cell (no lapse adjustment); point snow is scaled
-by P(snow level below the point) from NDFD's own snow level, as for NBM.
+NWS values are shown raw for their 2.5-km grid cell (owner decision S3): no lapse
+adjustment and no snow-level scaling; NDFD snow already contains the forecasters'
+rain/snow decisions. The rain/snow label comes from NDFD's own snow:liquid ratio.
+The cell elevation shown with it is the overlapping NBM cell's 3DEP mean (NDFD files
+carry no terrain), hence "≈".
 """
 
 from __future__ import annotations
@@ -173,6 +176,15 @@ def _r(v, nd=1):
     return round(float(v), nd)
 
 
+def ndfd_type(qpf_in, snow_in):
+    """Rain/snow label from NDFD itself: snow:liquid >= 5 snow, > 0 mixed, else mostly rain."""
+    if qpf_in is None or qpf_in < 0.01:
+        return None
+    if not snow_in:
+        return "mostly rain"
+    return "snow" if snow_in / qpf_in >= 5 else "mixed"
+
+
 def point_doc(data: dict, k: int, elev_ft: float | None, tz) -> tuple[list[str], dict]:
     """NBM-shaped forecast for column k: (times, {series, precip, periods, totals})."""
     temps = data.get("temp", [])
@@ -193,11 +205,9 @@ def point_doc(data: dict, k: int, elev_ft: float | None, tz) -> tuple[list[str],
 
     series = {key: [] for key in ("t_f", "wind_mph", "gust_mph", "wdir", "sky", "snowlvl_ft",
                                   "snowlvl_p10", "snowlvl_p90", "p_snow", "slr", "pop")}
-    ps_by_t = {}
     for t in times:
         sl = latest_at_or_before("snowlevel", t)
-        ps = P.p_snow_level_below(elev_ft, None, sl, None) if sl is not None else None
-        ps_by_t[t] = ps
+        ps = None                       # raw NDFD: no P(snow at elevation)
         pop = next((float(m["values"][k]) / 100 for m in data.get("pop12", [])
                     if m["end"] - timedelta(minutes=m["minutes"]) < t <= m["end"]), None)
         series["t_f"].append(_r(at("temp", t)))
@@ -212,18 +222,16 @@ def point_doc(data: dict, k: int, elev_ft: float | None, tz) -> tuple[list[str],
         series["slr"].append(None)
         series["pop"].append(_r(pop, 2))
 
-    # 6-h snow / QPF windows (NDFD amounts are 6-hourly), scaled by P(snow at the point)
+    # 6-h snow / QPF windows exactly as NDFD gives them (raw)
     W = {}
     for m in data.get("qpf", []):
         t, n = m["end"], m["minutes"] // 60
         q = float(m["values"][k])
         s = at("snow", t)
-        steps = [x for x in times if t - timedelta(hours=n) < x <= t and ps_by_t.get(x) is not None]
-        pw = sum(ps_by_t[x] for x in steps) / len(steps) if steps else 1.0
         if np.isnan(q):
             continue
-        snow = 0.0 if (s is None or np.isnan(s) or q < P.WET_IN) else s * pw
-        W[t] = {"qpf": q, "snow": snow, "ps": pw, "hours": n}
+        snow = 0.0 if (s is None or np.isnan(s)) else s
+        W[t] = {"qpf": q, "snow": snow, "hours": n}
     precip = {"end": [t.strftime("%Y-%m-%dT%H:%MZ") for t in W], "hours": [w["hours"] for w in W.values()],
               "qpf_in": [_r(w["qpf"], 2) for w in W.values()], "snow_in": [_r(w["snow"], 1) for w in W.values()],
               "pop": [None] * len(W)}
@@ -239,8 +247,7 @@ def point_doc(data: dict, k: int, elev_ft: float | None, tz) -> tuple[list[str],
             if not ws or sum(w["hours"] for w in ws) < (e - s):
                 continue
             q = sum(w["qpf"] for w in ws)
-            snow = 0.0 if q < P.WET_IN else sum(w["snow"] for w in ws)
-            pmean = P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws])
+            snow = sum(w["snow"] for w in ws)
             t0, t1 = init + timedelta(hours=s), init + timedelta(hours=e)
             temps_p = [series["t_f"][i] for i, t in enumerate(times) if t0 < t <= t1 and series["t_f"][i] is not None]
             gusts = [series["gust_mph"][i] for i, t in enumerate(times) if t0 < t <= t1 and series["gust_mph"][i] is not None]
@@ -248,7 +255,7 @@ def point_doc(data: dict, k: int, elev_ft: float | None, tz) -> tuple[list[str],
             pops = [float(m["values"][k]) / 100 for m in data.get("pop12", []) if t0 < m["end"] <= t1 + timedelta(hours=6)]
             out_periods.append({**P.period_label(init, s, e, tz), "snow_in": _r(snow, 1), "snow_lo": None, "snow_hi": None,
                                 "extended": False, "qpf_in": _r(q, 2), "qpf_lo": None, "qpf_hi": None,
-                                "p_snow": _r(pmean, 2), "type": P.precip_type(q, pmean),
+                                "p_snow": None, "type": ndfd_type(q, snow), "range": None,
                                 "pop": _r(max(pops), 2) if pops else None, "slr": None, "powder": None,
                                 "t_max_f": _r(max(temps_p)) if temps_p else None, "t_min_f": _r(min(temps_p)) if temps_p else None,
                                 "gust_max_mph": _r(max(gusts), 0) if gusts else None,
@@ -261,13 +268,23 @@ def point_doc(data: dict, k: int, elev_ft: float | None, tz) -> tuple[list[str],
             if sum(w["hours"] for w in ws) < h:
                 continue
             q = sum(w["qpf"] for w in ws)
-            snow = 0.0 if q < P.WET_IN else sum(w["snow"] for w in ws)
+            snow = sum(w["snow"] for w in ws)
             totals[name] = {"snow_in": _r(snow, 1), "snow_lo": None, "snow_hi": None, "qpf_in": _r(q, 2),
-                            "qpf_lo": None, "qpf_hi": None,
-                            "p_snow": _r(P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws]), 2),
-                            "extended": False}
+                            "qpf_lo": None, "qpf_hi": None, "p_snow": None, "extended": False, "range": None}
     return [t.strftime("%Y-%m-%dT%H:%MZ") for t in times], {"series": series, "precip": precip,
                                                             "periods": out_periods, "totals": totals}
+
+
+def summary_row(aid: str, doc: dict) -> dict:
+    """Powder Finder row: [snow, lo, hi] per window (NWS has no range) + 72-h extremes."""
+    row = {"id": aid}
+    for k, pt in doc["points"].items():
+        row[k] = {n: [t["snow_in"], None, None] for n, t in pt["totals"].items()}
+    first = doc["points"].get("summit") or next(iter(doc["points"].values()))
+    per = first["periods"][:6]
+    row["snowlvl_min_72h_ft"] = min([p["snowlvl_min_ft"] for p in per if p["snowlvl_min_ft"] is not None], default=None)
+    row["gust_max_72h_mph"] = max([p["gust_max_mph"] for p in per if p["gust_max_mph"] is not None], default=None)
+    return row
 
 
 def forecast_points(repo: Path = REPO_ROOT) -> list[dict]:
@@ -276,12 +293,15 @@ def forecast_points(repo: Path = REPO_ROOT) -> list[dict]:
     cat = json.loads((repo / "data" / "ski_areas.json").read_text(encoding="utf-8"))
     for a in cat["areas"]:
         out.append({"id": a["id"], "tz": a.get("tz"), "points": {k: {"lat": a[k]["lat"], "lon": a[k]["lon"],
-                                                                     "elev_ft": a[k]["elev_ft"]} for k in ("summit", "base")}})
+                                                                     "elev_ft": a[k]["elev_ft"],
+                                                                     "grid_elev_ft": a["nbm_grid"][k].get("elev_ft")}
+                                                                 for k in ("summit", "base")}})
     sp = repo / "data" / "snotel_points.json"
     if sp.exists():
         for s in json.loads(sp.read_text(encoding="utf-8"))["points"]:
             out.append({"id": s["id"], "tz": s.get("tz"), "points": {"point": {"lat": s["lat"], "lon": s["lon"],
-                                                                               "elev_ft": s["elev_ft"]}}})
+                                                                               "elev_ft": s["elev_ft"],
+                                                                               "grid_elev_ft": s["nbm_grid"].get("elev_ft")}}})
     return out
 
 
@@ -297,9 +317,11 @@ def run(cfg: dict, session, out: Path, *, published: str | None = None, github_o
         log.warning("NDFD not reachable")
         emit(new="false")
         return 0
-    if published == key:
-        log.info("NDFD %s already published; nothing new", key)
-        emit(new="false", cycle=key)
+    from .version import stamp
+    tag = stamp(key, "ndfd")
+    if published == tag:
+        log.info("NDFD %s already published; nothing new", tag)
+        emit(new="false", cycle=tag)
         return 0
     pts = forecast_points()
     flat = [(pid, k, p["lat"], p["lon"]) for f in pts for k, p in [(kk, f["points"][kk]) for kk in f["points"]]
@@ -313,7 +335,8 @@ def run(cfg: dict, session, out: Path, *, published: str | None = None, github_o
     for old in out.glob("*.json"):
         old.unlink()
     generated = utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    sizes = []
+    sizes, summary = [], []
+    cat_ids = {a["id"] for a in json.loads((REPO_ROOT / "data" / "ski_areas.json").read_text(encoding="utf-8"))["areas"]}
     for f in pts:
         tz = ZoneInfo(f.get("tz") or "America/Denver")
         doc = {"id": f["id"], "source": SOURCE, "issued": issued.strftime("%Y-%m-%dT%H:%MZ"),
@@ -321,12 +344,16 @@ def run(cfg: dict, session, out: Path, *, published: str | None = None, github_o
         for k, p in f["points"].items():
             times, fc = point_doc(data, col[(f["id"], k)], p["elev_ft"], tz)
             doc["times"] = times
-            doc["points"][k] = {"elev_ft": p["elev_ft"], **fc}
+            doc["points"][k] = {"elev_ft": p["elev_ft"], "grid_elev_ft": p.get("grid_elev_ft"), "raw": True, **fc}
         path = out / f"{f['id']}.json"
         write_json(path, doc)
         sizes.append(path.stat().st_size)
+        if f["id"] in cat_ids:          # one row per ski area for Powder Finder
+            summary.append(summary_row(f["id"], doc))
+    write_json(out / "summary.json", {"issued": issued.strftime("%Y-%m-%dT%H:%MZ"), "source": SOURCE,
+                                      "generated_at": generated, "areas": summary})
     write_json(out / "index.json", {"key": key, "issued": issued.strftime("%Y-%m-%dT%H:%MZ"),
                                     "generated_at": generated, "source": SOURCE, "count": len(pts)})
     log.info("NDFD %s: wrote %d files (max %.0f KB, total %.1f MB)", key, len(sizes), max(sizes) / 1024, sum(sizes) / 1e6)
-    emit(new="true", cycle=key)
+    emit(new="true", cycle=tag)
     return 0

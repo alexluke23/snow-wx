@@ -209,9 +209,11 @@ def run_model(cfg: dict, model: str, out: Path, *, fhours: list[int] | None = No
             _github_output(github_output, new="false")
             return 0
     cid = cycle.strftime("%Y%m%d%H")
-    if published and published == cid:
-        log.info("%s: newest complete cycle %s is already published; nothing new", model, cid)
-        _github_output(github_output, new="false", cycle=cid)
+    from ..version import stamp
+    tag = stamp(cid, "models")       # cycle + renderer/config version
+    if published and published == tag:
+        log.info("%s: newest complete cycle %s (version %s) is already published; nothing new", model, cid, tag)
+        _github_output(github_output, new="false", cycle=tag)
         return 0
     log.info("%s: cycle %s, %d frames, fields %s", model, cid, len(fh), ",".join(use_fields))
 
@@ -306,7 +308,7 @@ def run_model(cfg: dict, model: str, out: Path, *, fhours: list[int] | None = No
     log.info("%s %s: %d images, %.1f MB, %d plot errors, %d failed frames; fetch+derive %.0f s, "
              "total %.0f s", model, cid, len(ok), mb, len(bad), len(failed_frames), t_fetch,
              time.time() - t_start)
-    _github_output(github_output, new="true", cycle=cid)
+    _github_output(github_output, new="true", cycle=tag)
     return 0
 
 

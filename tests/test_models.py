@@ -183,7 +183,8 @@ def test_run_model_skips_when_already_published(mcfg, tmp_path, monkeypatch):
     # the published one the job must exit 0 and write nothing.
     monkeypatch.setattr("pipeline.models.run.cycle_complete", lambda m, c, f, s: c.hour == 0)
     gh = tmp_path / "gh_output"
-    code = run_model(mcfg, "hrrr", tmp_path / "out", published="2026110700",
+    from pipeline.version import stamp
+    code = run_model(mcfg, "hrrr", tmp_path / "out", published=stamp("2026110700", "models"),
                      github_output=str(gh), now=datetime(2026, 11, 7, 4, 55))
     assert code == 0
     assert not (tmp_path / "out").exists()
@@ -247,3 +248,13 @@ def test_render_fixed_size_png(mcfg, tmp_path):
     assert len(set(sizes)) == 1 and sizes[0][0] >= 900
     # artists are removed between renders: the same field renders identically
     assert (tmp_path / "t2m.png").stat().st_size == n
+
+
+def test_version_stamp_changes_with_code(tmp_path):
+    from pipeline.version import code_version
+    (tmp_path / "a.py").write_bytes(b"x = 1\r\n")
+    v1 = code_version(["*.py"], tmp_path)
+    (tmp_path / "a.py").write_bytes(b"x = 1\n")
+    assert code_version(["*.py"], tmp_path) == v1            # line endings do not matter
+    (tmp_path / "a.py").write_bytes(b"x = 2\n")
+    assert code_version(["*.py"], tmp_path) != v1 and len(v1) == 8

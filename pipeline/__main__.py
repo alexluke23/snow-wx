@@ -20,10 +20,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import asos, avalanche, snotel
+from . import alerts, asos, avalanche, snotel
 from .common import REPO_ROOT, load_config, make_session, utcnow, write_json
 
 SOURCES = {
+    "alerts": alerts.run,
     "avalanche": avalanche.run,
     "snotel": snotel.run,
     "asos": asos.run,

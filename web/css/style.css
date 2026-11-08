@@ -213,3 +213,69 @@ main.area h4 { margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
 .metrics.nohrsc td:not(:first-child) { text-align: right; }
 
 .seg-row { flex-wrap: wrap; justify-content: flex-start; gap: 8px; margin: 6px 0; }
+
+abbr.info { text-decoration: none; cursor: help; color: var(--accent); }
+
+/* Powder Finder (finder.html): phone first */
+main.finder { display: block; overflow-y: auto; padding: 10px 14px 24px; width: 100%; }
+.finder-head h2 { margin: 2px 0; font-size: 22px; }
+.finder-head .fresh { margin: 0 0 8px; }
+.finder-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.finder-controls .seg button { min-width: 44px; }
+.finder-controls .seg button:disabled { color: #aab3bf; cursor: not-allowed; }
+.finder-controls .sel { font-size: 13px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.finder-controls select { min-height: 40px; font-size: 14px; padding: 4px 6px; max-width: 46vw; }
+.finder-controls .chk { font-size: 14px; display: inline-flex; gap: 6px; align-items: center; min-height: 40px; }
+.finder-body { display: flex; flex-direction: column; gap: 12px; }
+.finder-map #fmap { height: 46vh; min-height: 260px; border: 1px solid var(--line); border-radius: 8px; background: #eef1f5; }
+.frow { display: grid; grid-template-columns: 40px 1fr auto; gap: 2px 8px; align-items: center;
+        padding: 8px 4px; border-bottom: 1px solid var(--line); background: #fff; font-variant-numeric: tabular-nums; }
+.frow.fhead { display: none; }
+.frow .star { border: 0; background: none; font-size: 22px; color: #d4a017; min-height: 40px; cursor: pointer; }
+.frow .who a { font-weight: 600; color: var(--ink); text-decoration: none; }
+.frow .who a:hover { text-decoration: underline; }
+.frow .who small { display: block; color: var(--muted); font-size: 12px; }
+.frow .snow { text-align: right; font-size: 19px; white-space: nowrap; }
+.frow .snow small { display: block; font-size: 12px; color: var(--muted); }
+.frow .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; border: 1px solid rgba(0,0,0,.25); vertical-align: middle; }
+.frow .num[data-label] { grid-column: 2 / span 2; display: inline; font-size: 13px; color: var(--ink); }
+.frow .num[data-label]::before { content: attr(data-label) ": "; color: var(--muted); }
+.frow .num[data-label] small { color: var(--muted); }
+/* phone: the three detail cells share one line under the name */
+.frow .details { grid-column: 2 / span 2; display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.finder-controls .sel { flex: 1 1 28%; flex-direction: column; align-items: stretch; gap: 2px; font-size: 12px; }
+.finder-controls select { max-width: none; width: 100%; }
+.tobase { color: #1d4ed8; font-weight: 600; }
+.alert-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 3px; background: #b42318; color: #fff;
+               font-size: 11px; font-weight: 700; vertical-align: 2px; }
+@media (min-width: 720px) {
+  .frow, .frow.fhead { grid-template-columns: 40px minmax(160px, 1fr) 110px 80px 90px 80px; }
+  .frow.fhead { display: grid; position: sticky; top: 0; z-index: 2; font-size: 12px; color: var(--muted); font-weight: 600; background: var(--bg); }
+  .frow .num { text-align: right; }
+  .frow .details { display: contents; }
+  .frow .num[data-label] { grid-column: auto; display: block; font-size: 14px; }
+  .finder-controls .sel { flex: 0 1 auto; }
+  .frow .num[data-label]::before { content: none; }
+}
+@media (min-width: 1100px) {
+  .finder-body { flex-direction: row; align-items: flex-start; }
+  .finder-list { flex: 1 1 60%; min-width: 0; }
+  .finder-map { flex: 1 1 40%; position: sticky; top: 0; }
+  .finder-map #fmap { height: calc(100vh - 200px); }
+}
+/* reserve space before data arrives (Lighthouse CLS): controls and list don't grow later */
+.finder-controls .seg { min-height: 42px; }
+.finder-head .fresh { min-height: 3.9em; }
+@media (min-width: 720px) { .finder-head .fresh { min-height: 1.4em; } }
+#rows:empty { min-height: 150vh; }
+
+/* NWS alerts */
+.alert-banner { border-left: 5px solid #b42318; background: #fdecea; border-radius: 6px; margin: 6px 0 8px; padding: 8px 10px; }
+.alert-banner.watch { border-color: #c2410c; background: #fff1e6; }
+.alert-banner.advisory, .alert-banner.statement, .alert-banner.other { border-color: #a16207; background: #fefce8; }
+.alert-banner summary { cursor: pointer; min-height: 28px; font-size: 15px; }
+.alert-banner .by { display: block; font-size: 12px; color: var(--muted); }
+.alert-banner .alert-text p { margin: 6px 0; font-size: 14px; line-height: 1.45; }
+.alert-badge.watch { background: #c2410c; }
+.alert-badge.advisory, .alert-badge.statement, .alert-badge.other { background: #a16207; }
+.popup-alerts { margin: 4px 0; }
