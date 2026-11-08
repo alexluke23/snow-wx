@@ -61,8 +61,11 @@ const SnowCharts = (() => {
     const d0 = w0.slice(0, 10), d1 = w1.slice(0, 10);
     const days = [];
     for (let d = d0; d <= d1; d = addDays(d, 1)) days.push(d);
-    const ticks = days.filter((d) => `${d} 12:00` >= w0 && `${d} 12:00` <= w1);
-    const two = narrow(widthPx, ticks.length);
+    const inRange = days.filter((d) => `${d} 12:00` >= w0 && `${d} 12:00` <= w1);
+    // every day while a day gets >= 28 px (two-line labels below 56 px), else every other day; never rotated
+    const step = widthPx && inRange.length && widthPx / inRange.length < 28 ? 2 : 1;
+    const ticks = inRange.filter((d, i) => i % step === 0);
+    const two = !!widthPx && widthPx / inRange.length * step < 56;
     const shapes = [];
     for (const d of days) {
       const mid = `${d} 00:00`;
@@ -75,7 +78,7 @@ const SnowCharts = (() => {
       y0: 0, y1: 1, fillcolor: NIGHT, line: { width: 0 }, layer: "below" });
     return {
       axis: { type: "date", range: [w0, w1], fixedrange: true, showgrid: false, tickvals: ticks.map((d) => `${d} 12:00`),
-        ticktext: ticks.map((d) => dayName(d, two)), tickfont: font(tick(), INK), ticks: "", zeroline: false, linecolor: GRID,
+        ticktext: ticks.map((d) => dayName(d, two)), tickangle: 0, tickfont: font(tick(), INK), ticks: "", zeroline: false, linecolor: GRID,
         showline: true },
       shapes,
       b: two ? 46 : MARGIN.b,               // bottom margin for one- or two-line day labels

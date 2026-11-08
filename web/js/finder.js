@@ -17,7 +17,7 @@
   const PWINDOWS = [["24h", "24 h"], ["48h", "48 h"], ["72h", "72 h"]];
   // skier-relevant thresholds (inches) shown as chips when NBM provides them
   const SKI_THR = { "24h": [4, 6, 8, 12, 18, 24], "48h": [4, 6, 8, 12, 18, 24, 30, 36], "72h": [4, 6, 8, 12, 18, 24, 30, 36, 48] };
-  const SEPARATE = "Chances come from NBM's probabilistic guidance, calibrated separately from NBM's most-likely amount; " +
+  const SEPARATE = "Chances come from NBM's probabilistic guidance, calibrated separately from NBM's expected amount; " +
     "the two can disagree.";
   const fmt = (v) => (v === null || v === undefined ? "–" : v < 0.5 ? (v < 0.05 ? "0" : "<1") : `${Math.round(v)}`);
   const kft = (v) => `${(v / 1000).toFixed(1)}k`;
@@ -90,7 +90,7 @@
 
   function renderControls() {
     const prob = st.m === "prob";
-    segment($("mode"), [["amount", "Most likely"], ["prob", "Chance of"]], "m", async () => {
+    segment($("mode"), [["amount", "Expected"], ["prob", "Chance of"]], "m", async () => {
       if (st.m === "prob") await ensureExceed();
       update();
     });
@@ -129,10 +129,10 @@
     }[st.sort];
     list.sort((x, y) => (fav.has(y.a.id) - fav.has(x.a.id)) || by(x, y) || x.a.name.localeCompare(y.a.name));
     $("snow-head").innerHTML = prob ? `% chance ≥ ${st.px}" <a class="info" href="about.html#probabilities" title="${esc(SEPARATE)}" aria-label="How the chances work">ⓘ</a>`
-      : `${WINDOWS.find(([v]) => v === st.w)[1]} snow`;
+      : `${WINDOWS.find(([v]) => v === st.w)[1]} expected ${expectedInfo()}`;
     $("rows").innerHTML = list.length ? list.map((r) => {
       const c = prob ? colorFor(PROB, r.prob) || "#f4f6f8" : colorFor(SNOWFALL, r.snow) || "#f4f6f8";
-      const main = prob ? `<b>${r.prob === null ? "–" : `${r.prob}%`}</b>${r.pmean === null ? "" : `<small>most likely ${fmt(r.pmean)}"</small>`}`
+      const main = prob ? `<b>${r.prob === null ? "–" : `${r.prob}%`}</b>${r.pmean === null ? "" : `<small>expected ${fmt(r.pmean)}"</small>`}`
         : `<b>${fmt(r.snow)}"</b>${r.hi === null || r.hi === undefined ? "" : `<small>${fmt(r.lo)}–${fmt(r.hi)}</small>`}`;
       // precipitation likely in the window: chance of precip >= 20 %, or (Chance of mode)
       // the selected snowfall chance itself >= 20 %
@@ -158,9 +158,9 @@
     }).join("") : `<p class="hint">No ski areas match these filters.</p>`;
     $("legend-note").textContent = prob
       ? `Chance of at least ${st.px}" of snow in ${st.pw.replace("h", " h")} (${dayLabel(st.pd).replace("Next: ", "")}) at the ${st.e}, from NBM's ` +
-        `probabilistic guidance for the 2.5 km grid cell. ${SEPARATE} Small number: NBM's most-likely amount in the same window. ` +
+        `probabilistic guidance for the 2.5 km grid cell. ${SEPARATE} Small number: NBM's expected amount in the same window (about a 1-in-3 chance of reaching it). ` +
         `Snow level: lowest while precipitation is likely in that window. ${ridgeNote()}`
-      : `Most likely snowfall at the ${st.e} (${st.src === "nws" ? "NWS forecast, 2.5 km grid cell" : "NBM"})` +
+      : `Expected snowfall at the ${st.e} (${st.src === "nws" ? "NWS forecast, 2.5 km grid cell" : "NBM"})` +
         `${st.src === "nws" ? "" : "; small numbers: NBM 10–90%"}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest while precipitation is likely in the window, vs the base ` +
         `("–" when the chance of precipitation is under 20 %). Gust: highest summit gust in 72 h (NBM). ${ridgeNote()} ★ favorites list first.`;
     $("rows").querySelectorAll(".star").forEach((b) => b.addEventListener("click", () => {
@@ -248,7 +248,7 @@
     const prob = st.m === "prob";
     for (const r of [...list].reverse()) {
       const c = prob ? colorFor(PROB, r.prob) || "#f4f6f8" : colorFor(SNOWFALL, r.snow) || "#f4f6f8";
-      const txt = prob ? `${r.prob ?? "–"}% chance ≥ ${st.px}"` : `${fmt(r.snow)}"`;
+      const txt = prob ? `${r.prob ?? "–"}% chance ≥ ${st.px}"${r.pmean === null ? "" : ` (expected ${fmt(r.pmean)}")`}` : `expected ${fmt(r.snow)}"${r.hi === null || r.hi === undefined ? "" : ` (${fmt(r.lo)}–${fmt(r.hi)}")`}`;
       L.circleMarker([r.a.lat, r.a.lon], { radius: r.a.major ? 7 : 5, color: "#1b2a4a", weight: 1, fillColor: c, fillOpacity: 0.95 })
         .bindTooltip(`${esc(r.a.name)}: ${txt}`, { direction: "top" })
         .bindPopup(`<strong>${esc(r.a.name)}</strong><br>${txt}<br><a href="area.html#${encodeURIComponent(r.a.id)}">Forecast →</a>`)

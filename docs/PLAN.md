@@ -56,6 +56,8 @@ percentiles, snow level method, verification).
   (3 m 21 s with it), GFS 66–68 s. HRRR `wrfprs` has 25-mb levels 1000–50 mb; per forecast hour,
   the 21 levels 1000–500 mb cost TMP 12.3 MB, RH 16.6 MB (DPT 22.6 MB), HGT 15.3 MB,
   UGRD+VGRD 25.7 MB (byte ranges from the idx).
+- **Session 7 (dev7, Nov 8):** "Expected" rename done; hour-by-hour temperature/wind to day 10 (6-hourly,
+  shaded); Sno-Park source research written up (docs/sources_recreation.md), awaiting approval.
 - **Session 6 (dev6, Nov 8):** Part A fixes 1–9 from the dev5 live review done (PLAN.md §8 M3.6); Part B
   (hour-by-hour to day 10, Sno-Park source research) next.
 - **Not started:** ECMWF.
@@ -118,6 +120,7 @@ percentiles, snow level method, verification).
 | Nov 8 (S5) | 2. Area page "Hour by hour" keeps hourly detail to ~3.5 days. Next session: extend the temperature and wind panels to day 10 with NBM's 3/6-hourly values, lightly shaded and labelled "extended (6-hourly)". Snow stays as day/night bars beyond 3.5 days. |
 | Nov 8 (S5) | 3. Sno-Parks (M4.5), next session: research sources and licences first (USFS EDW, state Sno-Park lists, OSM gap-fill; public-domain and key-free preferred), write docs/sources_recreation.md, and get owner approval before building. |
 | Nov 8 (S6) | Rename "most likely" to **"Expected"** site-wide (next session): area tiles, day/night bars, Powder Finder (amount and chance modes), about.html; with an ⓘ tooltip: NBM's average amount, which typically has about a 1-in-3 chance of being reached (S6 fix 8 analysis). |
+| Nov 8 (S7) | Sno-Park sources approved: USFS EDW (public domain) as backbone + OpenStreetMap gap-fill (ODbL, attributed like the ski areas). WA/OR/CA/ID state lists only as a manual cross-check, never copied. Scope: Sno-Parks + snowplay areas + Nordic sites (+ winter trailheads named as such), ~450 points. Build M4.5 next session. |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
@@ -480,6 +483,8 @@ screenshots checked. Suggested session grouping in brackets.
 **M4.5 — Sno-Parks & winter recreation points** [Session 5+]
 - §5.6. ✅ when: western Sno-Parks cataloged with sources; each opens a
   forecast view; Powder Finder Type filter works on mobile.
+- S7: source research done → docs/sources_recreation.md (USFS EDW public domain: 375 western winter sites;
+  OSM ODbL: 182; WA/OR/CA/ID state lists have unstated or "All Rights Reserved" terms). Approved (S7): EDW + OSM, Sno-Parks + snowplay + Nordic; build next session.
 
 **M5 — NWS official** [Session 3]
 - NDFD base/summit, alerts banner, AFD link; NBM ↔ NWS toggle; about.html
