@@ -282,3 +282,7 @@ main.finder { display: block; overflow-y: auto; padding: 10px 14px 24px; width: 
 
 .other-alerts { margin: 4px 0 8px; font-size: 14px; }
 .other-alerts > summary { cursor: pointer; color: var(--muted); min-height: 28px; }
+
+#src-note { flex-basis: 100%; margin: 0; }
+#pday { min-width: 14em; }
+[hidden] { display: none !important; }
