@@ -15,6 +15,7 @@
       <a href="index.html">Obs map</a>
       <a href="finder.html" class="active" aria-current="page">Powder Finder</a>
       <a href="models.html">Model maps</a>
+      <a href="about.html">About</a>
     </nav>
     <div id="updated"></div>
   </header>
@@ -26,21 +27,27 @@
     </div>
     <div class="finder-controls" role="group" aria-label="Forecast options">
       <!-- static buttons = final size before the data arrives (no layout shift); finder.js re-renders them -->
+      <div class="seg" role="group" aria-label="Most likely amount or chance of" id="mode"><button type="button" class="on">Most likely</button><button type="button">Chance of</button></div>
+      <div class="seg" role="group" aria-label="Probability window" id="pwin" hidden></div>
+      <div class="seg" role="group" aria-label="Snowfall threshold" id="thr" hidden></div>
+      <label class="sel" id="pday-wrap" hidden>Window <select id="pday"></select></label>
       <div class="seg" role="group" aria-label="Time window" id="win"><button type="button">24 h</button><button type="button" class="on">72 h</button><button type="button">7 d</button><button type="button">10 d</button></div>
       <div class="seg" role="group" aria-label="Elevation" id="elev"><button type="button" class="on">Summit</button><button type="button">Base</button></div>
       <div class="seg" role="group" aria-label="Forecast source" id="src"><button type="button" class="on">NBM</button><button type="button">NWS</button></div>
       <label class="sel">State <select id="state"><option value="">All</option></select></label>
       <label class="sel">Region <select id="region"><option value="">All</option></select></label>
-      <label class="sel">Sort <select id="sort">
+      <label class="sel" id="sort-wrap">Sort <select id="sort">
         <option value="snow">Most snow</option><option value="obs">Most observed (24 h)</option>
         <option value="sl">Lowest snow level</option><option value="name">Name</option></select></label>
       <label class="chk"><input type="checkbox" id="favonly"> Favorites only</label>
+      <p class="note" id="src-note" hidden>Chances use NBM's probabilistic guidance; the NWS forecast has no snowfall probabilities.
+        <a href="about.html#probabilities">How they work →</a></p>
     </div>
     <div class="finder-body">
       <section class="finder-list" aria-label="Ski areas">
         <div class="frow fhead" role="row">
           <span></span><span>Ski area</span><span class="num" id="snow-head">Snow</span>
-          <span class="num">Obs 24 h</span><span class="num">Snow level</span><span class="num">Gust</span>
+          <span class="num">Obs 24 h</span><span class="num">Snow level</span><span class="num">Gust</span><span class="num" title="Ridge-top (free-air) wind at summit height, HRRR/RRFS">Ridge</span>
         </div>
         <div id="rows" role="list"></div>
         <p class="note" id="legend-note"></p>

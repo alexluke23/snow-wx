@@ -48,7 +48,8 @@
   const localFmt = (iso, tz, opts) => new Date(iso).toLocaleString([], { timeZone: tz, ...opts });
   const TYPE_LABEL = { snow: "snow", mixed: "mixed rain and snow", "mostly rain": "mostly rain" };
   // Range wording (owner S3): NBM probabilistic guidance to 48 h, "likely range" beyond.
-  const rangeName = (t) => (t?.range === "likely 25-75" ? "likely range" : "NBM 10–90%");
+  // NBM's own snowfall percentiles normally; the derived range is only a labelled fallback
+  const rangeName = (t) => (t?.range === "derived 25-75" || t?.range === "likely 25-75" ? "derived range (fallback)" : "NBM 10–90%");
   const outside = (t) => t && t.snow_lo !== null && t.snow_lo !== undefined && t.snow_hi !== null && t.snow_hi !== undefined
     && t.snow_in !== null && (t.snow_in < t.snow_lo - 0.05 || t.snow_in > t.snow_hi + 0.05);
   const SEPARATE = "NBM's deterministic (most likely) and probabilistic forecasts are calibrated separately, " +
@@ -91,14 +92,14 @@
       const t = P.totals[name];
       if (!t) return "";
       const c = colorFor(SNOWFALL, t.snow_in) || "#f4f6f8";
-      const note = outside(t) ? ` <abbr class="info" title="${esc(SEPARATE)}">ⓘ</abbr>` : "";
+      const note = outside(t) ? ` <a class="info" href="about.html#nbm" title="${esc(SEPARATE)}" aria-label="Why the ranges can disagree">ⓘ</a>` : "";
       return `<div class="tile${t.extended ? " ext" : ""}"><span class="label">${label}</span>
         <span class="swatch" style="background:${c}"></span><strong>${inches(t.snow_in)}<small> in</small></strong>
         <span class="rng">${t.snow_hi === null || t.snow_hi === undefined ? "NWS: no range" : `${rangeName(t)}: ${range(t.snow_lo, t.snow_hi)}${note}`}</span>
         <span class="rng liquid">${(t.qpf_in ?? 0).toFixed(2)} in liquid</span></div>`;
     };
     const head = P.raw
-      ? `NWS forecast for the 2.5 km grid cell (elev. ≈ ${ft(P.grid_elev_ft)}) · ${POINT_LABEL[pt]} ${ft(elev)}`
+      ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(P.grid_elev_ft)}) · ${POINT_LABEL[pt]} ${ft(elev)}`
       : `${POINT_LABEL[pt]} · ${ft(elev)} · most likely snowfall (NBM)`;
     return `<p class="tiles-for">${head}</p>
       <div class="tiles">${cell("24h", "Next 24 h")}${cell("72h", "Next 72 h")}${cell("7d", "Next 7 days")}${cell("10d", "Next 10 days")}</div>`;
@@ -110,6 +111,30 @@
   const baseLayout = (h, extra = {}) => ({
     height: h, margin: { l: 46, r: 12, t: 8, b: 36 }, font: FONT, paper_bgcolor: "#fff", plot_bgcolor: "#fff",
     showlegend: false, hovermode: "x unified", ...extra });
+
+  // Chance of at least X inches per 24/48/72-h window (NBM probability fields), GSL-style lines
+  const EX_THR = { "24h": [4, 6, 8, 12, 18, 24], "48h": [4, 6, 8, 12, 18, 24, 36], "72h": [4, 6, 8, 12, 18, 24, 36, 48] };
+  let exWin = "24h";
+  function exceedChart(el, fc, pt, tz) {
+    const ex = fc.points[pt].exceed?.[exWin];
+    if (!ex || !ex.end?.length) { el.innerHTML = `<p class="hint">No NBM chances for this window.</p>`; return; }
+    const want = EX_THR[exWin].filter((t) => ex.thr.includes(t));
+    const lab = (iso) => localFmt(iso, tz, { weekday: "short", hour: "numeric" });
+    const traces = want.map((t, n) => {
+      const k = ex.thr.indexOf(t), c = PROB.colors[Math.min(PROB.colors.length - 1, 2 + Math.round(n * (PROB.colors.length - 3) / Math.max(1, want.length - 1)))];
+      return { x: ex.end, y: ex.p.map((r) => r[k]), name: `≥ ${t}"`, mode: "lines+markers", line: { color: c, width: 2 },
+        marker: { size: 5, color: c }, hovertemplate: `≥ ${t}": %{y}%<extra></extra>`, hoverinfo: "y",
+        text: ex.start.map((s0, i) => `${lab(s0)} → ${lab(ex.end[i])}`) };
+    });
+    const heads = ex.start.map((s0, i) => `${lab(s0)} → ${lab(ex.end[i])}`);
+    traces.forEach((tr) => { tr.hovertemplate = `%{customdata}<br>${tr.hovertemplate}`; tr.customdata = heads; delete tr.text; });
+    Plotly.react(el, traces, baseLayout(240, {
+      showlegend: true, legend: { orientation: "h", y: -0.18, font: { size: 11 } }, margin: { l: 46, r: 12, t: 8, b: 58 },
+      hovermode: "closest",
+      xaxis: { type: "date", fixedrange: true, tickformat: "%a %-d" },
+      yaxis: { range: [-3, 103], ticksuffix: "%", zeroline: false, fixedrange: true, gridcolor: "#eef1f5", dtick: 25 },
+    }), PLOT_CFG);
+  }
 
   function periodChart(el, fc, pt) {
     const per = fc.points[pt].periods;
@@ -183,7 +208,25 @@
       xaxis: { type: "date", fixedrange: true } }), PLOT_CFG);
   }
 
-  function meteogram(el, fc, pt, keys) {
+  // ridge-top (free-air) summit wind from HRRR then RRFS (pipeline/models/ridge.py)
+  let ridgeP = null;
+  const loadRidge = () => (ridgeP ||= getJSON("data/ridge.json").catch(() => null));
+  const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+  const compass = (d) => (d === null || d === undefined ? "" : COMPASS[Math.round(d / 22.5) % 16]);
+  function ridgeSummary(ridge, id, hours = 24) {
+    const r = ridge?.areas?.[id];
+    if (!r) return null;
+    const now = Date.now(), end = now + hours * 3.6e6;
+    let best = null;
+    ridge.valid.forEach((t, i) => {
+      const x = new Date(t).getTime();
+      if (x >= now - 1.8e6 && x <= end && r.mph[i] !== null && (!best || r.mph[i] > best.mph))
+        best = { mph: r.mph[i], dir: r.dir[i], model: ridge.models[ridge.src[i]]?.label };
+    });
+    return best;
+  }
+
+  function meteogram(el, fc, pt, keys, ridge, id) {
     const t = fc.times, P = fc.points, s = P[pt].series;
     const pr = P[pt].precip;
     const width = pr.hours.map((h) => h * 3.6e6 * 0.85);
@@ -195,6 +238,9 @@
       ...temps,
       { x: t, y: P[wk].series.gust_mph, name: `${POINT_LABEL[wk]} gust`, line: { color: "#7c3aed", width: 1, dash: "dot" }, yaxis: "y2" },
       { x: t, y: P[wk].series.wind_mph, name: `${POINT_LABEL[wk]} wind`, line: { color: "#7c3aed", width: 2 }, yaxis: "y2" },
+      ...(ridge?.areas?.[id] ? [{ x: ridge.valid, y: ridge.areas[id].mph, name: "Ridge-top wind", yaxis: "y2",
+        mode: "lines", line: { color: "#0f766e", width: 2 }, customdata: ridge.areas[id].dir.map((d, i) => `${compass(d)} (${ridge.models[ridge.src[i]]?.label || ""})`),
+        hovertemplate: "Ridge-top %{y} mph from %{customdata}<extra></extra>" }] : []),
       { x: mid, y: pr.snow_in, width, name: `Snow at ${POINT_LABEL[pt].toLowerCase()} (in)`, type: "bar", marker: { color: "#3182bd" }, yaxis: "y3" },
       { x: mid, y: pr.qpf_in, name: "Liquid (in, right axis)", mode: "lines+markers", line: { color: "#b45309", width: 1.5, shape: "hvh" },
         marker: { size: 3 }, yaxis: "y4" },
@@ -217,6 +263,39 @@
       annotations: [{ xref: "paper", yref: "paper", x: 0, y: 0.115, xanchor: "left", yanchor: "bottom", showarrow: false,
         text: "Sky cover (white = clear, grey = cloudy)", font: { size: 10.5, color: "#5b6878" } }],
     }), PLOT_CFG);
+  }
+
+  // ---------------------------------------------------------------- forecaster discussion (AFD)
+  const AFD_STOP = new Set(["northern", "southern", "eastern", "western", "central", "northwest", "southwest", "inland",
+    "california", "oregon", "washington", "idaho", "montana", "wyoming", "utah", "colorado", "nevada", "arizona", "mexico",
+    "lake", "mount", "mountain", "mountains", "resort", "area", "valley", "basin", "peak", "lodge", "ridge", "creek",
+    "high", "county", "summit", "snow", "bowl", "village", "park", "station", "pass", "ranch", "range", "front"]);
+  const afdTerms = (a) => [...new Set(`${a.region || ""} ${a.name || ""}`.replace(/[^A-Za-z ]/g, " ").split(/\s+/)
+    .filter((w) => w.length >= 4 && !AFD_STOP.has(w.toLowerCase())))];
+  async function afdSection(el, a, wfo, tz) {
+    if (!wfo) { el.hidden = true; return; }
+    let idx;
+    try { idx = await getJSON("data/afd/index.json"); } catch { el.hidden = true; return; }
+    const o = idx.offices?.[wfo];
+    if (!o) { el.hidden = true; return; }
+    const link = `https://forecast.weather.gov/product.php?site=NWS&issuedby=${encodeURIComponent(wfo)}&product=AFD&format=txt&version=1`;
+    el.innerHTML = `<h3>Forecaster discussion</h3>
+      <details class="afd"><summary>Area Forecast Discussion, NWS ${esc(o.office)} · issued
+        ${localFmt(o.issued, tz, { weekday: "short", hour: "numeric", minute: "2-digit", timeZoneName: "short" })} (${ago(o.issued)})</summary>
+        <div class="afd-body"><p class="hint">Loading…</p></div></details>
+      <p class="note"><a href="${link}" target="_blank" rel="noopener">Read it on weather.gov →</a> Written by NWS forecasters for the
+        whole office area; paragraphs that mention ${esc(afdTerms(a).join(", ") || "this area")} are highlighted.</p>`;
+    el.querySelector("details").addEventListener("toggle", async (e) => {
+      const body = el.querySelector(".afd-body");
+      if (!e.target.open || body.dataset.done) return;
+      try {
+        const d = await getJSON(`data/afd/${encodeURIComponent(wfo)}.json`);
+        const terms = afdTerms(a), re = terms.length ? new RegExp(`\\b(${terms.join("|")})\\b`, "i") : null;
+        const paras = d.text.split(/\n\s*\n/).map((x) => x.trim()).filter((x) => x && x !== "&&");
+        body.innerHTML = paras.map((x) => `<p class="${re && re.test(x) ? "hit" : ""}">${esc(x.replace(/\n/g, " "))}</p>`).join("");
+        body.dataset.done = "1";
+      } catch (err) { body.innerHTML = `<p class="hint">Could not load the discussion (${esc(err.message)}).</p>`; }
+    });
   }
 
   async function recentObs(el, a) {
@@ -294,14 +373,18 @@
   function alertBanner(refs, index, link, tz) {
     if (!refs?.length) return "";
     const until = (iso) => (iso ? `until ${localFmt(iso, tz, { weekday: "short", hour: "numeric", timeZoneName: "short" })}` : "");
-    return refs.map((r) => {
+    // winter / wind / avalanche / blizzard / cold first; nothing is hidden, the rest collapse
+    const main = refs.filter((r) => r.relevant !== false), other = refs.filter((r) => r.relevant === false);
+    const one = (r) => {
       const a = index.alerts[r.id] || {};
       return `<details class="alert-banner ${esc(r.level)}" data-id="${esc(r.id)}">
         <summary><strong>${esc(r.event)}</strong> ${esc(until(r.ends))}<span class="by">${esc(a.sender || "")}</span></summary>
         <div class="alert-body"><p class="hint">${esc(a.area || "")}</p><div class="alert-text">Loading…</div>
           <p><a href="${esc(link)}" target="_blank" rel="noopener">NWS forecast and full alert →</a></p></div>
       </details>`;
-    }).join("");
+    };
+    return main.map(one).join("") + (other.length ? `<details class="other-alerts"><summary>Other alerts (${other.length}):
+      ${other.map((r) => esc(r.event)).join(", ")}</summary>${other.map(one).join("")}</details>` : "");
   }
   async function wireAlertDetails(root) {
     let details = null;
@@ -380,12 +463,17 @@
       <section><h3>Snowfall by day and night</h3>
         <div class="chart" id="period-chart"><p class="hint">Loading chart…</p></div>
         <p class="note" id="period-note"></p></section>
+      <section id="ex-sec"><h3>Chance of at least…</h3>
+        <div class="seg" role="group" aria-label="Window" id="ex-win"><button type="button" class="on" data-w="24h">24 h</button><button type="button" data-w="48h">48 h</button><button type="button" data-w="72h">72 h</button></div>
+        <div class="chart" id="ex-chart"><p class="hint">Loading chart…</p></div>
+        <p class="note" id="ex-note"></p></section>
       <section><h3>Snow level vs the ${isStation ? "station" : "mountain"}</h3><div class="chart" id="sl-chart"><p class="hint">Loading chart…</p></div>
         <p class="note">Below the line precipitation falls as rain. Solid blue where precipitation is possible
           (≥ 20% chance), dotted grey where it is unlikely; shaded 10–90% for the first 48 h (NBM).</p></section>
-      <section><h3>Hour by hour</h3><div class="chart" id="met-chart"><p class="hint">Loading chart…</p></div>
+      <section><h3>Hour by hour</h3><p class="note" id="ridge-note"></p><div class="chart" id="met-chart"><p class="hint">Loading chart…</p></div>
         <p class="note" id="met-note"></p></section>`
       : `<p class="hint">No point forecast is available for this site yet.</p>`}
+      <section id="afd"></section>
       <section><h3>Recent observations</h3><div id="nohrsc-obs"></div><div id="obs"></div></section>
       ${isStation ? "" : `<section><h3>Avalanche danger</h3>${avalanche(a.avalanche, avyR.status === "fulfilled" ? avyR.value : null)}</section>`}
       <section><h3>More</h3>
@@ -432,18 +520,33 @@
         $("tiles").innerHTML = tiles(d, pt, d.points[pt].elev_ft);
         const dayLocal = d.points[pt].periods.find((p) => p.is_day)?.local || "about 5 AM–5 PM";
         $("period-note").textContent = src === "nws"
-          ? `NWS forecast for the 2.5 km grid cell (elev. ≈ ${ft(d.points[pt].grid_elev_ft)}), shown as issued: snowfall to 72 h already includes the forecasters' rain/snow decisions. Days are 12Z–00Z (${dayLocal}).`
-          : `Bars: NBM deterministic (most likely; they add up to the totals). Whiskers: NBM probabilistic guidance — 10–90% of NBM snowfall to 48 h, then the likely range (25–75% of precipitation × snow ratio × chance of snow at this elevation). NBM calibrates these separately, so a bar can sit outside its whisker. Days are 12Z–00Z (${dayLocal}); nights lighter; hatched = extended outlook.`;
+          ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), shown as issued: snowfall to 72 h already includes the forecasters' rain/snow decisions. Days are 12Z–00Z (${dayLocal}).`
+          : `Bars: NBM deterministic (most likely; they add up to the totals). Whiskers: NBM's own snowfall percentiles (10–90%). Only when the newest NBM run lacks them does a "derived range (fallback)" appear (25–75% of precipitation × snow ratio × chance of snow). NBM calibrates these separately, so a bar can sit outside its whisker. Days are 12Z–00Z (${dayLocal}); nights lighter; hatched = extended outlook.`;
+        $("ex-sec").hidden = src === "nws" || !d.points[pt].exceed || !Object.keys(d.points[pt].exceed).length;
+        $("ex-note").innerHTML = `NBM's own probability of at least each amount at the ${POINT_LABEL[pt].toLowerCase()} in ${exWin.replace("h", " h")} windows ending about 5 AM (12Z), plotted at the window end. Separate from the most-likely bars, so they can disagree. NBM only. <a href="about.html#probabilities">How they work →</a>`;
         $("met-note").textContent = src === "nws"
-          ? `NWS forecast for the 2.5 km grid cell (elev. ≈ ${ft(d.points[pt].grid_elev_ft)}), as issued — not adjusted to this elevation. Precipitation in 6-hour amounts.`
+          ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), as issued — not adjusted to this elevation. Precipitation in 6-hour amounts.`
           : "Temperatures adjusted from the 2.5-km NBM grid to each elevation (6.5 °C/km). Hourly to 36 h, then 6-hour amounts.";
       };
-      const drawCharts = () => loadPlotly().then(() => {
+      const drawCharts = () => Promise.all([loadPlotly(), isStation ? null : loadRidge()]).then(([, ridge]) => {
         const d = doc(), keys = keysOf(d);
-        periodChart(ready($("period-chart")), d, pt);
-        meteogram(ready($("met-chart")), d, pt, keys);
-        snowLevelChart(ready($("sl-chart")), d, keys);
+        const rs = ridgeSummary(ridge, a.id);
+        $("ridge-note").innerHTML = rs ? `<b>Ridge-top wind</b>, next 24 h: up to <b>${rs.mph} mph</b> from ${compass(rs.dir)}
+          (${esc(rs.model || "")}, free air at summit height; exposed ridges). NBM's 10 m wind runs lower on exposed summits.
+          <a href="about.html#ridge-wind">Why →</a>` : "";
+        // one chart per task (yield in between) so no single long main-thread task
+        const yieldT = () => new Promise((r) => setTimeout(r, 0));
+        return [() => periodChart(ready($("period-chart")), d, pt),
+          () => { if (!$("ex-sec").hidden) exceedChart(ready($("ex-chart")), d, pt, tz); },
+          () => snowLevelChart(ready($("sl-chart")), d, keys),
+          () => meteogram(ready($("met-chart")), d, pt, keys, ridge, a.id)]
+          .reduce((pr, f) => pr.then(yieldT).then(f), Promise.resolve());
       });
+      $("ex-win")?.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {
+        exWin = btn.dataset.w;
+        $("ex-win").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === btn));
+        drawNumbers(); drawCharts();
+      }));
       drawNumbers();     // plain HTML first; charts after the library arrives
       main.querySelectorAll("[data-src]").forEach((btn) => btn.addEventListener("click", () => {
         src = btn.dataset.src;
@@ -456,6 +559,7 @@
     }
     if (!isStation) nohrscObs($("nohrsc-obs"), a, tz);
     recentObs($("obs"), a);
+    afdSection($("afd"), a, a.nws?.wfo || a.nws?.summit?.wfo || a.nws?.base?.wfo, tz);
   }
 
   window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); });

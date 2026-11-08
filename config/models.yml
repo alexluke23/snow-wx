@@ -40,6 +40,7 @@ models:
     domains: [west, pnw, sierra, nrockies, wasatch, colorado]
     fields: [qpf1, qpf6, qpf24, qpf_total, snow, snowlevel, t2m, gust]   # no upper air (PLAN.md, Nov 7)
     smooth_km: 30                         # Gaussian smoothing for 500 mb heights/vorticity
+    ridge: {levels: [850, 700, 500]}      # summit (free-air) wind, sampled at every frame
     attribution: "NOAA/NCEP HRRR via NOAA Open Data Dissemination (AWS)"
 
   rrfs:
@@ -55,6 +56,7 @@ models:
     domains: [west, pnw, sierra, nrockies, wasatch, colorado]
     fields: [qpf6, qpf24, qpf_total, snow, snowlevel, t2m, gust]   # no upper air (PLAN.md, Nov 7)
     smooth_km: 30
+    ridge: {levels: [850, 800, 750, 700, 650, 600]}   # prslev has 50-mb levels; summits are < 4.2 km
     attribution: "NOAA/NCEP RRFS via NOAA Open Data Dissemination (AWS)"
 
   gfs:
