@@ -39,3 +39,14 @@ http:
   # Data providers appreciate a descriptive User-Agent (api.weather.gov asks for one).
   user_agent: "snow-wx/0.2 (+https://github.com/alexluke23/snow-wx)"
   timeout: 60
+
+cache:
+  # Local disk hygiene: at the start of every `python -m pipeline ...` run, delete
+  # data_cache files older than this (per-cycle GRIB/NBM/NDFD/NOHRSC downloads).
+  prune_days: 2
+  # Slow lookup caches that are kept (3DEP + api.weather.gov lookups, OpenSkiMap seeds).
+  keep: [catalog, openskimap]
+
+archive:
+  # Forecast archive for verification (docs/verification.md): monthly CSVs on this release.
+  release: verification

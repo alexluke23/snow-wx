@@ -195,6 +195,13 @@ def main(argv=None) -> int:
     p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("archive", help="append forecasts + SNOTEL obs to the verification archive (CI)")
+    p.add_argument("--data", default="build/data", help="site data folder (points/, ndfd/, snotel/)")
+    p.add_argument("--release", default=None, help="GitHub release tag (default: config archive.release)")
+    p.add_argument("--local", default=None, help="use this folder instead of the release (dry runs, tests)")
+    p.add_argument("--work", default=None, help="scratch folder for downloads (default: a temp dir)")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
 
     # Windows consoles/pipes default to cp1252; Herbie prints emoji. Never crash on that.
@@ -209,6 +216,8 @@ def main(argv=None) -> int:
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
     if args.cmd == "models":
+        from .cache import housekeeping
+        housekeeping(REPO_ROOT, load_config(None))
         from .models.config import load_models_config
         from .models.run import run_model
         mcfg = load_models_config(args.models_config)
@@ -221,6 +230,17 @@ def main(argv=None) -> int:
                          github_output=args.github_output)
 
     cfg = load_config(args.config)
+    from .cache import housekeeping
+    housekeeping(REPO_ROOT, cfg)                 # prune data_cache (> 2 days), log disk use
+    if args.cmd == "archive":
+        import tempfile
+        from . import archive
+        store = (archive.LocalStore(Path(args.local)) if args.local
+                 else archive.ReleaseStore(args.release or (cfg.get("archive") or {}).get("release", "verification")))
+        with tempfile.TemporaryDirectory() as tmp:
+            stats = archive.archive(Path(args.data), store, Path(args.work or tmp))
+        print(json.dumps(stats, indent=1))
+        return 0
     if args.cmd == "ndfd":
         from . import ndfd
         return ndfd.run(cfg, make_session(cfg), Path(args.out), published=args.published,
