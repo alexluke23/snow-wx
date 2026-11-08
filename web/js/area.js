@@ -290,6 +290,30 @@
     document.title = "Snow-Wx · Ski areas";
   }
 
+  // Active NWS alerts for this site (data/alerts/index.json; details.json on expand).
+  function alertBanner(refs, index, link, tz) {
+    if (!refs?.length) return "";
+    const until = (iso) => (iso ? `until ${localFmt(iso, tz, { weekday: "short", hour: "numeric", timeZoneName: "short" })}` : "");
+    return refs.map((r) => {
+      const a = index.alerts[r.id] || {};
+      return `<details class="alert-banner ${esc(r.level)}" data-id="${esc(r.id)}">
+        <summary><strong>${esc(r.event)}</strong> ${esc(until(r.ends))}<span class="by">${esc(a.sender || "")}</span></summary>
+        <div class="alert-body"><p class="hint">${esc(a.area || "")}</p><div class="alert-text">Loading…</div>
+          <p><a href="${esc(link)}" target="_blank" rel="noopener">NWS forecast and full alert →</a></p></div>
+      </details>`;
+    }).join("");
+  }
+  async function wireAlertDetails(root) {
+    let details = null;
+    root.querySelectorAll("details.alert-banner").forEach((d) => d.addEventListener("toggle", async () => {
+      if (!d.open) return;
+      try { details = details || await getJSON("data/alerts/details.json"); } catch { details = {}; }
+      const t = details[d.dataset.id] || {};
+      d.querySelector(".alert-text").innerHTML = `<p>${esc(t.description || "No text.").replace(/\n\n/g, "</p><p>")}</p>` +
+        (t.instruction ? `<p><strong>${esc(t.instruction)}</strong></p>` : "");
+    }));
+  }
+
   // A forecast site: a ski area (summit + base) or a SNOTEL station (one elevation).
   function siteFromStation(st) {
     return { kind: "snotel", id: `snotel-${st.triplet.replace(/:/g, "-")}`, name: st.name, state: st.state, tz: st.tz,
@@ -302,10 +326,11 @@
     const main = $("area");
     const isStation = id.startsWith("snotel-");
     // One request per source (each file embeds its site record); catalogs only as fallback.
-    const [fcR, nwsR, avyR] = await Promise.allSettled([
+    const [fcR, nwsR, avyR, alR] = await Promise.allSettled([
       id ? getJSON(`data/points/${encodeURIComponent(id)}.json`) : Promise.reject(new Error("no id")),
       id ? getJSON(`data/ndfd/${encodeURIComponent(id)}.json`) : Promise.reject(new Error("no id")),
-      isStation ? Promise.resolve(null) : getJSON("data/avalanche_ratings.json")]);
+      isStation ? Promise.resolve(null) : getJSON("data/avalanche_ratings.json"),
+      getJSON("data/alerts/index.json")]);
     const nbm = fcR.status === "fulfilled" ? fcR.value : null;
     const nws = nwsR.status === "fulfilled" ? nwsR.value : null;
     let a = isStation ? (nbm?.station && siteFromStation(nbm.station)) : nbm?.area;
@@ -346,6 +371,8 @@
         </div>
       </div>
       <p class="sub">${sub}</p>
+      ${alR.status === "fulfilled" ? alertBanner((isStation ? alR.value.points : alR.value.areas)?.[a.id], alR.value,
+        nwsLink(isStation ? a : a.summit), tz) : ""}
       ${src ? `<p class="headline" id="headline"></p>
       <p class="fresh" id="fresh"></p>
       <div class="sec-head seg-row">${srcSeg}<span id="elev-seg"></span></div>
@@ -374,6 +401,7 @@
              <h4>Nearby airports</h4><ul>${stationRows(a.nearest.asos, "asos")}</ul>`}
       </section>`;
 
+    wireAlertDetails(main);
     $("fav").addEventListener("click", (e) => {
       const list = favs(), on = !list.includes(a.id);
       setFavs(on ? [...list, a.id] : list.filter((x) => x !== a.id));

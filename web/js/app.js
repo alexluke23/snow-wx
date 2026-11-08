@@ -184,6 +184,10 @@
         ctx.fillStyle = selected === `area:${a.id}` ? "#c2185b" : a.major ? "#0b1530" : "#1b2a4a";
         ctx.lineJoin = "round"; ctx.lineWidth = 1.6; ctx.strokeStyle = "#fff";
         ctx.fill(); ctx.stroke();
+        if (areaAlerts[a.id]?.length) {          // NWS alert: red ring
+          ctx.beginPath(); ctx.arc(x, y + 1, size * 0.85, 0, 2 * Math.PI);
+          ctx.strokeStyle = "#b42318"; ctx.lineWidth = 2.2; ctx.stroke();
+        }
       },
       onClick: () => openSki(it),
     };
@@ -384,10 +388,12 @@
   const skiItems = new Map();
   const ft = (v) => (v === null || v === undefined ? "–" : `${Number(v).toLocaleString()} ft`);
 
+  let areaAlerts = {};    // area id -> [{event, level, ends}] (data/alerts/index.json)
   function skiPopup(a) {
     const avy = a.avalanche ? `<br>Avalanche zone: ${esc(a.avalanche.zone)}` : "";
+    const al = (areaAlerts[a.id] || []).map((r) => `<span class="alert-badge ${esc(r.level)}">${esc(r.event)}</span>`).join(" ");
     return `<strong>${esc(a.name)}</strong>
-        <div class="hint">${esc(a.region)}, ${esc(a.state)}</div>
+        <div class="hint">${esc(a.region)}, ${esc(a.state)}</div>${al ? `<div class="popup-alerts">${al}</div>` : ""}
         <p>Base ${ft(a.base.elev_ft)} · Summit ${ft(a.summit.elev_ft)}<br>
         Vertical ${ft(a.vertical_ft)} · ${a.lifts} lifts${avy}</p>
         <a href="area.html#${encodeURIComponent(a.id)}">Forecast and details →</a>
@@ -508,7 +514,7 @@
 
   // One line per source: obs fetched by this build plus products merged in from
   // other jobs (NBM points, model maps, NOHRSC), each with its own time.
-  const SOURCE_LABEL = { snotel: "SNOTEL", asos: "ASOS", avalanche: "Avalanche", points: "NBM forecasts",
+  const SOURCE_LABEL = { snotel: "SNOTEL", asos: "ASOS", avalanche: "Avalanche", alerts: "NWS alerts", points: "NBM forecasts",
     models: "Model maps", nohrsc: "NOHRSC snow" };
   const UNIT = { snotel: "stations", asos: "stations", avalanche: "zones" };
   const ago = (iso) => {
@@ -542,12 +548,14 @@
     else map.setView(meta?.region?.map_center || [41.5, -113], meta?.region?.map_zoom || 5);
     setZoomClass();
 
-    const [avy, sno, aso, ski] = await Promise.allSettled([
+    const [avy, sno, aso, ski, alr] = await Promise.allSettled([
       getJSON("avalanche.geojson", lastUpdated),
       getJSON("snotel.geojson", lastUpdated),
       getJSON("asos.geojson", lastUpdated),
       getJSON("ski_areas.json", lastUpdated),
+      getJSON("alerts/index.json", lastUpdated),
     ]);
+    if (alr.status === "fulfilled") areaAlerts = alr.value.areas || {};
     if (avy.status === "fulfilled") avyLayer.addData(avy.value);
     if (sno.status === "fulfilled") { snotelData = sno.value; drawSnotel(); }
     if (aso.status === "fulfilled") drawAsos(aso.value);
