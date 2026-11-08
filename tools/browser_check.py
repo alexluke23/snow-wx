@@ -11,6 +11,8 @@ Serves the built site from a local port, drives headless Chrome and asserts:
             provider does switch (and says so).
   layout    one scrollbar: on area/finder/about pages the document scrolls and the footer
             sits at the end; on the obs map and models pages the viewport layout stays (fix 2).
+  search    header search on every page: "/" focuses, results are an accessible listbox,
+            Enter opens the forecast page; collapsed to an icon at 375 px (fix 3).
 Needs Chrome/Chromium and the `websocket-client` package. Exit code 1 on any failure.
 """
 
@@ -219,7 +221,62 @@ def check_layout(b: Browser, base: str, log):
                 need(not st["docScroll"], f"{name} {width}px: the app page scrolls as a document ({st})")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout}
+def _type(b: Browser, text: str):
+    for ch in text:
+        b.cmd("Input.dispatchKeyEvent", type="keyDown", key=ch, text=ch)
+        b.cmd("Input.dispatchKeyEvent", type="keyUp", key=ch)
+    time.sleep(0.8)
+
+
+def _key(b: Browser, key: str, code: int):
+    b.cmd("Input.dispatchKeyEvent", type="rawKeyDown", key=key, windowsVirtualKeyCode=code)
+    b.cmd("Input.dispatchKeyEvent", type="keyUp", key=key, windowsVirtualKeyCode=code)
+    time.sleep(0.4)
+
+
+def check_search(b: Browser, base: str, log):
+    # desktop: header search on a document page, keyboard only ("/" to focus, type, ArrowDown, Enter)
+    for page in ("finder.html", "about.html", "models.html"):
+        b.open(f"{base}/{page}", wait=4)
+        _key(b, "/", 191)
+        need(b.eval("document.activeElement && document.activeElement.id") == "ss-input", f"{page}: '/' does not focus the search")
+        _type(b, "snowbird")
+        st = b.eval("""(() => { const i = document.querySelector('#ss-input'), l = document.querySelector('#ss-list');
+          return {exp: i.getAttribute('aria-expanded'), act: i.getAttribute('aria-activedescendant'),
+                  opts: [...l.querySelectorAll('[role=option]')].map(o => o.textContent.trim().slice(0, 40))}; })()""")
+        log(f"  search {page}: {st}")
+        need(st["exp"] == "true" and st["opts"] and st["act"], f"{page}: no accessible result list ({st})")
+        _key(b, "ArrowDown", 40)
+        _key(b, "Enter", 13)
+        time.sleep(1.5)
+        url = b.eval("location.href")
+        log(f"  search {page}: -> {url}")
+        need("area.html#" in url, f"{page}: Enter did not open a forecast page ({url})")
+    # mobile: collapsed to an icon; the button opens it; SNOTEL ids match
+    b.open(f"{base}/area.html#alta-ski-area", width=375, height=740, wait=4)
+    vis = b.eval("(() => { const r = e => { const x = document.querySelector(e).getBoundingClientRect(); return x.width > 0 && x.height > 0; }; return [r('.ss-toggle'), r('#ss-input')]; })()")
+    need(vis == [True, False], f"mobile: expected icon only, got toggle/input visible = {vis}")
+    b.eval("document.querySelector('.ss-toggle').click()")
+    time.sleep(0.5)
+    need(b.eval("document.activeElement.id") == "ss-input", "mobile: the search button does not open/focus the box")
+    _type(b, "766")
+    first = b.eval("(document.querySelector('#ss-list [role=option]') || {}).textContent || ''")
+    log(f"  search mobile '766': {first.strip()[:60]}")
+    need("Snowbird" in first, f"mobile: SNOTEL id 766 should find Snowbird, got {first!r}")
+    _key(b, "Enter", 13)
+    time.sleep(1.5)
+    need(b.eval("location.hash") == "#snotel-766-UT-SNTL", f"mobile: wrong page {b.eval('location.hash')}")
+    # obs map panel search shares the ranking (and still flies the map)
+    b.open(f"{base}/index.html", wait=6)
+    b.eval("document.querySelector('#search').focus()")
+    _type(b, "kslc")
+    first = b.eval("(document.querySelector('#search-results li') || {}).textContent || ''")
+    log(f"  obs panel search 'kslc': {first.strip()[:60]}")
+    need("salt lake" in first.lower(), f"obs-map panel search broken: {first!r}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search}
 
 
 def main(argv=None) -> int:

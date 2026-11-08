@@ -431,22 +431,8 @@
     }
   }
 
-  function searchStations(query, limit = 10) {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    const hits = [];
-    for (const s of stationIndex) {
-      const ids = s.ids.map((x) => x.toLowerCase()), name = s.name.toLowerCase();
-      let score = -1;
-      if (ids.includes(q)) score = 0;
-      else if (name.startsWith(q) || ids.some((x) => x.startsWith(q))) score = 1;
-      else if (name.split(/[\s\-/()]+/).some((w) => w.startsWith(q))) score = 2;
-      else if (name.includes(q)) score = 3;
-      if (score >= 0) hits.push([score, s]);
-    }
-    hits.sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name));
-    return hits.slice(0, limit).map((h) => h[1]);
-  }
+  // same ranking as the header search (js/search.js)
+  const searchStations = (query, limit = 10) => SnowSearch.rank(stationIndex, query, limit);
 
   function selectStation(s, { fly = true } = {}) {
     if (fly) map.setView([s.lat, s.lon], Math.max(map.getZoom(), 10));

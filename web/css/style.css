@@ -339,3 +339,34 @@ body.doc-page { display: block; height: auto; min-height: 100vh; min-height: 100
 body.doc-page { display: flex; flex-direction: column; }
 body.doc-page > main { flex: 1 0 auto; display: block; overflow: visible; min-height: 0; }
 body.doc-page > footer { flex: 0 0 auto; }
+
+/* ---- site-wide header search (js/search.js) ---- */
+header { position: relative; }
+.site-search { position: relative; margin: 0 14px 0 8px; align-self: center; }
+.ss-toggle { display: none; background: transparent; border: 0; color: #e6edf5; padding: 8px; min-width: 40px; min-height: 40px;
+  border-radius: 6px; cursor: pointer; }
+.ss-toggle:hover, .ss-toggle:focus-visible { background: #22344a; }
+.ss-box input { width: 230px; font-size: 14px; padding: 6px 10px; border-radius: 6px; border: 1px solid #3a4e66;
+  background: #0f1a26; color: #fff; }
+.ss-box input::placeholder { color: #a9b8c8; }
+.ss-box input:focus { outline: 2px solid #7fb2ea; outline-offset: 1px; background: #fff; color: #1d2733; }
+.site-search .search-results { position: absolute; top: calc(100% + 4px); right: 0; width: min(360px, 92vw); z-index: 2000;
+  max-height: 60vh; overflow-y: auto; margin: 0; padding: 4px 0; list-style: none; background: #fff; color: #1d2733;
+  border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); }
+.site-search .search-results li { padding: 8px 12px; cursor: pointer; font-size: 14px; }
+.site-search .search-results li.active, .site-search .search-results li:hover { background: #e8f0fa; }
+.site-search .search-results .kind { display: block; font-size: 12px; color: #4a5666; }
+.site-search .search-results li.empty { cursor: default; color: #4a5666; }
+@media (max-width: 600px) {
+  /* the search button shares the title row; nav and "updated" wrap below it */
+  .site-search { position: static; margin: -6px -6px -6px auto; order: 1; }
+  header h1 { order: 0; }
+  header .site-nav { order: 2; flex-basis: 100%; }
+  header #updated { order: 3; }
+  .ss-toggle { display: inline-flex; align-items: center; justify-content: center; }
+  .ss-box { display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 2000; padding: 8px 10px;
+    background: #14202e; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25); }
+  .site-search.open .ss-box { display: block; }
+  .ss-box input { width: 100%; box-sizing: border-box; font-size: 16px; }   /* 16 px: no iOS zoom on focus */
+  .site-search .search-results { left: 10px; right: 10px; width: auto; }
+}
