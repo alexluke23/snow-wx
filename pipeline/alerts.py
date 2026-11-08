@@ -32,6 +32,15 @@ def short_name(event: str) -> str:
             .replace("Special Weather", "Spec. Wx"))
 
 
+# Mountain-relevant alerts list first (owner S4); every other alert is still shown.
+RELEVANT = ("winter", "snow", "blizzard", "ice storm", "freez", "avalanche", "wind", "cold", "chill", "frost")
+
+
+def relevant(event: str) -> bool:
+    e = (event or "").lower()
+    return any(w in e for w in RELEVANT)
+
+
 def alert_key(alert_id: str) -> str:
     return hashlib.sha1(alert_id.encode()).hexdigest()[:10]
 
@@ -97,8 +106,9 @@ def build(features: list[dict], areas: list[dict], points: list[dict]) -> tuple[
     def refs(m):        # warnings first, then watches, advisories
         order = {"warning": 0, "watch": 1, "advisory": 2, "statement": 3, "other": 4}
         return {sid: sorted(({"id": k, "event": alerts[k]["event"], "short": alerts[k]["short"],
-                              "level": alerts[k]["level"], "ends": alerts[k]["ends"]} for k in ks),
-                            key=lambda r: order[r["level"]]) for sid, ks in m.items()}
+                              "level": alerts[k]["level"], "ends": alerts[k]["ends"],
+                              "relevant": relevant(alerts[k]["event"])} for k in ks),
+                            key=lambda r: (not r["relevant"], order[r["level"]])) for sid, ks in m.items()}
     index = {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "count": len(alerts),
              "source": "NOAA/NWS active alerts (api.weather.gov)", "alerts": alerts,
              "areas": refs(m_areas), "points": refs(m_points)}

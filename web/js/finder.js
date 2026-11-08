@@ -17,10 +17,22 @@
   const kft = (v) => `${(v / 1000).toFixed(1)}k`;
 
   // ---- state (URL hash: #w=72h&e=summit&src=nbm&st=UT&r=Wasatch&sort=snow&fav=1)
+  // A shared URL wins; otherwise the visitor's last choice (localStorage); otherwise 72 h summit.
+  const PREF_KEY = "snowwx.finder";
   const q = new URLSearchParams(location.hash.slice(1));
-  const st = { w: q.get("w") || "72h", e: q.get("e") || "summit", src: q.get("src") || "nbm",
-               state: q.get("st") || "", region: q.get("r") || "", sort: q.get("sort") || "snow", fav: q.get("fav") === "1" };
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch { saved = {}; }
+  const pick = (k, def) => q.get(k) ?? saved[k] ?? def;
+  const st = { w: pick("w", "72h"), e: pick("e", "summit"), src: pick("src", "nbm"),
+               state: pick("st", ""), region: pick("r", ""), sort: pick("sort", "snow"), fav: pick("fav", "0") === "1" };
+  const savePrefs = () => {
+    try {
+      localStorage.setItem(PREF_KEY, JSON.stringify({ w: st.w, e: st.e, src: st.src, st: st.state, r: st.region,
+        sort: st.sort, fav: st.fav ? "1" : "0" }));
+    } catch { /* private mode */ }
+  };
   const writeHash = () => {
+    savePrefs();
     const p = new URLSearchParams({ w: st.w, e: st.e, src: st.src, sort: st.sort });
     if (st.state) p.set("st", st.state);
     if (st.region) p.set("r", st.region);
@@ -44,6 +56,7 @@
       const o = obs?.areas?.[a.id]?.[st.e]?.sf24 ?? null;
       const sl = src?.snowlvl_min_72h_ft ?? null;
       return { a, snow: t ? t[0] : null, lo: t ? t[1] : null, hi: t ? t[2] : null, obs: o, sl,
+               pop: t && t.length > 3 ? t[3] : null,
                slVsBase: sl === null ? null : sl - a.elev.base, gust: src?.gust_max_72h_mph ?? null,
                alerts: alerts[a.id] || [] };
     });
@@ -74,7 +87,10 @@
     $("rows").innerHTML = list.length ? list.map((r) => {
       const c = colorFor(SNOWFALL, r.snow) || "#f4f6f8";
       const rng = r.hi === null || r.hi === undefined ? "" : `<small>${fmt(r.lo)}–${fmt(r.hi)}</small>`;
-      const slTxt = r.sl === null ? "–" : r.slVsBase <= 0 ? `<span class="tobase">to base</span>` : `+${kft(r.slVsBase)}`;
+      // same rule as the area page: snow level only matters where precipitation is possible (>= 20 %)
+      const dry = r.pop !== null && r.pop < 20;
+      const slTxt = r.sl === null || dry ? `<span class="hint" title="${dry ? "little precipitation expected" : ""}">–</span>`
+        : r.slVsBase <= 0 ? `<span class="tobase">to base</span>` : `+${kft(r.slVsBase)}`;
       const badge = r.alerts.length ? `<span class="alert-badge ${esc(r.alerts[0].level)}" title="${esc(r.alerts.map((x) => x.event).join(", "))}">${esc(r.alerts[0].short || "Alert")}</span>` : "";
       return `<div class="frow" role="listitem">
         <button type="button" class="star${fav.has(r.a.id) ? " on" : ""}" data-id="${esc(r.a.id)}" aria-pressed="${fav.has(r.a.id)}"
@@ -90,7 +106,7 @@
       </div>`;
     }).join("") : `<p class="hint">No ski areas match these filters.</p>`;
     $("legend-note").textContent = `Most likely snowfall at the ${st.e} (${st.src === "nws" ? "NWS forecast, 2.5 km grid cell" : "NBM"})` +
-      `${rangeName ? `; small numbers: ${rangeName}` : ""}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest in the next 72 h vs the base.` +
+      `${rangeName ? `; small numbers: ${rangeName}` : ""}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest in the next 72 h vs the base ("–" when the chance of precipitation is under 20 %).` +
       ` Gust: highest summit gust in 72 h. ★ favorites list first.`;
     $("rows").querySelectorAll(".star").forEach((b) => b.addEventListener("click", () => {
       const s = favs(); s.has(b.dataset.id) ? s.delete(b.dataset.id) : s.add(b.dataset.id); saveFavs(s); render();

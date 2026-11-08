@@ -526,13 +526,21 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
         doc["checks"] = P.plausibility(tot["base"], tot["summit"])
         files[a["id"]] = doc
         per = doc["points"]["summit"]["periods"]
-        brief = lambda t: {n: [x["snow_in"], x["snow_lo"], x["snow_hi"]] for n, x in t.items()}  # noqa: E731
+        def brief(k):
+            """[mean, lo, hi, max chance of precip %] per window, from the point's periods."""
+            pts = doc["points"][k]
+            out = {}
+            for n, x in pts["totals"].items():
+                end = (init + timedelta(hours={"24h": 24, "72h": 72, "7d": 168, "10d": 240}[n])).strftime("%Y-%m-%dT%H:%MZ")
+                pops = [p["pop"] for p in pts["periods"] if p.get("pop") is not None and p["end"] <= max(end, x.get("from") or end)]
+                out[n] = [x["snow_in"], x["snow_lo"], x["snow_hi"], round(100 * max(pops)) if pops else None]
+            return out
         summary.append({
             "id": a["id"], "name": a["name"], "state": a["state"], "region": a["region"],
             "major": a.get("major", False), "lat": a["summit"]["lat"], "lon": a["summit"]["lon"],
             "elev": {"summit": a["summit"]["elev_ft"], "base": a["base"]["elev_ft"]},
             # [most likely (mean), 10th, 90th] snow in inches per window
-            "summit": brief(tot["summit"]), "base": brief(tot["base"]), "checks": doc["checks"],
+            "summit": brief("summit"), "base": brief("base"), "checks": doc["checks"],
             "p_snow_base_72h": tot["base"].get("72h", {}).get("p_snow"),
             "snowlvl_min_72h_ft": min([p["snowlvl_min_ft"] for p in per[:6] if p["snowlvl_min_ft"] is not None],
                                       default=None),
