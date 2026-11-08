@@ -511,7 +511,10 @@
   function drawStatus(meta) {
     const items = Object.entries(meta.sources || {}).map(([name, s]) => {
       const label = SOURCE_LABEL[name] || name;
-      const what = s.ok ? [s.count !== undefined ? `${s.count} ${s.unit || UNIT[name] || ""}`.trim() : "", s.detail || ""]
+      // "1 alert", "2 alerts" (units are plural nouns: drop the "s" for exactly one)
+      const unit = (n, u) => (n === 1 && /s$/.test(u) ? u.slice(0, -1) : u);
+      const what = s.ok ? [s.count !== undefined ? `${s.count} ${unit(s.count, s.unit || UNIT[name] || "")}`.trim() : "",
+        (s.detail || "").replace(/^1 (ski areas|offices|alerts|stations|layers|models) /, (m, u) => `1 ${u.slice(0, -1)} `)]
         .filter(Boolean).join(" · ") : `failed (${esc(s.error)})`;
       const when = s.at ? ` <span class="hint" title="${esc(s.at)}">${ago(s.at)}</span>` : "";
       return `<li class="${s.ok ? "ok" : "bad"}">${esc(label)}: ${esc(what)}${when}</li>`;

@@ -151,3 +151,8 @@ def test_search_index_lists_areas_and_snotel_with_page_ids(tmp_path):
     assert items[0] == {"k": "area", "id": "alta-ski-area", "n": "Alta Ski Area", "s": "Ski area · Wasatch, UT"}
     assert items[1]["id"] == "snotel-766-UT-SNTL" and items[1]["x"] == ["766", "766:UT:SNTL"]
     assert items[1]["s"] == "SNOTEL 766 · UT · 9,177 ft"
+
+
+def test_plural():
+    from pipeline.common import plural
+    assert plural(1, "ski area") == "1 ski area" and plural(0, "ski area") == "0 ski areas" and plural(2, "office") == "2 offices"

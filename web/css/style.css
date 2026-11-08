@@ -370,3 +370,5 @@ header { position: relative; }
   .ss-box input { width: 100%; box-sizing: border-box; font-size: 16px; }   /* 16 px: no iOS zoom on focus */
   .site-search .search-results { left: 10px; right: 10px; width: auto; }
 }
+.chart.chart-none { min-height: 0; border-style: dashed; }
+.chart .none-line { margin: 0; padding: 12px 14px; font-size: 14px; color: #1d2733; }
