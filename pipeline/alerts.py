@@ -77,8 +77,8 @@ def match(features: list[dict], sites: list[dict]) -> dict[str, list[str]]:
 def load_sites(repo: Path = REPO_ROOT) -> tuple[list[dict], list[dict]]:
     """(ski-area sites, SNOTEL sites) with their UGC zone/county codes and locations."""
     areas, points = [], []
-    cat = json.loads((repo / "data" / "ski_areas.json").read_text(encoding="utf-8"))
-    for a in cat["areas"]:
+    from .common import forecast_areas          # ski areas + Sno-Parks (M4.5)
+    for a in forecast_areas(repo):
         codes = {c for k in ("summit", "base") for c in ((a.get("nws") or {}).get(k) or {}).values()
                  if isinstance(c, str) and len(c) == 6 and c[2] in "ZC"}
         areas.append({"id": a["id"], "codes": codes,

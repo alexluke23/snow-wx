@@ -572,7 +572,9 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
             return out
         summary.append({
             "id": a["id"], "name": a["name"], "state": a["state"], "region": a["region"],
-            "major": a.get("major", False), "lat": a["summit"]["lat"], "lon": a["summit"]["lon"],
+            "kind": a.get("kind", "ski"), **({"type_label": a.get("type_label")} if a.get("kind") == "snopark" else {}),
+            "major": a.get("major", False), "lat": a["base" if a.get("kind") == "snopark" else "summit"]["lat"],
+            "lon": a["base" if a.get("kind") == "snopark" else "summit"]["lon"],
             "elev": {"summit": a["summit"]["elev_ft"], "base": a["base"]["elev_ft"]},
             # [most likely (mean), 10th, 90th] snow in inches per window
             "summit": brief("summit"), "base": brief("base"), "checks": doc["checks"],
@@ -694,6 +696,9 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
                github_output: str | None = None, catalog: Path = CATALOG, now=None) -> int:
     cat = json.loads(Path(catalog).read_text(encoding="utf-8"))
     grid = cat["nbm_grid"]          # grid definition stored with the catalog
+    rp = Path(catalog).with_name("rec_points.json")      # Sno-Parks / winter recreation (M4.5), same shape
+    if rp.exists():
+        cat["areas"] = cat["areas"] + json.loads(rp.read_text(encoding="utf-8"))["areas"]
     sp = Path(catalog).with_name("snotel_points.json")
     stations = json.loads(sp.read_text(encoding="utf-8"))["points"] if sp.exists() else []
 

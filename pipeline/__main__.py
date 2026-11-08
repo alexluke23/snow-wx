@@ -59,8 +59,9 @@ def product_status(outdir: Path) -> dict:
     try:
         js = json.loads(pts.read_text(encoding="utf-8"))
         q = js.get("quality") or {}
-        out["points"] = {"ok": True, "count": len(js.get("areas", [])), "unit": "ski areas",
-                         "detail": f"NBM {js['cycle'][8:10]}Z run" + (f", {q['missing']} of {q['required']} required "
+        n_sp = sum(1 for a in js.get("areas", []) if a.get("kind") == "snopark")
+        out["points"] = {"ok": True, "count": len(js.get("areas", [])) - n_sp, "unit": "ski areas",
+                         "detail": (f"{n_sp} Sno-Parks · " if n_sp else "") + f"NBM {js['cycle'][8:10]}Z run" + (f", {q['missing']} of {q['required']} required "
                                                                       f"messages missing" if q.get("missing") else ""),
                          "at": js.get("generated_at"), **({"quality": q} if q else {})}
     except (OSError, ValueError, KeyError):
@@ -120,12 +121,14 @@ def build_site(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
     shutil.copytree(web, outdir, dirs_exist_ok=True)
     code = run_obs(cfg, outdir / "data", only)
     # Static catalogs that live in the repo (built on demand, e.g. `pipeline catalog`).
-    for name in ("ski_areas.json",):
+    for name in ("ski_areas.json", "rec_points.json"):
         src = REPO_ROOT / "data" / name
         if src.exists():
             shutil.copy2(src, outdir / "data" / name)
     from .search import write_index
     write_index(outdir / "data")              # header search on every page (web/js/search.js)
+    from .search import write_map_points
+    write_map_points(outdir / "data")         # compact ski areas + Sno-Parks for the obs map
     try:
         from .models.catalog import write_catalog
         from .models.config import load_models_config
@@ -174,6 +177,7 @@ def main(argv=None) -> int:
     p.add_argument("--obs-dir", default="build/data", help="folder with snotel/asos.geojson for nearest-station joins")
     p.add_argument("--refresh", action="store_true", help="re-download OpenSkiMap")
     p.add_argument("--snotel", action="store_true", help="build data/snotel_points.json (SNOTEL forecast points) instead")
+    p.add_argument("--rec", action="store_true", help="build data/rec_points.json (Sno-Parks / winter recreation) instead")
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("ndfd", help="NWS official forecast (NDFD) at every ski area and SNOTEL site into OUT/")
@@ -260,6 +264,9 @@ def main(argv=None) -> int:
         from . import catalog
         if args.snotel:
             return catalog.build_snotel_points(make_session(cfg), catalog.load_catalog_config(), Path(args.obs_dir))
+        if args.rec:
+            from .rec import build_rec_points
+            return build_rec_points(make_session(cfg), cfg, catalog.load_catalog_config(), Path(args.obs_dir))
         return catalog.run(cfg, make_session(cfg), Path(args.out), Path(args.obs_dir), args.refresh)
     if args.cmd == "obs":
         return run_obs(cfg, Path(args.out), args.only)

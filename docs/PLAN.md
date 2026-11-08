@@ -391,7 +391,7 @@ rename, day-10 temp/wind panels, Sno-Park research).
    did forecasts do here this season?" per site; feeds M9.
 
 **Track 2 — Obs map (in parallel / alternating with Track 1)**
-6. **Obs map mobile performance pass**: stations and overlays render
+6. ✔ (S8) **Obs map mobile performance pass** — Lighthouse mobile (gzip, like Pages) 81 → 87: tiles and all data start at once (no wait for meta.json), compact data/map_points.json (ski areas + Sno-Parks) instead of full catalogs, Leaflet self-hosted (web/vendor, BSD-2), preconnect to USGS tiles, Plotly fetched on first interaction. Original text:: stations and overlays render
    before basemap tiles finish; preconnect to tile hosts; smaller first
    payload. Target Lighthouse mobile performance ≥ 85 (currently 47–71).
 7. **Snow forecast overlays on the obs map**: NBM expected snowfall
@@ -530,6 +530,16 @@ rename, day-10 temp/wind panels, Sno-Park research).
 **M4.5 — Sno-Parks & winter recreation points** [Session 5+]
 - §5.6. ✅ when: western Sno-Parks cataloged with sources; each opens a
   forecast view; Powder Finder Type filter works on mobile.
+- ✔ Done (S8, dev8): `python -m pipeline catalog --rec` → data/rec_points.json: 447 points (407 USFS EDW, 40 OSM)
+  in 10 states (WA 103, OR 102, MT 71, CA 42, ID 39, UT 24, WY 24, CO 22, NM 12, AZ 8; 344 Sno-Parks, 54 winter
+  trailheads, 30 snowplay, 19 Nordic). Trailhead + "high terrain" (highest 3DEP within 5 km, one 81×81 exportImage per
+  site); full 3DEP cell averages (741 new cells). Cold build 38 min, cached rerun 3 min. Same record shape as ski areas
+  (base = trailhead, summit = high terrain) → NBM/NDFD points, alerts, AFD, NOHRSC/SNODAS samples, archive, search.
+  Area page "snopark" view: key facts first (avalanche danger, SNODAS trailhead depth, coldest 24 h wind chill,
+  permit, activities (inferred marked), agency, source); wind chill line. Powder Finder Type filter (Ski areas /
+  Sno-Parks / All, square symbols); obs-map Sno-Parks layer; about.html attribution. Points job: 1,832 cells (was
+  1,090), local 4 m 44 s (network-bound; downloads unchanged); points output 25 → 44 MB, NDFD 9 → 14 MB, site 168 →
+  197 MB; archive 20.8k → 36.9k NBM rows per cycle (~0.3 MB gz). Browser check `snoparks`.
 - S7: source research done → docs/sources_recreation.md (USFS EDW public domain: 375 western winter sites;
   OSM ODbL: 182; WA/OR/CA/ID state lists have unstated or "All Rights Reserved" terms). Approved (S7): EDW + OSM, Sno-Parks + snowplay + Nordic; build next session.
 

@@ -227,6 +227,9 @@ def run(cfg: dict, session, out: Path, *, published: str | None = None, github_o
     cat_path = catalog or REPO_ROOT / "data" / "ski_areas.json"
     if cat_path.exists():
         cat = json.loads(cat_path.read_text(encoding="utf-8"))
+        rp = cat_path.with_name("rec_points.json")           # Sno-Park trailheads too (M4.5)
+        if rp.exists():
+            cat["areas"] = cat["areas"] + json.loads(rp.read_text(encoding="utf-8"))["areas"]
         areas = {}
         for a in cat["areas"]:
             rec = {}
