@@ -47,13 +47,19 @@
   };
   const localFmt = (iso, tz, opts) => new Date(iso).toLocaleString([], { timeZone: tz, ...opts });
   const TYPE_LABEL = { snow: "snow", mixed: "mixed rain and snow", "mostly rain": "mostly rain" };
+  // Range wording (owner S3): NBM probabilistic guidance to 48 h, "likely range" beyond.
+  const rangeName = (t) => (t?.range === "likely 25-75" ? "likely range" : "NBM 10–90%");
+  const outside = (t) => t && t.snow_lo !== null && t.snow_lo !== undefined && t.snow_hi !== null && t.snow_hi !== undefined
+    && t.snow_in !== null && (t.snow_in < t.snow_lo - 0.05 || t.snow_in > t.snow_hi + 0.05);
+  const SEPARATE = "NBM's deterministic (most likely) and probabilistic forecasts are calibrated separately, " +
+    "so the most-likely amount can fall outside the range.";
 
   function headline(fc, keys) {
     const pt = keys[0], s = fc.points[pt].totals["72h"];
     if (!s) return "";
     const where = keys.length > 1 ? " at the summit" : "";
     let txt;
-    const rng = (t) => (t.snow_hi === null || t.snow_hi === undefined ? "" : ` (${range(t.snow_lo, t.snow_hi)} range)`);
+    const rng = (t) => (t.snow_hi === null || t.snow_hi === undefined ? "" : ` (${rangeName(t)} ${range(t.snow_lo, t.snow_hi)})`);
     if ((s.snow_hi ?? s.snow_in ?? 0) < 0.5) {
       txt = `No significant snow in the next 72 hours${where}.`;
     } else {
@@ -80,16 +86,21 @@
   }
 
   function tiles(fc, pt, elev) {
+    const P = fc.points[pt];
     const cell = (name, label) => {
-      const t = fc.points[pt].totals[name];
+      const t = P.totals[name];
       if (!t) return "";
       const c = colorFor(SNOWFALL, t.snow_in) || "#f4f6f8";
+      const note = outside(t) ? ` <abbr class="info" title="${esc(SEPARATE)}">ⓘ</abbr>` : "";
       return `<div class="tile${t.extended ? " ext" : ""}"><span class="label">${label}</span>
         <span class="swatch" style="background:${c}"></span><strong>${inches(t.snow_in)}<small> in</small></strong>
-        <span class="rng">${t.snow_hi === null || t.snow_hi === undefined ? "no range (NWS)" : `${range(t.snow_lo, t.snow_hi)} range`}</span>
+        <span class="rng">${t.snow_hi === null || t.snow_hi === undefined ? "NWS: no range" : `${rangeName(t)}: ${range(t.snow_lo, t.snow_hi)}${note}`}</span>
         <span class="rng liquid">${(t.qpf_in ?? 0).toFixed(2)} in liquid</span></div>`;
     };
-    return `<p class="tiles-for">${POINT_LABEL[pt]} · ${ft(elev)} · most likely snowfall</p>
+    const head = P.raw
+      ? `NWS forecast for the 2.5 km grid cell (elev. ≈ ${ft(P.grid_elev_ft)}) · ${POINT_LABEL[pt]} ${ft(elev)}`
+      : `${POINT_LABEL[pt]} · ${ft(elev)} · most likely snowfall (NBM)`;
+    return `<p class="tiles-for">${head}</p>
       <div class="tiles">${cell("24h", "Next 24 h")}${cell("72h", "Next 72 h")}${cell("7d", "Next 7 days")}${cell("10d", "Next 10 days")}</div>`;
   }
 
@@ -104,12 +115,17 @@
     const per = fc.points[pt].periods;
     const x = per.map((p, i) => i);
     const y = per.map((p) => p.snow_in ?? 0);
-    const hi = per.map((p, i) => Math.max(0, (p.snow_hi ?? y[i]) - y[i]));
-    const lo = per.map((p, i) => Math.max(0, y[i] - (p.snow_lo ?? y[i])));
+    // whiskers are their own trace (lo..hi), independent of the bar: NBM's deterministic
+    // value may legitimately sit outside its probabilistic range (owner S3)
+    const hasR = per.map((p) => p.snow_lo !== null && p.snow_lo !== undefined && p.snow_hi !== null && p.snow_hi !== undefined);
+    const mid = per.map((p, i) => (hasR[i] ? (p.snow_lo + p.snow_hi) / 2 : null));
+    const half = per.map((p, i) => (hasR[i] ? (p.snow_hi - p.snow_lo) / 2 : 0));
     const colors = per.map((p, i) => colorFor(SNOWFALL, y[i]) || "#e9edf2");
     const ticks = per.map((p, i) => [i, p]).filter(([, p]) => p.is_day);
     const hover = per.map((p) =>
-      `<b>${esc(p.label)}</b> (${esc(p.local)})<br>Most likely ${p.snow_in ?? "–"} in · 10–90%: ${range(p.snow_lo, p.snow_hi)}` +
+      `<b>${esc(p.label)}</b> (${esc(p.local)})<br>Most likely ${p.snow_in ?? "–"} in` +
+      (p.snow_hi !== null && p.snow_hi !== undefined ? ` · ${rangeName(p)}: ${range(p.snow_lo, p.snow_hi)}` : "") +
+      (outside(p) ? `<br><i>${SEPARATE.replace("so the", "<br>so the")}</i>` : "") +
       `<br>Liquid ${p.qpf_in ?? "–"} in${p.pop !== null ? ` · chance of precip ${Math.round(p.pop * 100)}%` : ""}` +
       (p.type ? `<br>${TYPE_LABEL[p.type] || p.type}${p.p_snow !== null ? `, P(snow) ${Math.round(p.p_snow * 100)}%` : ""}` : "") +
       (p.powder ? `<br>${esc(p.powder)}` : "") +
@@ -127,8 +143,10 @@
         pattern: { shape: per.map((p) => (p.extended ? "/" : "")), fgcolor: "rgba(40,50,70,0.35)", size: 5 },
       },
       text: y.map((v) => (v >= 0.5 ? inches(v) : "")), textposition: "outside", cliponaxis: false,
-      error_y: { type: "data", symmetric: false, array: hi, arrayminus: lo, color: "#334", thickness: 1.1, width: 3 },
       hovertext: hover, hoverinfo: "text",
+    }, {
+      type: "scatter", mode: "markers", x, y: mid, hoverinfo: "skip", marker: { size: 0.1, color: "rgba(0,0,0,0)" },
+      error_y: { type: "data", array: half, color: "#334", thickness: 1.1, width: 3 },
     }], baseLayout(250, { hovermode: "closest", bargap: 0.25, shapes, annotations,
       yaxis: { title: { text: "in", standoff: 4 }, rangemode: "tozero", gridcolor: "#eef1f5", fixedrange: true },
       xaxis: { fixedrange: true, tickfont: { size: 10.5 }, tickvals: ticks.map(([i]) => i), tickangle: 0,
@@ -272,6 +290,30 @@
     document.title = "Snow-Wx · Ski areas";
   }
 
+  // Active NWS alerts for this site (data/alerts/index.json; details.json on expand).
+  function alertBanner(refs, index, link, tz) {
+    if (!refs?.length) return "";
+    const until = (iso) => (iso ? `until ${localFmt(iso, tz, { weekday: "short", hour: "numeric", timeZoneName: "short" })}` : "");
+    return refs.map((r) => {
+      const a = index.alerts[r.id] || {};
+      return `<details class="alert-banner ${esc(r.level)}" data-id="${esc(r.id)}">
+        <summary><strong>${esc(r.event)}</strong> ${esc(until(r.ends))}<span class="by">${esc(a.sender || "")}</span></summary>
+        <div class="alert-body"><p class="hint">${esc(a.area || "")}</p><div class="alert-text">Loading…</div>
+          <p><a href="${esc(link)}" target="_blank" rel="noopener">NWS forecast and full alert →</a></p></div>
+      </details>`;
+    }).join("");
+  }
+  async function wireAlertDetails(root) {
+    let details = null;
+    root.querySelectorAll("details.alert-banner").forEach((d) => d.addEventListener("toggle", async () => {
+      if (!d.open) return;
+      try { details = details || await getJSON("data/alerts/details.json"); } catch { details = {}; }
+      const t = details[d.dataset.id] || {};
+      d.querySelector(".alert-text").innerHTML = `<p>${esc(t.description || "No text.").replace(/\n\n/g, "</p><p>")}</p>` +
+        (t.instruction ? `<p><strong>${esc(t.instruction)}</strong></p>` : "");
+    }));
+  }
+
   // A forecast site: a ski area (summit + base) or a SNOTEL station (one elevation).
   function siteFromStation(st) {
     return { kind: "snotel", id: `snotel-${st.triplet.replace(/:/g, "-")}`, name: st.name, state: st.state, tz: st.tz,
@@ -284,10 +326,11 @@
     const main = $("area");
     const isStation = id.startsWith("snotel-");
     // One request per source (each file embeds its site record); catalogs only as fallback.
-    const [fcR, nwsR, avyR] = await Promise.allSettled([
+    const [fcR, nwsR, avyR, alR] = await Promise.allSettled([
       id ? getJSON(`data/points/${encodeURIComponent(id)}.json`) : Promise.reject(new Error("no id")),
       id ? getJSON(`data/ndfd/${encodeURIComponent(id)}.json`) : Promise.reject(new Error("no id")),
-      isStation ? Promise.resolve(null) : getJSON("data/avalanche_ratings.json")]);
+      isStation ? Promise.resolve(null) : getJSON("data/avalanche_ratings.json"),
+      getJSON("data/alerts/index.json")]);
     const nbm = fcR.status === "fulfilled" ? fcR.value : null;
     const nws = nwsR.status === "fulfilled" ? nwsR.value : null;
     let a = isStation ? (nbm?.station && siteFromStation(nbm.station)) : nbm?.area;
@@ -328,6 +371,8 @@
         </div>
       </div>
       <p class="sub">${sub}</p>
+      ${alR.status === "fulfilled" ? alertBanner((isStation ? alR.value.points : alR.value.areas)?.[a.id], alR.value,
+        nwsLink(isStation ? a : a.summit), tz) : ""}
       ${src ? `<p class="headline" id="headline"></p>
       <p class="fresh" id="fresh"></p>
       <div class="sec-head seg-row">${srcSeg}<span id="elev-seg"></span></div>
@@ -356,6 +401,7 @@
              <h4>Nearby airports</h4><ul>${stationRows(a.nearest.asos, "asos")}</ul>`}
       </section>`;
 
+    wireAlertDetails(main);
     $("fav").addEventListener("click", (e) => {
       const list = favs(), on = !list.includes(a.id);
       setFavs(on ? [...list, a.id] : list.filter((x) => x !== a.id));
@@ -386,10 +432,10 @@
         $("tiles").innerHTML = tiles(d, pt, d.points[pt].elev_ft);
         const dayLocal = d.points[pt].periods.find((p) => p.is_day)?.local || "about 5 AM–5 PM";
         $("period-note").textContent = src === "nws"
-          ? `NWS official snowfall (to 72 h) for the 2.5-km forecast cell, scaled by the chance that the NWS snow level is below this elevation. Days are 12Z–00Z (${dayLocal}).`
-          : `Bars: most likely (NBM mean; they add up to the totals). Whiskers: 10–90% range. Days are 12Z–00Z (${dayLocal}); nights are lighter. Hatched: extended outlook, where the range comes from NBM precipitation × snow ratio.`;
+          ? `NWS forecast for the 2.5 km grid cell (elev. ≈ ${ft(d.points[pt].grid_elev_ft)}), shown as issued: snowfall to 72 h already includes the forecasters' rain/snow decisions. Days are 12Z–00Z (${dayLocal}).`
+          : `Bars: NBM deterministic (most likely; they add up to the totals). Whiskers: NBM probabilistic guidance — 10–90% of NBM snowfall to 48 h, then the likely range (25–75% of precipitation × snow ratio × chance of snow at this elevation). NBM calibrates these separately, so a bar can sit outside its whisker. Days are 12Z–00Z (${dayLocal}); nights lighter; hatched = extended outlook.`;
         $("met-note").textContent = src === "nws"
-          ? "NWS official forecast for the 2.5-km grid cell (not elevation-adjusted). Precipitation in 6-hour amounts."
+          ? `NWS forecast for the 2.5 km grid cell (elev. ≈ ${ft(d.points[pt].grid_elev_ft)}), as issued — not adjusted to this elevation. Precipitation in 6-hour amounts.`
           : "Temperatures adjusted from the 2.5-km NBM grid to each elevation (6.5 °C/km). Hourly to 36 h, then 6-hour amounts.";
       };
       const drawCharts = () => loadPlotly().then(() => {

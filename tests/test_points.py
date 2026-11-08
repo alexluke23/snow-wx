@@ -77,7 +77,6 @@ def test_p_snow_from_snow_level():
 def test_slr_ranges_quality():
     assert P.clamp_slr(118.0) == 25.0 and P.clamp_slr(0.2) == 4.0 and P.clamp_slr(None) == 10.0
     assert P.rank_sum([(0.0, 2.0), (1.0, 3.0)]) == (1.0, 5.0) and P.rank_sum([(0, 1), None]) is None
-    assert P.with_mean((1.0, 2.0), 3.0) == (1.0, 3.0) and P.with_mean(None, 1.0) is None
     assert P.weighted_mean([1.0, 3.0], [0.0, 1.0]) == 3.0 and P.weighted_mean([2.0, 4.0], [0, 0]) == 3.0
     assert P.powder_quality(16, 20, 4) == "Blower"
     assert P.powder_quality(12, 35, 4) == "Medium, wind-affected"
@@ -112,11 +111,13 @@ def _fake_hour(h, n=2, snowlvl=6000.0):
         if h <= 48:
             d.update(snow6_p10=np.full(n, 1.0), snow6_p50=np.full(n, 3.0), snow6_p90=np.full(n, 5.0))
         if h % 12 == 0:
-            d.update(qpf12_p10=np.full(n, 0.1), qpf12_p50=np.full(n, 0.4), qpf12_p90=np.full(n, 0.8))
+            d.update(qpf12_p10=np.full(n, 0.1), qpf12_p25=np.full(n, 0.2), qpf12_p50=np.full(n, 0.4),
+                     qpf12_p75=np.full(n, 0.6), qpf12_p90=np.full(n, 0.8))
     if h == 24:
         d.update(qpf_0_1d_p10=np.full(n, 0.2), qpf_0_1d_p50=np.full(n, 0.8), qpf_0_1d_p90=np.full(n, 1.6))
     if h == 72:
-        d.update(qpf_0_3d_p10=np.full(n, 0.5), qpf_0_3d_p50=np.full(n, 2.0), qpf_0_3d_p90=np.full(n, 4.0),
+        d.update(qpf_0_3d_p10=np.full(n, 0.5), qpf_0_3d_p25=np.full(n, 1.0), qpf_0_3d_p50=np.full(n, 2.0),
+                 qpf_0_3d_p75=np.full(n, 3.0), qpf_0_3d_p90=np.full(n, 4.0),
                  qpf_2_3d_p10=np.full(n, 0.1), qpf_2_3d_p50=np.full(n, 0.6), qpf_2_3d_p90=np.full(n, 1.2))
     return d
 
@@ -133,14 +134,16 @@ def test_point_forecast_periods_and_totals():
     # bars = deterministic means: two 6-h windows x 3.0 in; range = NBM snow pct added rank by rank
     assert (per["snow_in"], per["snow_lo"], per["snow_hi"], per["extended"]) == (6.0, 2.0, 10.0, False)
     assert per["type"] == "snow" and per["local"] == "5 AM–5 PM MST" and per["powder"] == "Blower"
-    # 0-48 h comparison: extended method = QPF pct 0.1/0.8 x SLR 15 x P 1
-    assert (per["snow_ext_lo"], per["snow_ext_hi"]) == (1.5, 12.0)
+    # 0-48 h comparison (calibration report): likely range = QPF 25/75 (0.2/0.6) x SLR 15 x P 1
+    assert (per["snow_ext_lo"], per["snow_ext_hi"]) == (3.0, 9.0) and per["range"] == "NBM 10-90"
     late = fc["periods"][4]                                                  # 60-72 h: extended outlook
-    assert late["extended"] and late["snow_in"] == 6.0 and (late["snow_lo"], late["snow_hi"]) == (1.5, 12.0)
+    assert late["extended"] and late["snow_in"] == 6.0 and (late["snow_lo"], late["snow_hi"]) == (3.0, 9.0)
+    assert late["range"] == "likely 25-75"
     tot = fc["totals"]
     assert tot["24h"]["snow_in"] == 12.0 and (tot["24h"]["snow_lo"], tot["24h"]["snow_hi"]) == (4.0, 20.0)
-    # 72 h: 0-48 h NBM pct (8 windows: 8 / 40) + 48-72 h block 0.1/1.2 x 15
-    assert tot["72h"]["snow_in"] == 36.0 and (tot["72h"]["snow_lo"], tot["72h"]["snow_hi"]) == (9.5, 58.0)
+    # 72 h: likely range from the 0-3 day QPF block 25/75 (1.0/3.0) x 15; the mean (36 in)
+    # is outside it and stays there: no clamping (owner decision S3)
+    assert tot["72h"]["snow_in"] == 36.0 and (tot["72h"]["snow_lo"], tot["72h"]["snow_hi"]) == (15.0, 45.0)
     assert sum(p["snow_in"] for p in fc["periods"]) == tot["72h"]["snow_in"]   # bars add up to the total
     assert fc["precip"]["hours"][0] == 1 and fc["precip"]["snow_in"][0] == 0.5
 
@@ -180,10 +183,16 @@ def test_flat_index_alternative_row_scanning():
     assert flat_index(ii, jj, 10, True).tolist() == [0, 3, 16]      # odd row stored reversed: 10 + (9 - 3)
 
 
-def test_monotone_totals():
-    t = {"24h": {"qpf_hi": 1.0, "snow_lo": 1.0, "snow_hi": 9.0},
-         "72h": {"qpf_hi": 0.8, "snow_lo": 2.0, "snow_hi": 8.0},
-         "7d": {"qpf_hi": 2.0, "snow_lo": None, "snow_hi": 7.0}}
-    P.monotone_totals(t)
-    assert t["72h"] == {"qpf_hi": 1.0, "snow_lo": 2.0, "snow_hi": 9.0}
-    assert t["7d"]["snow_lo"] is None and t["7d"]["snow_hi"] == 9.0
+
+
+def test_calibration_report_counts_means_outside_ranges():
+    from pipeline.nbm.run import calibration_report
+    per = lambda m, lo, hi, ext, elo=None, ehi=None: {"snow_in": m, "snow_lo": lo, "snow_hi": hi,  # noqa: E731
+                                                      "extended": ext, "snow_ext_lo": elo, "snow_ext_hi": ehi}
+    files = {"a": {"points": {"summit": {"periods": [
+        per(2.0, 1.0, 4.0, False, 0.5, 1.5), per(5.0, 1.0, 4.0, False, 3.0, 6.0),   # 0-48 h
+        per(3.0, 1.0, 2.0, True), per(1.5, 1.0, 2.0, True), per(0.0, 0.0, 0.1, True)]}}}}  # >48 h
+    r = calibration_report(files, "2026110712")
+    assert r["first_48h"]["periods"] == 2 and r["first_48h"]["mean_inside_nbm_10_90"] == 0.5
+    assert r["first_48h"]["mean_inside_likely_25_75"] == 0.5
+    assert r["beyond_48h"] == {"periods": 2, "mean_inside_likely_25_75": 0.5, "mean_below": 0.0, "mean_above": 0.5}

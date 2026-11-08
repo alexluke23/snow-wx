@@ -76,6 +76,13 @@ percentiles, snow level method, verification).
 | Nov 7 (S2) | Add NBM + NDFD forecasts for all SNOTEL sites; NDFD sampled from GRIB2 on AWS (api.weather.gov only for alerts/AFD/missing elements). |
 | Nov 7 (S2) | Add NOHRSC overlays to obs map: SNODAS SWE, snow depth, 24 h SWE change; National Gridded Snowfall Analysis 24/48/72 h. Builds the interactive-layer system (§5.4) first used here. |
 | Nov 7 (S2) | Obs map performance work (canvas rendering, lazy charts). |
+| Nov 7 (S3) | 1. Extended outlook (>48 h): NBM deterministic and probabilistic fields are calibrated independently, so the deterministic value may fall outside the percentile range — no clamping. Bars = NBM deterministic (additive, sum to totals); whiskers = NBM probabilistic guidance; beyond 48 h QPF 25th–75th × SLR × P(snow), labelled "likely range". A tooltip explains when the deterministic value lies outside the range. Keep the calibration report for rechecks after real storms. |
+| Nov 7 (S3) | 2. NWS view shows NDFD raw: no elevation/temperature adjustment and no snow-level scaling (NDFD snow already contains the forecasters' rain/snow decisions). Label "NWS forecast for the 2.5 km grid cell (elev. X ft)". |
+| Nov 7 (S3) | 3. SNOTEL NBM cell elevation = full 3DEP cell average, computed once and stored in the catalog (no 5-point shortcut). |
+| Nov 7 (S3) | 4. With a NOHRSC overlay on, avalanche zones draw as outlines only; SWE overlay palette stays the SNOTEL SWE palette. |
+| Nov 7 (S3) | 5. Keyboard: search is the only keyboard route to individual stations for now (known accessibility gap, §10). |
+| Nov 7 (S3) | 6. NDFD stays on the 3-hourly schedule. |
+| Nov 7 (S3) | 7–8. CI: one job saves the micromamba cache; "already published" includes a renderer/config version so config changes re-render the current cycle. |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
@@ -303,12 +310,20 @@ screenshots checked. Suggested session grouping in brackets.
 - Map + sortable/filterable table (state/region; 24 h / 72 h / 7 d; range;
   snow level; wind), favorites first.
 - ✅ when: sort/filter work on mobile; markers use the shared snowfall palette.
+- ✔ Done (S3): finder.html — 160 areas, 24 h/72 h/7 d/10 d (NBM) or 24/72 h (NWS), summit/base,
+  state/region filters, sort by snow / observed 24 h / snow level, favorites first, Leaflet map
+  (shared SNOWFALL palette) loaded after the list. Lighthouse mobile 99 (FCP 1.1 s, LCP 2.1 s,
+  TBT 59–86 ms, CLS 0, 243 KB), accessibility 100.
 
 **M5 — NWS official** [Session 3]
 - NDFD base/summit, alerts banner, AFD link; NBM ↔ NWS toggle; about.html
   methods/attribution page.
 - ✅ when: a test area under an active alert shows the banner; NDFD and NBM
   render side by side without mixing.
+- ✔ Part 1 done (S3): active NWS alerts (one api.weather.gov call for 11 states, hourly with the
+  obs build) matched by NWS zone/county codes and polygons → banner on area pages (expandable
+  text), badge in Powder Finder, red ring + popup list on the obs map. Checked with a recorded
+  sample (no winter alert touched a ski area on 7 Nov).
 
 **M6 — Interactive model layers** [Session 3]
 - 3857 value PNGs + client colorizer + hover readout for HRRR/RRFS surface
@@ -343,6 +358,9 @@ bias correction (MOS-lite) [later]
 ---
 
 ## 10. Known limitations & open questions
+
+- Accessibility: map stations are drawn on a canvas, so the search box is the only keyboard
+  route to an individual station or ski area (owner-accepted gap, S3).
 
 - Kuchera/snow level from 5 pressure levels; Stull wet-bulb warm bias in dry air.
 - NBM grid (2.5 km) under-resolves narrow ridges/valleys → elevation

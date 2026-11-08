@@ -96,6 +96,7 @@ def find(msgs: list[Msg], sel: Sel, fhour: int) -> Msg | None:
 
 
 PCTS = (10, 50, 90)
+QPF_PCTS = (10, 25, 50, 75, 90)   # qmd QPF: 10/90 to 48 h, 25/75 = "likely range" beyond (owner S3)
 T2, SFC, W10 = "2 m above ground", "surface", "10 m above ground"
 
 
@@ -128,11 +129,11 @@ def selections(fhour: int, cycle_hour: int) -> list[tuple[Sel, bool]]:
         for p in PCTS:
             opt(f"snow6_p{p}", "core", "ASNOW", SFC, 6, "pct", p)
         if h == 6:
-            for p in PCTS:
+            for p in QPF_PCTS:
                 req(f"qpf6_p{p}", "qmd", "APCP", SFC, 6, "pct", p)
         # 12-h day/night periods end at 00Z and 12Z
         if (cycle_hour + h) % 12 == 0 and h >= 12:
-            for p in PCTS:
+            for p in QPF_PCTS:
                 req(f"qpf12_p{p}", "qmd", "APCP", SFC, 12, "pct", p)
         if (cycle_hour + h) % 12 == 0:
             opt("tmax12", "core", "TMAX", T2, 12, value=None)
@@ -140,7 +141,7 @@ def selections(fhour: int, cycle_hour: int) -> list[tuple[Sel, bool]]:
     for span, name in (((0, 24), "qpf_0_1d"), ((0, 72), "qpf_0_3d"), ((48, 72), "qpf_2_3d"), ((72, 120), "qpf_3_5d"),
                        ((120, 168), "qpf_5_7d"), ((168, 240), "qpf_7_10d")):
         if h == span[1]:
-            for p in PCTS:
+            for p in QPF_PCTS:
                 req(f"{name}_p{p}", "qmd", "APCP", SFC, None, "pct", p, span=span)
     return s
 

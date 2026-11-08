@@ -341,7 +341,8 @@ def dem_cell_mean(session, ccfg, envs: dict[str, tuple], cache: JsonCache, worke
                            "spatialReference": {"wkid": 4326}})
         js = _get_json(session, ccfg["services"]["dem_stats"],
                        params={"geometry": geom, "geometryType": "esriGeometryEnvelope",
-                               "pixelSize": json.dumps({"x": 90, "y": 90,
+                               # 300 m samples: ~120 per 2.5-km cell, 3x faster than 90 m, mean within ~2 m
+                               "pixelSize": json.dumps({"x": 300, "y": 300,
                                                         "spatialReference": {"wkid": 3857}}),
                                "f": "json"})
         st = (js.get("statistics") or [{}])[0]
@@ -360,7 +361,9 @@ def dem_cell_mean(session, ccfg, envs: dict[str, tuple], cache: JsonCache, worke
 
 def nws_points(session, ccfg, points: list[tuple[float, float]], cache: JsonCache,
                workers: int = 4) -> dict[str, dict | None]:
-    todo = sorted({_key(la, lo) for la, lo in points} - set(cache.data))
+    # entries cached before counties were stored are fetched again (alerts match on both)
+    todo = sorted({_key(la, lo) for la, lo in points
+                   if _key(la, lo) not in cache.data or "county" not in (cache.data[_key(la, lo)] or {})})
 
     def one(k):
         la, lo = map(float, k.split(","))
@@ -373,7 +376,8 @@ def nws_points(session, ccfg, points: list[tuple[float, float]], cache: JsonCach
         p = js.get("properties") or {}
         return k, {"wfo": p.get("gridId"), "x": p.get("gridX"), "y": p.get("gridY"),
                    "tz": p.get("timeZone"),
-                   "zone": (p.get("forecastZone") or "").rsplit("/", 1)[-1] or None}
+                   "zone": (p.get("forecastZone") or "").rsplit("/", 1)[-1] or None,
+                   "county": (p.get("county") or "").rsplit("/", 1)[-1] or None}
 
     log.info("NWS points: %d new lookups", len(todo))
     with ThreadPoolExecutor(workers) as ex:
@@ -567,7 +571,8 @@ def build_catalog(session, cfg: dict, ccfg: dict, obs_dir: Path, refresh: bool =
             "runs_km": round(r["runs_km"], 1),
             "avalanche": zone,
             "nearest": {"snotel": near_s, "asos": near_a},
-            "nws": {k: (None if v is None else {"wfo": v["wfo"], "x": v["x"], "y": v["y"], "zone": v.get("zone")})
+            "nws": {k: (None if v is None else {"wfo": v["wfo"], "x": v["x"], "y": v["y"], "zone": v.get("zone"),
+                                                "county": v.get("county")})
                     for k, v in (("base", sb), ("summit", ss))},
             "nbm_grid": nbm,
             "verify": status,
@@ -626,9 +631,9 @@ def state_tz(state: str, lat: float, ccfg: dict) -> str:
     return (ccfg.get("state_tz") or {}).get(state, "America/Denver")
 
 
-def build_snotel_points(session, ccfg: dict, obs_dir: Path, out: Path = SNOTEL_OUT, workers: int = 8) -> int:
+def build_snotel_points(session, ccfg: dict, obs_dir: Path, out: Path = SNOTEL_OUT, workers: int = 12) -> int:
     """Every SNOTEL station as a single-elevation forecast point: NBM cell (i, j) and the
-    cell's mean 3DEP elevation (for the lapse adjustment). On demand, like the catalog."""
+    cell's full-average 3DEP elevation (for the lapse adjustment). On demand, like the catalog."""
     feats = json.loads((obs_dir / "snotel.geojson").read_text(encoding="utf-8"))["features"]
     grid = json.loads(OUT.read_text(encoding="utf-8"))["nbm_grid"]
     rows, envs = [], {}
@@ -641,22 +646,10 @@ def build_snotel_points(session, ccfg: dict, obs_dir: Path, out: Path = SNOTEL_O
             continue
         envs[f"{i},{j}"] = cell_envelope(i, j, grid)
         rows.append((p, lat, lon, i, j))
-    # Cell elevation for ~800 SNOTEL cells: the full-cell 3DEP statistics call (used for ski
-    # areas) runs at ~17 cells/min, so use the mean of 5 batched point samples per cell
-    # (centre + quadrant centres). Exact cell means are used where already cached.
-    stats = JsonCache(CACHE / "dem_cells.json").data
-    pts5 = {}
-    for key, (x0, y0, x1, y1) in envs.items():
-        if key in stats:
-            continue
-        cx, cy, dx, dy = (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 4, (y1 - y0) / 4
-        pts5[key] = [(cy, cx), (cy - dy, cx - dx), (cy - dy, cx + dx), (cy + dy, cx - dx), (cy + dy, cx + dx)]
-    dem = dem_elevations(session, ccfg, [q for v in pts5.values() for q in v], JsonCache(CACHE / "dem_points.json"),
-                         batch=8, workers=workers)
-    cell_elev = {k: stats[k] for k in envs if k in stats}
-    for key, qs in pts5.items():
-        vals = [dem[_key(*q)] for q in qs if dem.get(_key(*q)) is not None]
-        cell_elev[key] = sum(vals) / len(vals) if vals else None
+    # Full 3DEP cell average, same as the ski areas (owner decision S3: no shortcut).
+    # Slow once (~10 s per cell, cached in data_cache/catalog/dem_cells.json), then instant.
+    cell_elev = dem_cell_mean(session, ccfg, envs, JsonCache(CACHE / "dem_cells.json"), workers=workers)
+    nws = nws_points(session, ccfg, [(lat, lon) for _, lat, lon, _, _ in rows], JsonCache(CACHE / "nws_points.json"))
     pts = []
     for p, lat, lon, i, j in rows:
         e = cell_elev.get(f"{i},{j}")
@@ -664,7 +657,9 @@ def build_snotel_points(session, ccfg: dict, obs_dir: Path, out: Path = SNOTEL_O
                     "state": p.get("state"), "lat": round(lat, 5), "lon": round(lon, 5),
                     "elev_ft": None if p.get("elev_ft") in (None, "None") else round(float(p["elev_ft"])),
                     "tz": state_tz(p.get("state"), lat, ccfg),
-                    "nbm_grid": {"i": i, "j": j, "elev_ft": None if e is None else round(e)}})
+                    "nbm_grid": {"i": i, "j": j, "elev_ft": None if e is None else round(e)},
+                    # NWS forecast zone + county (alert matching) and grid point
+                    "nws": {k2: v2 for k2, v2 in (nws.get(_key(lat, lon)) or {}).items() if k2 != "tz"} or None})
     write_json(out, {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                      "source": "USDA NRCS AWDB station metadata; NBM cell elevation = USGS 3DEP mean",
                      "count": len(pts), "points": pts}, ndigits=6)
