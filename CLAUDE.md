@@ -202,6 +202,10 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       Lambert grid winds rotated with the cone constant) -> `<model>/ridge.json` (inside the model tar);
       `build` merges HRRR (to 48 h) then RRFS (to 84 h) -> build/data/ridge.json (~60 KB). Area
       meteogram trace + note; Powder Finder "Ridge" column (max in the window; lazy-loaded).
-- [ ] M6 zoomable model layers (S4 D) - not started.
+- [ ] S5 (dev5, from main after PR #5): order = M9-prep archive + data_cache pruning (push dev5
+      right after, owner merges early) -> bugs B1-B7 (PLAN.md §8 M3.6) -> §6-B chart overhaul
+      (shared web/js/charts/theme.js, heat table, lazy charts below the fold) -> M4.5 Sno-Parks
+      (research sources + licences first, ask before unclear ones).
+- [ ] M6 zoomable model layers + HRRR prs file: deferred to S6 (baseline numbers in PLAN.md §2).
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.
