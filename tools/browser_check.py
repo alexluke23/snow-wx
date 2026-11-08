@@ -298,6 +298,24 @@ def check_charts(b: Browser, base: str, log):
         if st["wetPeriods"]:
             need(st["wetLine"] > 0, f"{area}: {st['wetPeriods']} wet periods but the snow-level line is dry everywhere")
             need("Little precipitation" not in st["sum"], f"{area}: summary says little precipitation: {st['sum']}")
+        # fix 6: end labels (right of the plot) never overlap; fix 7: SNOTEL panels start at 0
+        st = b.eval("""(() => {
+          const overlaps = [];
+          for (const id of ['t-chart', 'w-chart']) {
+            const el = document.getElementById(id); if (!el) continue;
+            const plotR = el.querySelector('.nsewdrag') ? el.querySelector('.nsewdrag').getBoundingClientRect().right : 0;
+            const boxes = [...el.querySelectorAll('.annotation')].map(a => a.getBoundingClientRect())
+              .filter(r => r.left >= plotR - 2 && r.width > 0);
+            for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+              const a = boxes[i], c = boxes[j];
+              if (a.left < c.right && c.left < a.right && a.top < c.bottom - 1 && c.top < a.bottom - 1) overlaps.push(id);
+            }
+          }
+          const r0 = (id) => { const el = document.getElementById(id); return el && el.layout ? el.layout.yaxis.range[0] : null; };
+          return {overlaps, depth0: r0('obs-chart'), swe0: r0('obs-swe')}; })()""")
+        log(f"  charts {area}: end-label overlaps={st['overlaps']} depth axis from {st['depth0']} SWE axis from {st['swe0']}")
+        need(not st["overlaps"], f"{area}: overlapping end labels in {st['overlaps']}")
+        need(st["depth0"] == 0 and st["swe0"] == 0, f"{area}: SNOTEL depth/SWE axes must start at 0 ({st})")
         need(not b.errors, f"{area}: JS errors {b.errors}")
 
 

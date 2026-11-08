@@ -300,10 +300,12 @@
     const traces = keys.map((k) => ({ x: xs, y: P[k].series.t_f.slice(0, D.n), name: POINT_LABEL[k], mode: "lines",
       line: { color: PT_STYLE[k].color, width: 2.2, dash: PT_STYLE[k].dash }, hovertemplate: `${POINT_LABEL[k]} %{y:.0f} °F<extra></extra>` }));
     const r32 = C.refLine(32, "32 °F", { color: "#0b6e85", dash: "dot", where: "left" });
-    const annotations = [C.axisTitle("Temperature (°F)"), r32.ann,
-      ...keys.map((k) => C.endLabel(xs, P[k].series.t_f.slice(0, D.n), POINT_LABEL[k], PT_STYLE[k].color)).filter(Boolean)];
-    C.plot(el, traces, C.layout(220, { margin: { r: 70, b: ax.b }, shapes: [...ax.shapes, r32.shape], annotations, xaxis: ax.axis,
-      yaxis: C.yaxis({ dtick: 10 }) }));
+    const lay = C.layout(220, { margin: { r: 70, b: ax.b }, shapes: [...ax.shapes, r32.shape], xaxis: ax.axis });
+    const yr = C.extent([...keys.map((k) => P[k].series.t_f.slice(0, D.n)), [32]], { min: 10 });
+    lay.yaxis = C.yaxis({ dtick: 10, range: yr });
+    lay.annotations = [C.axisTitle("Temperature (°F)"), r32.ann, ...C.endLabels(keys.map((k) => ({ xs, ys: P[k].series.t_f.slice(0, D.n),
+      text: POINT_LABEL[k], color: PT_STYLE[k].color })), { yrange: yr, plotHeight: C.plotH(lay) })];
+    C.plot(el, traces, lay);
     const rng = (k) => { const v = P[k].series.t_f.slice(0, D.n).filter((x) => x !== null); return v.length ? [Math.round(Math.min(...v)), Math.round(Math.max(...v))] : null; };
     C.summary(el, keys.map((k) => { const r = rng(k); return r ? `${POINT_LABEL[k]} ${r[0]} to ${r[1]} °F` : ""; }).filter(Boolean).join(", ") +
       ` over the next ${Math.round(HOURS_DETAIL / 24 * 2) / 2} days${keys.some((k) => (rng(k)?.[1] ?? 99) < 32) ? ", staying below freezing" : ""}.`);
@@ -325,8 +327,9 @@
       { x: xs, y: s.gust_mph.slice(0, D.n), name: "Gusts", mode: "lines", line: { color: col, width: 1.3, dash: "dot" },
         hovertemplate: "gusts %{y} mph<extra></extra>" },
     ];
-    const annotations = [C.axisTitle(`Wind at the ${POINT_LABEL[wk].toLowerCase()} (mph)`),
-      C.endLabel(xs, s.wind_mph.slice(0, D.n), "Wind", col), C.endLabel(xs, s.gust_mph.slice(0, D.n), "Gusts", col, { yshift: 10 })];
+    const annotations = [C.axisTitle(`Wind at the ${POINT_LABEL[wk].toLowerCase()} (mph)`)];
+    const ends = [{ xs, ys: s.wind_mph.slice(0, D.n), text: "Wind", color: col }, { xs, ys: s.gust_mph.slice(0, D.n), text: "Gusts", color: col }];
+    const allY = [s.gust_mph.slice(0, D.n), s.wind_mph.slice(0, D.n)];
     const shapes = [...ax.shapes];
     const r = ridge?.areas?.[id];
     let ridgeTxt = "";
@@ -344,8 +347,10 @@
         annotations.push(C.markLabel(rx[k - 1], `${names[0]} → ${names[1]}`, "#006b4f"));
       }
       const lastI = r.mph.map((v, i) => (v !== null ? i : -1)).reduce((a, b) => Math.max(a, b), -1);
+      allY.push(r.mph.filter((v, i) => rx[i] <= D.w1));
       if (lastI >= 0) {
-        annotations.push({ ...C.endLabel(rx.slice(0, lastI + 1), r.mph.slice(0, lastI + 1), "Ridge-top", rc), font: C.font(12, "#006b4f") });
+        const inRange = rx.map((x, i) => (x <= D.w1 && i <= lastI ? i : -1)).filter((i) => i >= 0);
+        ends.push({ xs: inRange.map((i) => rx[i]), ys: inRange.map((i) => r.mph[i]), text: "Ridge-top", color: "#006b4f" });
         const endMs = new Date(ridge.valid[lastI]).getTime();
         if (endMs < D.t1 - 3 * 3.6e6) ridgeTxt = ` Ridge-top wind (${names.join(" then ")}) ends ${localDT(ridge.valid[lastI], tz)}.`;
       }
@@ -357,8 +362,11 @@
           (day1 && day1.mph < best.v ? `; next 24 h up to ${day1.mph} mph from the ${compass(day1.dir)} (${day1.model})` : "") + `.${ridgeTxt}`;
       }
     }
-    C.plot(el, traces, C.layout(220, { margin: { r: 70, b: ax.b }, shapes, annotations: annotations.filter(Boolean), xaxis: ax.axis,
-      yaxis: C.yaxis({ rangemode: "tozero" }) }));
+    const lay = C.layout(220, { margin: { r: 70, b: ax.b }, shapes, xaxis: ax.axis });
+    const yr = C.extent(allY, { zero: true, min: 10 });
+    lay.yaxis = C.yaxis({ range: yr });
+    lay.annotations = [...annotations, ...C.endLabels(ends, { yrange: yr, plotHeight: C.plotH(lay) })].filter(Boolean);
+    C.plot(el, traces, lay);
     const mx = (a) => Math.max(0, ...a.slice(0, D.n).filter((v) => v !== null));
     C.summary(el, `${POINT_LABEL[wk]} wind up to ${mx(s.wind_mph)} mph, gusts to ${mx(s.gust_mph)} mph (NBM, 10 m).${ridgeTxt}`);
     const rows = fc.times.slice(0, D.n).map((x, i) => {
@@ -455,19 +463,23 @@
     // SNOTEL times are the station's local standard time (wall clock already)
     const xs = d.times.map((t) => t.slice(0, 16));
     const swe = d.WTEQ || [];
+    // two panels, each from 0 with its own axis (fix 7: on one axis SWE looked flat or missing)
+    $("obs-chart").insertAdjacentHTML("afterend", `<div class="chart" id="obs-swe" style="height:190px"><p class="hint">Loading chart…</p></div>`);
+    $("obs-chart").style.height = "200px";
+    const panel = (el, ys, title, color, dash, fmt, minSpan) => {
+      const ax = C.timeAxis(xs[0], xs[xs.length - 1], el.clientWidth - C.MARGIN.l - 30);
+      const lay = C.layout(parseInt(el.style.height, 10), { margin: { r: 30, b: ax.b }, shapes: ax.shapes, xaxis: ax.axis });
+      lay.yaxis = C.yaxis({ range: C.extent([ys], { zero: true, min: minSpan, pad: 0.1 }) });
+      lay.annotations = [C.axisTitle(title)];
+      C.plot(el, [{ x: xs, y: ys, mode: "lines", line: { color, width: 2.2, dash }, hovertemplate: `%{y:${fmt}} in<extra></extra>` }], lay);
+    };
     C.lazy($("obs-chart"), () => loadPlotly().then(() => {
-      const el = $("obs-chart");
-      const ax = C.timeAxis(xs[0], xs[xs.length - 1], el.clientWidth - C.MARGIN.l - 60);
-      C.plot(el, [
-        { x: xs, y: series, name: "Depth", mode: "lines", line: { color: C.OI.blue, width: 2.2 }, hovertemplate: "depth %{y:.0f} in<extra></extra>" },
-        { x: xs, y: swe, name: "SWE", mode: "lines", line: { color: C.OI.green, width: 2, dash: "dash" }, hovertemplate: "SWE %{y:.1f} in<extra></extra>" },
-      ], C.layout(220, { margin: { r: 60, b: ax.b }, shapes: ax.shapes, xaxis: ax.axis, yaxis: C.yaxis({ rangemode: "tozero" }),
-        annotations: [C.axisTitle("Snow depth and SWE (in)"), C.endLabel(xs, series, "Depth", C.OI.blue),
-          C.endLabel(xs, swe, "SWE", "#00704f")].filter(Boolean) }));
+      panel($("obs-chart"), series, "Snow depth (in)", C.OI.blue, "solid", ".0f", 4);
+      panel($("obs-swe"), swe, "Snow water equivalent (in)", "#00704f", "solid", ".1f", 1);
       const [sw] = last(swe);
-      C.summary(el, `${st.name}: snow depth ${depth === null ? "unknown" : `${Math.round(depth)} in`}${chg === null ? "" : ` (${chg >= 0 ? "+" : ""}${Math.round(chg)} in in 72 h)`}` +
-        `${sw === null ? "" : `, snow water equivalent ${sw.toFixed(1)} in`} (last 7 days, local standard time).`);
-      C.tableToggle(el, `${st.name} SNOTEL, hourly`, ["Time (local std.)", "Depth (in, 3-h median)", "SWE (in)"],
+      C.summary($("obs-chart"), `${st.name}: snow depth ${depth === null ? "unknown" : `${Math.round(depth)} in`}${chg === null ? "" : ` (${chg >= 0 ? "+" : ""}${Math.round(chg)} in in 72 h)`} (last 7 days, local standard time).`);
+      C.summary($("obs-swe"), `Snow water equivalent ${sw === null ? "not reported" : `${sw.toFixed(1)} in`} at the last report.`);
+      C.tableToggle($("obs-swe"), `${st.name} SNOTEL, hourly`, ["Time (local std.)", "Depth (in, 3-h median)", "SWE (in)"],
         xs.map((x, k) => [x, series[k] === null || series[k] === undefined ? "–" : Math.round(series[k]), swe[k] ?? "–"]).reverse());
     }));
   }
