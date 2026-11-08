@@ -125,6 +125,10 @@ percentiles, snow level method, verification).
 | Nov 8 | Keep the model pipeline running: it feeds point products (ridge-top wind, future "precipitation by model"). |
 | Nov 8 | Consumer **snow forecast map** (NBM expected snowfall + chance-of layers) belongs on the Obs map as overlays, not on the models page (reuses the NOHRSC layer system). |
 | Nov 8 | **Monetization is on the back burner.** §11 records what must be true before charging money. Do not build §11 items unless the owner asks. |
+| Nov 8 (S8) | 1. dev8 pushed. 2. Powder Finder first-visit default stays "Ski areas" (each visitor's choice is remembered). |
+| Nov 8 (S8) | 3. Sno-Park activities only as the source states them (no inferred list: motorized vs non-motorized mistakes matter); otherwise show the site type and a link to the managing agency. |
+| Nov 8 (S8) | 4. Sno-Park permits: the source's permit text only; otherwise "Parking permits may be required — check [official state program or managing national forest]" with the link. Never "Likely". |
+| Nov 8 (S8) | 5. Sites with no NWS grid point show "NWS alerts not available for this location". |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;

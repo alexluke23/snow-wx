@@ -238,6 +238,9 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       summit = high terrain; `common.forecast_areas()` = ski areas + Sno-Parks for every point product). Obs map perf
       pass (map_points.json, vendored Leaflet, parallel loads). Lighthouse realistic numbers: serve build/ with gzip
       (scratchpad gzserve.py pattern); the plain http.server has no gzip and understates mobile scores.
+- [x] S8 follow-up (owner decisions 2-5): Sno-Park facts only as stated by the source (rec.activities/permit_for);
+      no permit -> "Parking permits may be required — check <permit_check link>" (state program, else agency page,
+      else fs.usda.gov); "NWS alerts not available" when a site has no NWS grid point. Finder default stays Ski areas.
 - [x] (done S8) build M4.5 Sno-Parks per PLAN.md §5.6 with the APPROVED sources (S7): USFS EDW backbone
       (EDW_RecInfraRecreationSites_02 layer 0: SNOWPARK, SNOWPLAY AREA, SKI AREA NORDIC, winter TRAILHEADs) + OSM
       gap-fill (ODbL, dedupe ~400 m); state lists = manual cross-check only. See docs/sources_recreation.md.

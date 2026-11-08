@@ -40,10 +40,12 @@ OVERPASS = "https://overpass-api.de/api/interpreter"
 EDW_TYPES = ("SNOWPARK", "SNOWPLAY AREA", "SKI AREA NORDIC", "TRAILHEAD")
 WINTER_WORDS = re.compile(r"sno-?\s?park|snow\s?park|park\s?n'?\s?ski|nordic|x-?country|cross[- ]country|ski|snowmobile|snowshoe|sled|tubing|snowplay|snow play", re.I)
 NOT_REC = re.compile(r"terrain park|skate|dog park|water ?park|rv park|mobile home|trailer park|industrial|business park", re.I)
-STATE_PROGRAMS = {"WA": "Washington Sno-Park permit (State Parks Winter Recreation)",
-                  "OR": "Oregon Sno-Park permit (ODOT)",
-                  "CA": "California SNO-PARK permit (State Parks OHMVR)",
-                  "ID": "Idaho Park N' Ski permit (IDPR), where it is a Park N' Ski area"}
+# Official programs to point to when the source states no permit (owner S8: link, never guess)
+STATE_PROGRAMS = {"WA": ("Washington State Parks Sno-Park program", "https://parks.wa.gov/find-sno-parks"),
+                  "OR": ("Oregon Sno-Park program (ODOT)", "https://www.oregon.gov/odot/maintenance/pages/sno-park-program.aspx"),
+                  "CA": ("California SNO-PARK program (State Parks OHMVR)", "https://ohv.parks.ca.gov/?page_id=30701"),
+                  "ID": ("Idaho Park N' Ski program (IDPR)", "https://parksandrecreation.idaho.gov/park-activity/cross-country-xc-skiing/")}
+USFS_HOME = ("the managing national forest (USDA Forest Service)", "https://www.fs.usda.gov/")
 SUBTYPE_LABEL = {"snopark": "Sno-Park", "snowplay": "Snow play area", "nordic": "Nordic area", "trailhead": "Winter trailhead"}
 HIGH_RADIUS_KM = 5.0
 
@@ -124,8 +126,9 @@ def dedupe(edw: list[dict], osm: list[dict], near_km: float = 0.4, name_km: floa
     return out
 
 
-def activities(site: dict) -> tuple[list[str], bool]:
-    """(activities, inferred?) from the source list, else from type and name."""
+def activities(site: dict) -> list[str]:
+    """Activities only as the source states them (owner S8: no inferred list; motorized vs
+    non-motorized mistakes matter). Empty when the source has none."""
     acts = set()
     for a in site.get("source_activities") or []:
         if "snowmobil" in a or "snowcraft" in a or "ice & snow" in a:
@@ -136,29 +139,24 @@ def activities(site: dict) -> tuple[list[str], bool]:
             acts.add("snowshoeing")
         if "snow play" in a or "sled" in a or "tubing" in a:
             acts.add("sledding / snow play")
-    if acts:
-        return sorted(acts), False
-    n = site["name"].lower()
-    if site["subtype"] == "nordic" or re.search(r"nordic|x-?country|cross[- ]country|ski", n):
-        acts.add("cross-country skiing")
-    if site["subtype"] == "snowplay" or re.search(r"sled|tubing|snow ?play", n):
-        acts.add("sledding / snow play")
-    if "snowmobile" in n:
-        acts.add("snowmobiling")
-    if "snowshoe" in n:
-        acts.add("snowshoeing")
-    if not acts and site["subtype"] in ("snopark", "trailhead"):
-        acts.update({"cross-country skiing", "snowshoeing"})     # typical Sno-Park use; marked inferred
-    return sorted(acts), True
+    return sorted(acts)
 
 
-def permit_for(state: str | None, site: dict) -> str | None:
-    if site.get("passes"):
-        return site["passes"][:200]
-    prog = STATE_PROGRAMS.get(state or "")
-    if prog and site["subtype"] in ("snopark", "nordic", "trailhead"):
-        return f"Likely: {prog}; check with the land manager"
-    return "Fee site; check with the land manager" if site.get("fee") else None
+def permit_for(site: dict) -> str | None:
+    """Permit text only when the source states it (no guessing)."""
+    return site["passes"][:200] if site.get("passes") else None
+
+
+def permit_check(state: str | None, site: dict) -> dict:
+    """Where to check parking permits when none is stated: the official state program,
+    else the site's managing-agency page, else the Forest Service."""
+    if state in STATE_PROGRAMS:
+        name, url = STATE_PROGRAMS[state]
+    elif site.get("link"):
+        name, url = "the managing agency", site["link"]
+    else:
+        name, url = USFS_HOME
+    return {"name": name, "url": url}
 
 
 def high_point(elev_m: np.ndarray, center: tuple[float, float], bbox: tuple[float, float, float, float],
@@ -310,7 +308,7 @@ def build_rec_points(session, cfg: dict, ccfg: dict, obs_dir: Path, out: Path = 
         base_ft = dem.get(_key(s["lat"], s["lon"]))
         hla, hlo, hft = s["_hp"]
         nb, nh = nws.get(_key(s["lat"], s["lon"])), hp_nws.get(_key(hla, hlo)) or nws.get(_key(s["lat"], s["lon"]))
-        acts, inferred = activities(s)
+        acts = activities(s)
         near_s = nearest(snotel, s["lat"], s["lon"], **ccfg["nearest"]["snotel"])
         near_a = nearest(asos, s["lat"], s["lon"], **ccfg["nearest"]["asos"])
         nbm = {}
@@ -327,7 +325,7 @@ def build_rec_points(session, cfg: dict, ccfg: dict, obs_dir: Path, out: Path = 
             "base": {"lat": round(s["lat"], 5), "lon": round(s["lon"], 5), "elev_ft": None if base_ft is None else round(base_ft)},
             "summit": {"lat": round(hla, 5), "lon": round(hlo, 5), "elev_ft": None if hft is None else round(hft)},
             "vertical_ft": None if base_ft is None or hft is None else round(hft - base_ft),
-            "agency": s.get("agency"), "permit": permit_for(st, s), "activities": acts, "activities_inferred": inferred,
+            "agency": s.get("agency"), "permit": permit_for(s), "permit_check": permit_check(st, s), "activities": acts,
             "avalanche": zone_for(s["lon"], s["lat"], zones) or zone_for(hlo, hla, zones),
             "nearest": {"snotel": near_s, "asos": near_a},
             "nws": {k: (None if v is None else {"wfo": v["wfo"], "x": v["x"], "y": v["y"], "zone": v.get("zone"),

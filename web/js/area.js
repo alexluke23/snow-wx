@@ -670,10 +670,12 @@
           <div><span class="label">Coldest wind chill, 24 h</span><b id="rk-wc">–</b><small id="rk-wc-where">NBM</small></div>
         </div>
         <ul class="rk-info">
-          ${a.permit ? `<li><b>Permit:</b> ${esc(a.permit)}</li>` : ""}
-          ${a.activities?.length ? `<li><b>Activities:</b> ${esc(a.activities.join(", "))}${a.activities_inferred ? ` <span class="hint">(inferred from the site type and name)</span>` : ""}</li>` : ""}
-          ${a.agency ? `<li><b>Managed by:</b> ${esc(a.agency)}</li>` : ""}
-          <li><b>Source:</b> ${srcName}${a.url ? ` · <a href="${safeUrl(a.url)}" target="_blank" rel="noopener">site page</a>` : ""}. Check conditions and closures with the land manager.</li>
+          <li><b>Type:</b> ${esc(a.type_label || "Sno-Park")}</li>
+          ${a.activities?.length ? `<li><b>Activities</b> (as listed by the source): ${esc(a.activities.join(", "))}</li>` : ""}
+          <li><b>Permit:</b> ${a.permit ? esc(a.permit)
+            : `Parking permits may be required — check ${a.permit_check?.url ? `<a href="${safeUrl(a.permit_check.url)}" target="_blank" rel="noopener">${esc(a.permit_check.name)}</a>` : "with the land manager"}.`}</li>
+          ${a.agency ? `<li><b>Managed by:</b> ${esc(a.agency)}${a.url ? ` · <a href="${safeUrl(a.url)}" target="_blank" rel="noopener">site page</a>` : ""}</li>` : ""}
+          <li><b>Source:</b> ${srcName}. Check conditions and closures with the land manager.</li>
         </ul></section>` : "";
     const srcSeg = nbm && nws ? `<div class="seg" role="group" aria-label="Forecast source">
         <button type="button" data-src="nbm" class="on" aria-pressed="true">NBM blend</button>
@@ -687,8 +689,10 @@
         </div>
       </div>
       <p class="sub">${sub}</p>
-      ${alR.status === "fulfilled" ? alertBanner((isStation ? alR.value.points : alR.value.areas)?.[a.id], alR.value,
-        nwsLink(isStation ? a : a.summit), tz) : ""}
+      ${!isStation && a.nws && !a.nws.base && !a.nws.summit
+        ? `<p class="note no-nws">NWS alerts not available for this location (it has no NWS forecast grid point).</p>`
+        : alR.status === "fulfilled" ? alertBanner((isStation ? alR.value.points : alR.value.areas)?.[a.id], alR.value,
+          nwsLink(isStation ? a : a.summit), tz) : ""}
       ${recFacts}
       ${src ? `<p class="headline" id="headline"></p>
       <p class="fresh" id="fresh"></p>
