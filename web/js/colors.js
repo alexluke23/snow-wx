@@ -76,6 +76,10 @@ function fmtValue(spec, v) {
   return (spec.signed && v > 0 ? "+" : "") + s + (spec.suffix || "");
 }
 
+// "Expected" (NBM's deterministic amount) explained in one place; shown as an ⓘ tooltip (owner S6).
+const EXPECTED_TIP = "Expected = NBM's forecast amount, an average of possible outcomes. You typically have about a 1-in-3 chance of reaching it; the 10–90% range shows what's typical.";
+const expectedInfo = () => `<a class="info" href="about.html#nbm" title="${EXPECTED_TIP}" aria-label="What Expected means">ⓘ</a>`;
+
 // NAADS danger colors (match pipeline/avalanche.py)
 const DANGER_TEXT = { 0: "#333", 1: "#fff", 2: "#333", 3: "#111", 4: "#fff", 5: "#fff" };
 
