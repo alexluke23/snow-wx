@@ -83,6 +83,13 @@ percentiles, snow level method, verification).
 | Nov 7 (S3) | 5. Keyboard: search is the only keyboard route to individual stations for now (known accessibility gap, §10). |
 | Nov 7 (S3) | 6. NDFD stays on the 3-hourly schedule. |
 | Nov 7 (S3) | 7–8. CI: one job saves the micromamba cache; "already published" includes a renderer/config version so config changes re-render the current cycle. |
+| Nov 8 (S4) | 1. Snowfall ranges: NBM's own snowfall percentiles (6/24/48/72 h) from the 01/07/13/19Z full-suite cycles for all periods and totals (docs/nbm_inventory.md). The QPF-based range is a fallback only, labelled as such. Bars stay NBM deterministic; never clamp deterministic and probabilistic fields to agree. Calibration report rerun before/after. |
+| Nov 8 (S4) | 1a. Liquid (QPF) ranges come from the companion 00/06/12/18Z cycle (the hour before the full-suite cycle), labelled with that cycle. Fallback order: newest complete full-suite cycle → previous full-suite cycle (≤ 12 h old) → only then a 00/06/12/18Z cycle. Points schedule aligned with full-suite completion. |
+| Nov 8 (S4) | 1b. Exceedance probabilities: NBM's own probability fields (consistency with percentiles checked and reported). Thresholds as NBM provides (24 h to 24", 48 h to 36", 72 h to 48"); skier chips 4/6/8/12/18/24" (+30/36/48" for 48/72 h). GSL viewer mismatch stays documented as unresolved. |
+| Nov 8 (S4) | 2. NWS cell elevation: drop the "≈" only if NBM and NDFD CONUS share the identical 2.5 km grid; otherwise compute NDFD cell elevations. |
+| Nov 8 (S4) | 3. Alerts: show all types (never hide a warning), sorted winter / wind / avalanche / blizzard / extreme cold first; others collapsed under "Other alerts (n)". |
+| Nov 8 (S4) | 4. Powder Finder: default 72 h summit for first-time visitors, then each visitor's last choice (localStorage, try/catch); a shared URL overrides. |
+| Nov 8 (S4) | 5. Powder Finder snow level shows "–" when little precipitation is expected in the window (same rule as the area page: chance of precip < 20 %). |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
