@@ -23,6 +23,16 @@
   };
   const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");
 
+  // Plotly is only needed when a station chart opens: load it then (once).
+  let plotlyPromise = null;
+  const loadPlotly = () => (plotlyPromise ||= new Promise((resolve, reject) => {
+    if (window.Plotly) return resolve(window.Plotly);
+    const sc = document.createElement("script");
+    sc.src = "https://cdn.plot.ly/plotly-basic-2.35.2.min.js"; sc.async = true;
+    sc.onload = () => resolve(window.Plotly); sc.onerror = () => reject(new Error("chart library failed to load"));
+    document.head.appendChild(sc);
+  }));
+
   async function getJSON(name, bust) {
     const r = await fetch(`${DATA}${name}${bust ? `?v=${encodeURIComponent(bust)}` : ""}`);
     if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`);
@@ -31,6 +41,7 @@
 
   // ---------------------------------------------------------------- map
   const map = L.map("map", { zoomControl: true, preferCanvas: false });
+  window.snowwx = { map, ready: false };   // debugging / benchmark handle
 
   const tiles = (url, attribution, maxZoom = 16) => L.tileLayer(url, { attribution, maxZoom });
   const USGS = "https://basemap.nationalmap.gov/arcgis/rest/services";
@@ -47,13 +58,23 @@
   baseLayers["Shaded relief (USGS)"].addTo(map);
 
   const avyLayer = L.geoJSON(null, { style: avyStyle, onEachFeature: avyPopup });
-  const snotelLayer = L.layerGroup();
-  const asosLayer = L.layerGroup();
+  // NOHRSC / SNODAS raster overlays (overlays.js), one at a time; o= in the URL hash.
+  const overlays = SnowOverlays(map, { panel: document.getElementById("overlays"), onChange: () => writeHash() });
+
+  // SNOTEL, ASOS and ski areas share one canvas (points-canvas.js); the layer
+  // control gets one toggle per group.
+  const points = new PointsCanvas({ lowZoom: LOW_ZOOM });
+  const snotelLayer = points.toggleLayer("snotel");
+  const asosLayer = points.toggleLayer("asos");
+  const skiLayer = points.toggleLayer("ski");
   avyLayer.addTo(map);
+  points.addTo(map);
   snotelLayer.addTo(map);
   asosLayer.addTo(map);
+  skiLayer.addTo(map);
 
   L.control.layers(baseLayers, {
+    "Ski areas": skiLayer,
     "Avalanche danger": avyLayer,
     "SNOTEL": snotelLayer,
     "ASOS / AWOS (wind, temp)": asosLayer,
@@ -64,73 +85,119 @@
     map.getContainer().classList.toggle("z-low", map.getZoom() < LOW_ZOOM);
   map.on("zoomend", setZoomClass);
 
-  // ---------------------------------------------------------------- declutter
-  // From LOW_ZOOM up, labels are placed greedily by priority; a label that
-  // would overlap one already placed collapses to a dot (SNOTEL) or a bare
-  // wind barb (ASOS). Every marker stays on the map and clickable.
-  const CELL = 64; // spatial-hash cell size, px
+  // ---------------------------------------------------------------- canvas symbols
+  // Drawn by PointsCanvas. From LOW_ZOOM up, labels are placed greedily by
+  // priority (once per zoom level); a label that would overlap one already placed
+  // collapses to a dot (SNOTEL) or a bare wind barb (ASOS). Everything stays clickable.
+  const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+  const LABEL_FONT = `600 11px ${FONT}`, TEMP_FONT = `700 11px ${FONT}`;
+  const measure = document.createElement("canvas").getContext("2d");
+  const textWidth = (t, font) => { measure.font = font; return measure.measureText(t).width; };
+  const rrect = (ctx, x, y, w, h, r) => {
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
+  };
 
-  function labelItems() {
-    const items = [];
-    const size = map.getSize(), margin = 60;
-    const onScreen = (pt) => pt.x > -margin && pt.y > -margin && pt.x < size.x + margin && pt.y < size.y + margin;
-    if (map.hasLayer(snotelLayer)) {
-      const spec = SNOTEL_VARS[currentVar];
-      snotelLayer.eachLayer((m) => {
-        const el = m.getElement()?.firstElementChild;
-        const pt = map.latLngToContainerPoint(m.getLatLng());
-        if (!el || !onScreen(pt)) return;
-        const v = m.options.value;
-        const text = v === null || v === undefined ? "–" : fmtValue(spec, v);
-        const w = Math.max(26, 10 + 6.6 * text.length), h = 16;
-        const prio = m.options.triplet === selected ? 1e9
-          : v === null || v === undefined ? 1 : 3 + Math.min(Math.abs(v), 1e6) / 1e6;
-        items.push({ m, el, kind: "snotel", prio,
-          box: [pt.x - w / 2 - 1, pt.y - h / 2 - 1, pt.x + w / 2 + 1, pt.y + h / 2 + 1] });
-      });
-    }
-    if (map.hasLayer(asosLayer)) {
-      for (const [id, m] of asosMarkers) {
-        const el = m.getElement()?.firstElementChild;
-        const t = m.options.tempLabel;
-        const pt = map.latLngToContainerPoint(m.getLatLng());
-        if (!el || t === "" || !onScreen(pt)) continue;
-        // .asos-temp sits up-left of the station: right edge 4 px left of it, bottom 2 px above.
-        const w = 7 * String(t).length + 2;
-        const prio = selected === `asos:${id}` ? 1e9 : m.options.stale ? 0.5 : 2;
-        items.push({ m, el, kind: "asos", prio, box: [pt.x - 4 - w, pt.y - 16, pt.x - 3, pt.y - 1] });
-      }
-    }
-    return items;
-  }
-
-  function declutter() {
-    const items = labelItems();
-    if (map.getZoom() < LOW_ZOOM) {      // z-low CSS already shows dots / hides temps
-      for (const it of items) it.el.classList.remove("dot");
-      return;
-    }
-    items.sort((a, b) => b.prio - a.prio);
-    const grid = new Map();
-    const cells = (b) => {
-      const out = [];
-      for (let cx = Math.floor(b[0] / CELL); cx <= Math.floor(b[2] / CELL); cx++)
-        for (let cy = Math.floor(b[1] / CELL); cy <= Math.floor(b[3] / CELL); cy++) out.push(`${cx},${cy}`);
-      return out;
+  function snotelItem(f, spec) {
+    const p = f.properties, [lon, lat] = f.geometry.coordinates;
+    const v = p[currentVar], bg = colorFor(spec, v);
+    const text = bg ? fmtValue(spec, v) : "–";
+    const w = Math.max(26, Math.ceil(textWidth(text, LABEL_FONT)) + 10), h = 16;
+    return {
+      group: "snotel", lat, lon, props: p, title: `${p.name} (${num(p.elev_ft, 0)} ft)`,
+      labelBox: [-w / 2 - 1, -h / 2 - 1, w / 2 + 1, h / 2 + 1],
+      prio: () => (p.triplet === selected ? 1e9 : bg ? 3 + Math.min(Math.abs(v), 1e6) / 1e6 : 1),
+      hit: (full) => (full ? [-w / 2 - 2, -h / 2 - 2, w / 2 + 2, h / 2 + 2] : [-7, -7, 7, 7]),
+      draw(ctx, x, y, full) {
+        const sel = p.triplet === selected;
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(0,0,0,.45)";
+        ctx.fillStyle = bg || "#fff";
+        if (full) {
+          rrect(ctx, x - w / 2, y - h / 2, w, h, 3); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = bg ? textOn(bg) : "#888";
+          ctx.font = LABEL_FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(text, x, y + 0.5);
+          if (sel) { ctx.strokeStyle = "#e6007e"; ctx.lineWidth = 2; rrect(ctx, x - w / 2 - 3, y - h / 2 - 3, w + 6, h + 6, 4); ctx.stroke(); }
+        } else {
+          ctx.beginPath(); ctx.arc(x, y, 5.5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+          if (sel) { ctx.strokeStyle = "#e6007e"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 8.5, 0, 2 * Math.PI); ctx.stroke(); }
+        }
+      },
+      onClick: () => selectSnotel(p),
     };
-    const hits = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
-    for (const it of items) {
-      const keys = cells(it.box);
-      const blocked = keys.some((k) => (grid.get(k) || []).some((b) => hits(it.box, b)));
-      it.el.classList.toggle("dot", blocked);
-      it.m.setZIndexOffset(blocked ? -2000 : it.kind === "snotel" ? 1000 : 500);
-      if (!blocked) for (const k of keys) (grid.get(k) || grid.set(k, []).get(k)).push(it.box);
-    }
   }
 
-  let declutterTimer = null;
-  const scheduleDeclutter = () => { clearTimeout(declutterTimer); declutterTimer = setTimeout(declutter, 50); };
-  map.on("zoomend moveend overlayadd overlayremove", scheduleDeclutter);
+  // Same geometry as the old SVG barbs: staff 20 px toward the wind direction.
+  function drawBarb(ctx, x, y, kt, dir, scale) {
+    if (kt === null || kt === undefined) return;
+    ctx.save();
+    ctx.translate(x, y); ctx.scale(scale, scale);
+    ctx.strokeStyle = ctx.fillStyle = "#14202e"; ctx.lineWidth = 1.5;
+    if (kt < 3) { ctx.beginPath(); ctx.arc(0, 0, 4, 0, 2 * Math.PI); ctx.stroke(); ctx.restore(); return; }
+    ctx.rotate(((dir || 0) * Math.PI) / 180);
+    let s = Math.round(kt / 5) * 5, yy = -20;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -20); ctx.stroke();
+    while (s >= 50) { ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(9, yy + 2.5); ctx.lineTo(0, yy + 5); ctx.closePath(); ctx.fill(); yy += 6; s -= 50; }
+    while (s >= 10) { ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(9, yy - 3); ctx.stroke(); yy += 3.5; s -= 10; }
+    if (s >= 5) { if (yy === -20) yy += 3.5; ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(4.5, yy - 1.5); ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(0, 0, 2, 0, 2 * Math.PI); ctx.fill();
+    ctx.restore();
+  }
+
+  function asosItem(f) {
+    const p = f.properties, [lon, lat] = f.geometry.coordinates, id = String(p.id);
+    // Whole degrees on the map (short labels overlap less); decimals in the popup.
+    const t = p.temp_f === null || p.temp_f === undefined ? "" : String(Math.round(p.temp_f));
+    const w = t ? Math.ceil(textWidth(t, TEMP_FONT)) + 2 : 0;
+    const it = {
+      group: "asos", lat, lon, props: p, title: `${p.id} – ${p.name}`,
+      labelBox: t ? [-4 - w - 1, -15, -3, -1] : null,
+      prio: () => (selected === `asos:${id}` ? 1e9 : p.stale ? 0.5 : 2),
+      hit: () => [-12, -12, 12, 12],
+      draw(ctx, x, y, full, z) {
+        ctx.globalAlpha = p.stale ? 0.35 : 1;
+        const low = z < LOW_ZOOM;
+        drawBarb(ctx, x, y, p.wind_kt, p.wind_dir, low ? 0.7 : 1);
+        if (full && t && !low) {
+          ctx.font = TEMP_FONT; ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+          ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.strokeText(t, x - 4, y - 2);
+          ctx.fillStyle = "#c0262d"; ctx.fillText(t, x - 4, y - 2);
+        }
+        ctx.globalAlpha = 1;
+      },
+      onClick: () => openAsos(it),
+    };
+    return it;
+  }
+
+  function skiItem(a) {
+    const size = a.major ? 16 : 11;
+    const it = {
+      group: "ski", top: true, lat: a.summit.lat, lon: a.summit.lon, area: a, title: `${a.name} ski area`,
+      labelBox: null, prio: () => 0,
+      hit: () => [-size / 2 - 3, -size / 2 - 3, size / 2 + 3, size / 2 + 3],
+      draw(ctx, x, y) {
+        const h = size * 0.85;
+        ctx.beginPath(); ctx.moveTo(x, y - h / 2 - 1); ctx.lineTo(x + size / 2, y + h / 2); ctx.lineTo(x - size / 2, y + h / 2); ctx.closePath();
+        ctx.fillStyle = selected === `area:${a.id}` ? "#c2185b" : a.major ? "#0b1530" : "#1b2a4a";
+        ctx.lineJoin = "round"; ctx.lineWidth = 1.6; ctx.strokeStyle = "#fff";
+        ctx.fill(); ctx.stroke();
+      },
+      onClick: () => openSki(it),
+    };
+    return it;
+  }
+
+  // Popups for canvas items: the selection drives the URL hash and label priority.
+  function openItemPopup(it, html, key) {
+    const pop = L.popup({ offset: [0, -8], autoPanPadding: [40, 40] }).setLatLng([it.lat, it.lon]).setContent(html);
+    pop.on("remove", () => { if (selected === key) { selected = null; points.invalidate(); writeHash(); } });
+    pop.openOn(map);
+    selected = key;
+    points.invalidate();
+    writeHash();
+  }
 
   // ---------------------------------------------------------------- avalanche
   function avyStyle(f) {
@@ -164,10 +231,10 @@
 
   // ---------------------------------------------------------------- URL hash state
   // #v=<SNOTEL variable>&map=<zoom>/<lat>/<lon>&s=<station>
-  // s is a SNOTEL triplet (766:UT:SNTL) or asos:<id> (asos:SLC).
+  // s is a SNOTEL triplet (766:UT:SNTL), asos:<id> (asos:SLC) or area:<id> (area:alta-ski-area).
   function readHash() {
     const q = new URLSearchParams(location.hash.replace(/^#/, ""));
-    const out = { v: q.get("v"), s: q.get("s") };
+    const out = { v: q.get("v"), s: q.get("s"), o: q.get("o") };
     const m = (q.get("map") || "").split("/").map(Number);
     if (m.length === 3 && m.every(Number.isFinite)) out.view = { zoom: m[0], center: [m[1], m[2]] };
     return out;
@@ -181,6 +248,7 @@
     const parts = [`v=${encodeURIComponent(currentVar)}`,
       `map=${map.getZoom()}/${c.lat.toFixed(4)}/${c.lng.toFixed(4)}`];
     if (selected) parts.push(`s=${encodeURIComponent(selected).replace(/%3A/gi, ":")}`);
+    if (overlays.current()) parts.push(`o=${encodeURIComponent(overlays.current())}`);
     const h = `#${parts.join("&")}`;
     if (h !== location.hash) history.replaceState(null, "", h);
   }
@@ -193,40 +261,17 @@
   if (initialHash.v && SNOTEL_VARS[initialHash.v]) currentVar = initialHash.v;
 
   function drawSnotel() {
-    snotelLayer.clearLayers();
     if (!snotelData) return;
     const spec = SNOTEL_VARS[currentVar];
-    for (const f of snotelData.features) {
-      const p = f.properties;
-      const v = p[currentVar];
-      const bg = colorFor(spec, v);
-      const sel = p.triplet === selected ? " sel" : "";
-      const html = bg
-        ? `<div class="stn${sel}" style="background:${bg};color:${textOn(bg)}">${fmtValue(spec, v)}</div>`
-        : `<div class="stn na${sel}">–</div>`;
-      const [lon, lat] = f.geometry.coordinates;
-      const m = L.marker([lat, lon], {
-        icon: L.divIcon({ html, className: "", iconSize: null }),
-        title: `${p.name} (${num(p.elev_ft, 0)} ft)`,
-        triplet: p.triplet,
-        value: bg ? v : null,
-        zIndexOffset: bg ? 1000 : -1000,
-      });
-      m.on("click", () => selectSnotel(p));
-      snotelLayer.addLayer(m);
-    }
+    points.setGroup("snotel", snotelData.features.map((f) => snotelItem(f, spec)), { order: 1 });
     drawLegend(spec);
-    scheduleDeclutter();
   }
 
   function selectSnotel(p) {
+    map.closePopup();
     selected = p.triplet;
-    for (const el of document.querySelectorAll(".stn.sel")) el.classList.remove("sel");
-    snotelLayer.eachLayer((m) => {
-      if (m.options.triplet === p.triplet) m.getElement()?.firstElementChild?.classList.add("sel");
-    });
+    points.invalidate();   // highlight; the selected station always keeps its label
     writeHash();
-    scheduleDeclutter();   // the selected station always keeps its label
     showStation(p);
   }
 
@@ -256,6 +301,7 @@
         <tr><td>Temp now (24-hr hi / lo)</td><td>${num(p.temp_f, 0, "°")} (${num(p.tmax_24h, 0, "°")} / ${num(p.tmin_24h, 0, "°")})</td></tr>
       </table>
       <div id="chart"></div>
+      <p class="forecast-link"><a href="area.html#snotel-${encodeURIComponent(p.triplet.replace(/:/g, "-"))}">Forecast for this site (NBM / NWS) →</a></p>
       <p class="hint"><a href="https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=${encodeURIComponent(p.id)}"
         target="_blank" rel="noopener">NRCS station page →</a></p>`;
     if (window.innerWidth < 800) box.scrollIntoView({ behavior: "smooth" });
@@ -292,7 +338,8 @@
                  line: { color: "#888", width: 1, dash: "dot" } }],
       hovermode: "x unified",
     };
-    Plotly.newPlot("chart", traces, layout, { displayModeBar: false, responsive: true });
+    loadPlotly().then((P) => P.newPlot("chart", traces, layout, { displayModeBar: false, responsive: true }))
+      .catch((e) => { $("chart").textContent = `Chart unavailable (${e.message})`; });
   }
 
   $("var-select").innerHTML = Object.entries(SNOTEL_VARS)
@@ -305,42 +352,10 @@
   // ---------------------------------------------------------------- ASOS
   // Wind barb pointing toward the direction the wind blows FROM, with
   // barbs on the clockwise side (Northern Hemisphere convention).
-  function barbSVG(kt, dir) {
-    const c = 22, col = "#14202e";
-    if (kt === null || kt === undefined) return "";
-    if (kt < 3) {
-      return `<svg width="44" height="44"><circle cx="${c}" cy="${c}" r="4" fill="none" stroke="${col}" stroke-width="1.5"/></svg>`;
-    }
-    let s = Math.round(kt / 5) * 5;
-    const parts = [`<line x1="${c}" y1="${c}" x2="${c}" y2="2"/>`];
-    let y = 2;
-    while (s >= 50) { parts.push(`<polygon points="${c},${y} ${c + 9},${y + 2.5} ${c},${y + 5}" fill="${col}"/>`); y += 6; s -= 50; }
-    while (s >= 10) { parts.push(`<line x1="${c}" y1="${y}" x2="${c + 9}" y2="${y - 3}"/>`); y += 3.5; s -= 10; }
-    if (s >= 5) {
-      if (y === 2) y += 3.5; // lone half barb sits one step in from the end
-      parts.push(`<line x1="${c}" y1="${y}" x2="${c + 4.5}" y2="${y - 1.5}"/>`);
-    }
-    parts.push(`<circle cx="${c}" cy="${c}" r="2" fill="${col}"/>`);
-    return `<svg width="44" height="44"><g transform="rotate(${dir || 0} ${c} ${c})" stroke="${col}" stroke-width="1.5">${parts.join("")}</g></svg>`;
-  }
+  const asosItems = new Map();  // id -> canvas item
 
-  const asosMarkers = new Map();  // id -> marker
-
-  function drawAsos(fc) {
-    asosLayer.clearLayers();
-    asosMarkers.clear();
-    for (const f of fc.features) {
-      const p = f.properties;
-      const [lon, lat] = f.geometry.coordinates;
-      // Whole degrees on the map (short labels overlap less); decimals in the popup.
-      const tLabel = p.temp_f === null || p.temp_f === undefined ? "" : Math.round(p.temp_f);
-      const html = `<div class="asos${p.stale ? " stale" : ""}">${barbSVG(p.wind_kt, p.wind_dir)}
-        <span class="asos-temp">${tLabel}</span></div>`;
-      const m = L.marker([lat, lon], {
-        icon: L.divIcon({ html, className: "", iconSize: null }), title: p.name,
-        tempLabel: tLabel, stale: !!p.stale,
-      });
-      m.bindPopup(`
+  function asosPopup(p) {
+    return `
         <strong>${esc(p.id)} – ${esc(p.name)}</strong><br>
         <span class="hint">${localTime(p.valid_utc)}${p.stale ? " · <strong>stale</strong>" : ""}</span>
         <table class="metrics">
@@ -350,21 +365,52 @@
           <tr><td>Today hi / lo</td><td>${num(p.tmax_f, 0, "°")} / ${num(p.tmin_f, 0, "°")}</td></tr>
           <tr><td>Precip today</td><td>${num(p.precip_today_in, 2, '"')}</td></tr>
         </table>
-        ${p.metar ? `<code style="font-size:11px">${esc(p.metar)}</code>` : ""}`);
-      m.on("popupopen", () => { selected = `asos:${p.id}`; writeHash(); });
-      m.on("popupclose", () => { if (selected === `asos:${p.id}`) { selected = null; writeHash(); } });
-      asosLayer.addLayer(m);
-      asosMarkers.set(String(p.id), m);
-    }
-    scheduleDeclutter();
+        ${p.metar ? `<code style="font-size:11px">${esc(p.metar)}</code>` : ""}`;
+  }
+  const openAsos = (it) => openItemPopup(it, asosPopup(it.props), `asos:${it.props.id}`);
+
+  function drawAsos(fc) {
+    asosItems.clear();
+    const items = fc.features.map(asosItem);
+    for (const it of items) asosItems.set(String(it.props.id), it);
+    points.setGroup("asos", items, { order: 0 });
+  }
+
+  // ---------------------------------------------------------------- ski areas
+  // data/ski_areas.json (pipeline catalog; OpenSkiMap/OSM, ODbL). Triangle markers,
+  // larger for the major areas; popup links to the area page.
+  const skiItems = new Map();
+  const ft = (v) => (v === null || v === undefined ? "–" : `${Number(v).toLocaleString()} ft`);
+
+  function skiPopup(a) {
+    const avy = a.avalanche ? `<br>Avalanche zone: ${esc(a.avalanche.zone)}` : "";
+    return `<strong>${esc(a.name)}</strong>
+        <div class="hint">${esc(a.region)}, ${esc(a.state)}</div>
+        <p>Base ${ft(a.base.elev_ft)} · Summit ${ft(a.summit.elev_ft)}<br>
+        Vertical ${ft(a.vertical_ft)} · ${a.lifts} lifts${avy}</p>
+        <a href="area.html#${encodeURIComponent(a.id)}">Forecast and details →</a>
+        ${a.url ? `<br><a href="${esc(safeUrl(a.url))}" target="_blank" rel="noopener">Area website</a>` : ""}`;
+  }
+  const openSki = (it) => openItemPopup(it, skiPopup(it.area), `area:${it.area.id}`);
+
+  function drawSkiAreas(cat) {
+    skiItems.clear();
+    const items = (cat?.areas || []).map(skiItem);
+    for (const it of items) skiItems.set(it.area.id, it);
+    points.setGroup("ski", items, { order: 2 });
+    if (cat?.attribution) map.attributionControl.addAttribution(`Ski areas ${esc(cat.attribution)}`);
   }
 
   // ---------------------------------------------------------------- search
-  // One list of SNOTEL + ASOS stations, matched on name or ID.
+  // One list of ski areas + SNOTEL + ASOS stations, matched on name or ID.
   let stationIndex = [];
 
-  function buildIndex(sno, aso) {
+  function buildIndex(sno, aso, ski) {
     stationIndex = [];
+    for (const a of ski?.areas || []) {
+      stationIndex.push({ key: `area:${a.id}`, kind: "AREA", ids: [a.id], name: a.name,
+        sub: `Ski area · ${a.region}, ${a.state}`, lat: a.summit.lat, lon: a.summit.lon });
+    }
     for (const f of sno?.features || []) {
       const p = f.properties, [lon, lat] = f.geometry.coordinates;
       stationIndex.push({ key: p.triplet, kind: "SNOTEL", ids: [String(p.id), p.triplet], name: p.name,
@@ -397,12 +443,17 @@
 
   function selectStation(s, { fly = true } = {}) {
     if (fly) map.setView([s.lat, s.lon], Math.max(map.getZoom(), 10));
-    if (s.kind === "SNOTEL") {
+    if (s.kind === "AREA") {
+      if (!map.hasLayer(skiLayer)) skiLayer.addTo(map);
+      const it = skiItems.get(s.key.slice(5));
+      if (it) openSki(it);
+    } else if (s.kind === "SNOTEL") {
       if (!map.hasLayer(snotelLayer)) snotelLayer.addTo(map);
       selectSnotel(s.props);
     } else {
       if (!map.hasLayer(asosLayer)) asosLayer.addTo(map);
-      asosMarkers.get(s.key.slice(5))?.openPopup();
+      const it = asosItems.get(s.key.slice(5));
+      if (it) openAsos(it);
     }
   }
 
@@ -415,7 +466,7 @@
       list.innerHTML = results.length
         ? results.map((s, i) => `<li role="option" data-i="${i}" class="${i === active ? "active" : ""}">
             ${esc(s.name)}<span class="kind">${esc(s.sub)}</span></li>`).join("")
-        : `<li class="empty">No matching station</li>`;
+        : `<li class="empty">No match</li>`;
       list.hidden = false;
       input.setAttribute("aria-expanded", "true");
     };
@@ -453,9 +504,24 @@
   // ---------------------------------------------------------------- load
   let lastUpdated = "";
 
+  // One line per source: obs fetched by this build plus products merged in from
+  // other jobs (NBM points, model maps, NOHRSC), each with its own time.
+  const SOURCE_LABEL = { snotel: "SNOTEL", asos: "ASOS", avalanche: "Avalanche", points: "NBM forecasts",
+    models: "Model maps", nohrsc: "NOHRSC snow" };
+  const UNIT = { snotel: "stations", asos: "stations", avalanche: "zones" };
+  const ago = (iso) => {
+    if (!iso) return "";
+    const m = (Date.now() - new Date(iso)) / 6e4;
+    return m < 90 ? `${Math.max(1, Math.round(m))} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+  };
   function drawStatus(meta) {
-    const items = Object.entries(meta.sources || {}).map(([name, s]) =>
-      `<li class="${s.ok ? "ok" : "bad"}">${esc(name)}: ${s.ok ? `${s.count} ${name === "avalanche" ? "zones" : "stations"}` : `failed (${esc(s.error)})`}</li>`);
+    const items = Object.entries(meta.sources || {}).map(([name, s]) => {
+      const label = SOURCE_LABEL[name] || name;
+      const what = s.ok ? [s.count !== undefined ? `${s.count} ${s.unit || UNIT[name] || ""}`.trim() : "", s.detail || ""]
+        .filter(Boolean).join(" · ") : `failed (${esc(s.error)})`;
+      const when = s.at ? ` <span class="hint" title="${esc(s.at)}">${ago(s.at)}</span>` : "";
+      return `<li class="${s.ok ? "ok" : "bad"}">${esc(label)}: ${esc(what)}${when}</li>`;
+    });
     $("status").innerHTML = items.join("");
   }
 
@@ -474,19 +540,27 @@
     else map.setView(meta?.region?.map_center || [41.5, -113], meta?.region?.map_zoom || 5);
     setZoomClass();
 
-    const [avy, sno, aso] = await Promise.allSettled([
+    const [avy, sno, aso, ski] = await Promise.allSettled([
       getJSON("avalanche.geojson", lastUpdated),
       getJSON("snotel.geojson", lastUpdated),
       getJSON("asos.geojson", lastUpdated),
+      getJSON("ski_areas.json", lastUpdated),
     ]);
     if (avy.status === "fulfilled") avyLayer.addData(avy.value);
     if (sno.status === "fulfilled") { snotelData = sno.value; drawSnotel(); }
     if (aso.status === "fulfilled") drawAsos(aso.value);
-    buildIndex(sno.value, aso.value);
+    if (ski.status === "fulfilled") drawSkiAreas(ski.value);
+    overlays.load(initialHash.o);
+    buildIndex(sno.value, aso.value, ski.value);
 
     hashReady = true;
     openFromHash(initialHash, false);
     writeHash();
+    window.snowwx.ready = true;
+    // Warm the chart library once the map is idle, so the first station click is quick
+    // without Plotly blocking the initial load.
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 2500));
+    idle(() => loadPlotly().catch(() => {}), { timeout: 5000 });
   }
 
   function openFromHash(h, fly) {
@@ -502,6 +576,7 @@
       currentVar = h.v; $("var-select").value = currentVar; drawSnotel();
     }
     if (h.view) map.setView(h.view.center, h.view.zoom);
+    if ((h.o || null) !== overlays.current()) overlays.set(h.o || null);
     if (h.s && h.s !== selected) openFromHash(h, false);
   });
 

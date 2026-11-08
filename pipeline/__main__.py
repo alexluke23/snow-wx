@@ -11,6 +11,7 @@ others. The obs command exits non-zero only if every enabled source fails.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import shutil
@@ -29,6 +30,60 @@ SOURCES = {
 }
 
 
+def read_meta(outdir: Path) -> dict:
+    try:
+        return json.loads((outdir / "meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def write_meta(cfg: dict, outdir: Path, updates: dict) -> None:
+    """Merge source statuses into outdir/meta.json. A partial run (e.g. --only
+    avalanche) updates its own entries and keeps the others."""
+    meta = read_meta(outdir)
+    sources = {**(meta.get("sources") or {}), **updates}
+    write_json(outdir / "meta.json", {
+        "generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "region": cfg["region"],
+        "sources": sources,
+    })
+
+
+def product_status(outdir: Path) -> dict:
+    """Status entries for products made by other jobs and merged at build time
+    (NBM points, model maps): what is present in the site folder and how old it is."""
+    out = {}
+    pts = outdir / "data" / "points" / "summary.json"
+    try:
+        js = json.loads(pts.read_text(encoding="utf-8"))
+        out["points"] = {"ok": True, "count": len(js.get("areas", [])), "unit": "ski areas",
+                         "detail": f"NBM {js['cycle'][8:10]}Z run", "at": js.get("generated_at")}
+    except (OSError, ValueError, KeyError):
+        out["points"] = {"ok": False, "error": "no NBM point forecasts yet"}
+    nh = outdir / "data" / "nohrsc" / "index.json"
+    try:
+        js = json.loads(nh.read_text(encoding="utf-8"))
+        out["nohrsc"] = {"ok": bool(js.get("layers")), "count": len(js.get("layers", [])), "unit": "layers",
+                         "detail": f"snowfall to {(js.get('snowfall_end') or '')[5:13].replace('T', ' ')}Z, "
+                                   f"SNODAS {(js.get('snodas_valid') or '')[5:10]}",
+                         "at": js.get("generated_at")}
+    except (OSError, ValueError):
+        out["nohrsc"] = {"ok": False, "error": "no NOHRSC layers yet"}
+    idx = outdir / "models" / "index.json"
+    try:
+        js = json.loads(idx.read_text(encoding="utf-8"))
+        models = js.get("models") or {}
+        out["models"] = {"ok": bool(models), "count": len(models), "unit": "models",
+                         "detail": ", ".join(f"{m.get('label', k)} {m.get('cycle', '')[8:10]}Z"
+                                             for k, m in models.items()),
+                         "at": max((m.get("generated_at") or "" for m in models.values()), default=None)}
+        if not models:
+            out["models"]["error"] = "no model runs yet"
+    except (OSError, ValueError):
+        out["models"] = {"ok": False, "error": "no model runs yet"}
+    return out
+
+
 def run_obs(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
     session = make_session(cfg)
     status = {}
@@ -45,12 +100,9 @@ def run_obs(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
             logging.getLogger("snow-wx").exception("%s failed", name)
             status[name] = {"ok": False, "error": str(exc)[:300]}
         status[name]["seconds"] = round(time.time() - t0, 1)
+        status[name]["at"] = utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    write_json(outdir / "meta.json", {
-        "generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "region": cfg["region"],
-        "sources": status,
-    })
+    write_meta(cfg, outdir, status)
     ok = [n for n, s in status.items() if s["ok"]]
     print(f"Done. OK: {ok or 'none'}; failed: {[n for n in status if n not in ok] or 'none'}")
     return 0 if ok else 1
@@ -62,12 +114,18 @@ def build_site(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
     web = REPO_ROOT / "web"
     shutil.copytree(web, outdir, dirs_exist_ok=True)
     code = run_obs(cfg, outdir / "data", only)
+    # Static catalogs that live in the repo (built on demand, e.g. `pipeline catalog`).
+    for name in ("ski_areas.json",):
+        src = REPO_ROOT / "data" / name
+        if src.exists():
+            shutil.copy2(src, outdir / "data" / name)
     try:
         from .models.catalog import write_catalog
         from .models.config import load_models_config
         write_catalog(outdir / "models", list(load_models_config()["models"]))
     except Exception:
         logging.getLogger("snow-wx").exception("model catalog failed")
+    write_meta(cfg, outdir / "data", product_status(outdir))
     return code
 
 
@@ -102,6 +160,34 @@ def main(argv=None) -> int:
         p.add_argument("--only", nargs="*", choices=list(SOURCES), help="run only these sources")
         p.add_argument("-v", "--verbose", action="store_true")
     _models_args(sub)
+    p = sub.add_parser("catalog", help="rebuild data/ski_areas.json (on demand; slow external lookups are cached)")
+    p.add_argument("--out", default=str(REPO_ROOT / "data" / "ski_areas.json"))
+    p.add_argument("--obs-dir", default="build/data", help="folder with snotel/asos.geojson for nearest-station joins")
+    p.add_argument("--refresh", action="store_true", help="re-download OpenSkiMap")
+    p.add_argument("--snotel", action="store_true", help="build data/snotel_points.json (SNOTEL forecast points) instead")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("ndfd", help="NWS official forecast (NDFD) at every ski area and SNOTEL site into OUT/")
+    p.add_argument("--out", default="build/data/ndfd")
+    p.add_argument("--published", default=None, help="key already on the site; exit 0 if unchanged")
+    p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("nohrsc", help="NOHRSC snowfall analysis + SNODAS overlay layers into OUT/")
+    p.add_argument("--out", default="build/data/nohrsc")
+    p.add_argument("--published", default=None, help="key already on the site; exit 0 if unchanged")
+    p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("points", help="NBM point forecasts for every ski area into OUT/<id>.json")
+    p.add_argument("--out", default="build/data/points")
+    p.add_argument("--cycle", help="NBM cycle YYYYMMDDHH (default: newest complete 00/06/12/18Z)")
+    p.add_argument("--published", default=None, help="cycle already on the site; exit 0 if unchanged")
+    p.add_argument("--max-hour", type=int, default=264)
+    p.add_argument("--workers", type=int, default=6)
+    p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
 
     # Windows consoles/pipes default to cp1252; Herbie prints emoji. Never crash on that.
@@ -128,6 +214,24 @@ def main(argv=None) -> int:
                          github_output=args.github_output)
 
     cfg = load_config(args.config)
+    if args.cmd == "ndfd":
+        from . import ndfd
+        return ndfd.run(cfg, make_session(cfg), Path(args.out), published=args.published,
+                        github_output=args.github_output)
+    if args.cmd == "nohrsc":
+        from . import nohrsc
+        return nohrsc.run(cfg, make_session(cfg), Path(args.out), published=args.published,
+                          github_output=args.github_output)
+    if args.cmd == "points":
+        from .nbm.run import run_points
+        cycle = datetime.strptime(args.cycle, "%Y%m%d%H") if args.cycle else None
+        return run_points(cfg, make_session(cfg), Path(args.out), cycle=cycle, published=args.published,
+                          max_hour=args.max_hour, workers=args.workers, github_output=args.github_output)
+    if args.cmd == "catalog":
+        from . import catalog
+        if args.snotel:
+            return catalog.build_snotel_points(make_session(cfg), catalog.load_catalog_config(), Path(args.obs_dir))
+        return catalog.run(cfg, make_session(cfg), Path(args.out), Path(args.obs_dir), args.refresh)
     if args.cmd == "obs":
         return run_obs(cfg, Path(args.out), args.only)
     if args.cmd == "build":

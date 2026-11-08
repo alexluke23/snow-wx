@@ -46,6 +46,17 @@ python -m http.server 8000 -d build     # then open http://localhost:8000
 Press `Ctrl+C` in the terminal to stop the preview server. Fetch a single
 source with logs: `python -m pipeline obs --only snotel -v`.
 
+Ski areas and point forecasts:
+
+```powershell
+python -m pipeline catalog              # rebuild data/ski_areas.json (on demand; run `build` first)
+python -m pipeline points               # NBM forecasts for every ski area -> build/data/points/
+python -m pipeline.nbm.sanity           # NBM 24-h snow vs the NWS forecast for 10 areas
+python -m pipeline nohrsc                # NOHRSC snowfall + SNODAS overlay layers -> build/data/nohrsc/
+python -m pipeline catalog --snotel      # data/snotel_points.json (SNOTEL forecast points; on demand)
+python -m pipeline ndfd                  # NWS official forecast (NDFD) at all ski areas + SNOTEL -> build/data/ndfd/
+```
+
 ## 3. Put it on GitHub and publish
 
 1. On github.com, click **+ → New repository**. Name it `snow-wx`, choose
@@ -93,9 +104,14 @@ happens, push any change or re-enable it in the Actions tab.
 ```
 config/settings.yml        region, states, time windows, on/off switches
 config/models.yml          model maps: domains, models, forecast hours, fields
+config/ski_areas.yml       ski-area catalog: filters, exclusions, name fixes, regions
+data/ski_areas.json        the catalog (ODbL, derived from OpenStreetMap/OpenSkiMap)
+docs/PLAN.md               product plan and milestones
 pipeline/                  Python: one module per data source
   snotel.py  asos.py  avalanche.py  common.py  __main__.py
   models/                  model maps: fetch, derive, plot, run, catalog
+  catalog.py               ski-area catalog (OpenSkiMap + USGS 3DEP + NWS + NBM grid)
+  nbm/  points.py          NBM point forecasts (inventory, fetch, period math)
 web/                       the website (HTML/CSS/JS, no build step)
   js/colors.js             color scales and legends — tweak freely
   models.html, js/models.js  model map loop viewer
@@ -110,6 +126,13 @@ CLAUDE.md                  context for Claude Code
 |---|---|---|
 | USDA NRCS AWDB (SNOTEL) | snow, SWE, temp | Public domain |
 | NOAA/NCEP HRRR, RRFS, GFS via NOAA Open Data Dissemination (AWS) | model maps | Public domain (US Government) |
+| NOAA/NWS National Blend of Models (NBM) via NODD (AWS) | ski-area point forecasts | Public domain (US Government) |
+| NOAA/NWS NDFD via NODD (AWS) | NWS official point forecasts | Public domain (US Government) |
+| api.weather.gov | NWS grid lookup, forecast cross-check | Public domain; descriptive User-Agent |
+| OpenSkiMap / OpenStreetMap | ski areas and lifts | ODbL: attribution; derived catalog shared under ODbL |
+| USGS 3DEP (elevation.nationalmap.gov) | base/summit and grid-cell elevations | Public domain |
+| NOAA/NWS NOHRSC National Snowfall Analysis v2.1 | 24/48/72-h observed snowfall overlay | Public domain (US Government); credit NOAA/NWS NOHRSC |
+| NOHRSC SNODAS via NSIDC (G02158) | SWE, snow depth, 24-h SWE change overlay | NOAA data, free; cite NSIDC G02158 |
 | Natural Earth | map outlines on model maps | Public domain |
 | Iowa Environmental Mesonet | ASOS/AWOS currents | Free for any lawful use, incl. commercial |
 | avalanche.org public API | danger by zone | Show unaltered, expire correctly, link to full forecast |

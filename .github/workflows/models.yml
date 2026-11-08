@@ -39,12 +39,17 @@ env:
 
 jobs:
   render:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        model: [hrrr, rrfs, gfs]   # one job per model; keep in sync with config/models.yml
+        # one job per model (keep in sync with config/models.yml), NBM ski-area point
+        # forecasts, and NOHRSC snowfall/SNODAS overlay layers. Every job exits early
+        # when its newest input is already published, so the 3-hourly schedule also
+        # covers "daily SNODAS" (~14Z) and "after each snowfall analysis" (~12 h after
+        # 00Z/12Z).
+        model: [hrrr, rrfs, gfs, points, nohrsc, ndfd]
     env:
       GH_TOKEN: ${{ github.token }}
       MODEL: ${{ matrix.model }}
@@ -59,10 +64,10 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.sel.outputs.run == 'true'
 
-      - uses: mamba-org/setup-micromamba@v2
+      - uses: mamba-org/setup-micromamba@v3
         if: steps.sel.outputs.run == 'true'
         with:
           environment-file: environment.yml
@@ -70,7 +75,7 @@ jobs:
 
       - name: Cache Natural Earth basemap files
         if: steps.sel.outputs.run == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/cartopy
           key: cartopy-naturalearth-50m-v1
@@ -91,7 +96,18 @@ jobs:
         shell: bash -el {0}
         # Writes new=true|false and cycle=... to $GITHUB_OUTPUT. Exit 0 with
         # new=false when nothing newer than the published cycle is complete.
-        run: python -m pipeline models --model "$MODEL" --out out/models --published "${{ steps.pub.outputs.cycle }}"
+        run: |
+          if [ "$MODEL" = ndfd ]; then
+            # NWS official forecast at every ski area and SNOTEL site (~320 MB of NDFD GRIB)
+            python -m pipeline ndfd --out out/models/ndfd --published "${{ steps.pub.outputs.cycle }}"
+          elif [ "$MODEL" = nohrsc ]; then
+            python -m pipeline nohrsc --out out/models/nohrsc --published "${{ steps.pub.outputs.cycle }}"
+          elif [ "$MODEL" = points ]; then
+            # NBM 00/06/12/18Z cycles reach f264 (core + qmd) a few hours after init
+            python -m pipeline points --out out/models/points --published "${{ steps.pub.outputs.cycle }}"
+          else
+            python -m pipeline models --model "$MODEL" --out out/models --published "${{ steps.pub.outputs.cycle }}"
+          fi
 
       - name: Upload to the model-maps release
         if: steps.render.outputs.new == 'true'
