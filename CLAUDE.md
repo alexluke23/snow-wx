@@ -112,16 +112,21 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
   (CI: `points` entry in the models.yml matrix → `points-<cycle>.tar` on the
   model-maps release → update-site unpacks it into build/data). Code: `pipeline/nbm/`
   (inventory parse/select, fetch+decode+sample) and pure `pipeline/points.py`.
-- NBM inventory facts (7 Nov 2026): every core cycle reaches f264 (hourly to f048,
-  3-hourly to f192, 6-hourly to f264); qmd only 00/06/12/18Z. ASNOW percentiles to
-  f048 (6-h to f054), SNOWLVL + SNOWLR percentiles to f048, deterministic after.
-  QPF percentiles (qmd, 0..100 by 5) in 6/12-h windows to f264, plus day blocks
-  0-1, 0-3, 3-5, 5-7, 7-10 day. SNOWLVL is metres MSL; SNOWLR is ~0 where
-  no snow falls (average it over snowy steps only). ecCodes names these `unknown`.
-  **core GRIB uses alternativeRowScanning** (odd rows stored reversed; qmd does not):
-  index with `run.flat_index`, or odd-row cells read the mirror column (this bug once
-  made Wasatch values come from the eastern US). Check decodes against the NBS text
-  bulletins (`blend.YYYYMMDD/HH/text/blend_nbstx.tHHz`: TMP, Q06, SLV in 100s ft).
+- NBM inventory: see **docs/nbm_inventory.md** (all 24 cycles, regenerate with
+  `tools/nbm_inventory.py YYYYMMDD`). Layouts differ by cycle — never assume one:
+  01/07/13/19Z core has ASNOW 6/24/48/72-h percentiles + exceedances, SNOWLVL and SNOWLR
+  percentiles to ~f263, hourly files to f264, no qmd; 00/06/12/18Z have snowfall
+  percentiles only to f048/f054 but carry qmd (QPF percentiles; day blocks vary by cycle:
+  18Z f072 has only 2-3 day). Selection is rule-based (`inventory.classify/select`): only
+  windows ending at the file's own hour count (later files repeat earlier windows with
+  other values). The points job prefers the newest complete 01/07/13/19Z cycle. Missing
+  messages are missing data (`required_keys` counted; fail > 20 %; summary.json `quality`).
+  Percentiles match the GSL NBM 1-D viewer exactly at the nearest cell (KMLP, KSMP; see
+  docs/nbm_inventory.md); its exceedance probabilities are not reproducible.
+  SNOWLVL is metres MSL; SNOWLR is ~0 where no snow falls (average over snowy steps).
+  ecCodes names these `unknown`. **core GRIB uses alternativeRowScanning** (odd rows
+  stored reversed; qmd does not): index with `run.flat_index`. Check decodes against the
+  NBS text bulletins (`blend.YYYYMMDD/HH/text/blend_nbstx.tHHz`: TMP, Q06, SLV).
 - Methods (pure, tested): lapse 6.5 °C/km grid→point (cap 4000 ft); P(snow) = P(snow
   level < point) from p10/50/90 (det ±800 ft ramp later); 12-h periods 00Z–12Z /
   12Z–00Z; snow range = QPF percentiles × det snow/QPF ratio; 7/10-day ranges add block

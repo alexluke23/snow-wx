@@ -57,8 +57,11 @@ def product_status(outdir: Path) -> dict:
     pts = outdir / "data" / "points" / "summary.json"
     try:
         js = json.loads(pts.read_text(encoding="utf-8"))
+        q = js.get("quality") or {}
         out["points"] = {"ok": True, "count": len(js.get("areas", [])), "unit": "ski areas",
-                         "detail": f"NBM {js['cycle'][8:10]}Z run", "at": js.get("generated_at")}
+                         "detail": f"NBM {js['cycle'][8:10]}Z run" + (f", {q['missing']} of {q['required']} required "
+                                                                      f"messages missing" if q.get("missing") else ""),
+                         "at": js.get("generated_at"), **({"quality": q} if q else {})}
     except (OSError, ValueError, KeyError):
         out["points"] = {"ok": False, "error": "no NBM point forecasts yet"}
     nh = outdir / "data" / "nohrsc" / "index.json"
