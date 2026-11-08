@@ -339,7 +339,9 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
         ps[h] = P.p_snow_level_below(elev_ft, p10, mid, p90)
         series["p_snow"].append(_r(ps[h], 2))
         series["slr"].append(_r(v(h, "slr"), 1))
-        series["pop"].append(_r(v(h + (-h % 6), "pop6"), 2))
+        # 6-h PoP of the window this hour falls in: windows end at valid 00/06/12/18Z, so for
+        # the 01/07/13/19Z cycles they end at f005, f011, ... (not at multiples of 6)
+        series["pop"].append(_r(v(h + (-(init.hour + h) % 6), "pop6"), 2))
 
     def steps_in(s, e):
         return [h for h in hours if s < h <= e]

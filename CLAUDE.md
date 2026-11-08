@@ -212,6 +212,12 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       --data build/data [--local DIR]` (CI: update-site.yml step, gh release "verification"; use
       --local into the scratchpad for dry runs and delete the output: the archive never lives on the
       PC). Every run prunes data_cache > 2 days (`pipeline/cache.py`; keeps catalog/, openskimap/).
+- [x] S5 items 2-3: bugs B1-B7 + §6-B chart rework. Charts use `web/js/charts/theme.js` (SnowCharts: local-time
+      axes via wall-clock strings, Okabe-Ito, axis titles as top-left annotations, summary() + tableToggle(),
+      heatTable(), lazy(); always C.plot so the container gets an explicit height). Base maps: `web/js/basemap.js`.
+      Lighthouse: scratchpad lh_all.sh pattern (perf + a11y, 6 pages). Element screenshots: CDP clip after
+      scrollIntoView WITHOUT captureBeyondViewport (that resizes the viewport and Plotly re-lays out).
+- [ ] M4.5 Sno-Parks: research sources/licences first, ask before unclear ones (owner: public domain + key-free first).
 - [ ] M6 zoomable model layers + HRRR prs file: deferred to S6 (baseline numbers in PLAN.md §2).
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

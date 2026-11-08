@@ -421,6 +421,18 @@ screenshots checked. Suggested session grouping in brackets.
   5. Hourly chart mixes 1-h and 6-h amounts on one axis. Never mix accumulation periods.
   6. Ridge-top wind stops after ~24–30 h; show HRRR then RRFS with a labeled handoff, or explain.
   7. "hatched = extended outlook" is in the bar-chart caption but no hatching is visible.
+- ✔ S5: B1 basemap.js (overzoom + fallback), B2/B3 Finder (ridge states; per-window wet snow level), B4-B7 in the
+  chart rework. §6-B: `web/js/charts/theme.js` (SnowCharts) for every chart on the area page (day/night bars,
+  heat table, snow level, temperature, wind + ridge HRRR→RRFS, snow rate, nearest SNOTEL) and the obs-map
+  SNOTEL panel (depth, SWE, temperature); summaries, "View as table", lazy drawing, explicit heights (a resize
+  used to squash charts to 200 px). Found and fixed: hourly PoP was empty for 01/07/13/19Z cycles, so the
+  snow-level "likely" line never showed. Lighthouse a11y 100 on all six pages (was 95–100); performance area
+  91→91–94, SNOTEL page 91→94–98, obs map 47→71 (header CLS 0.33→0.02), models 81→90, finder 97–98.
+- 5-second test (what a skier reads first): day/night bars — the tallest bar and the number on it; heat table —
+  the darkest cell (best odds) and its day; snow level — whether the solid line is under the Base line, and
+  when; temperature — summit/base above or below the labelled 32 °F line; wind — the green ridge-top line's
+  peak vs the summit wind; snow rate — when the tallest bar is; nearest SNOTEL — depth rising or falling this
+  week; obs-map panel — depth trend, SWE, freezing or not.
 
 **M4 — Powder Finder** [Session 2–3]
 - Map + sortable/filterable table (state/region; 24 h / 72 h / 7 d; range;
