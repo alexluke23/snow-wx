@@ -196,6 +196,12 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
 - [x] S4 B: AFD = obs SOURCE `afd` (`pipeline/afd.py` -> build/data/afd/<WFO>.json + index.json; WFOs
       from catalog `nws.*.wfo`); area-page section; `web/about.html` (methods: keep it in sync
       when methods change).
-- [ ] Ridge-top wind (S4 C).
+- [x] S4 C ridge-top wind: `pipeline/models/ridge.py`. Model runs with `ridge: {levels: [...]}` in
+      config/models.yml (HRRR 850/700/500, RRFS 850-600 every 50 mb) sample u/v/HGT at every frame
+      at each ski-area summit (nearest column, linear in height, levels below model terrain skipped,
+      Lambert grid winds rotated with the cone constant) -> `<model>/ridge.json` (inside the model tar);
+      `build` merges HRRR (to 48 h) then RRFS (to 84 h) -> build/data/ridge.json (~60 KB). Area
+      meteogram trace + note; Powder Finder "Ridge" column (max in the window; lazy-loaded).
+- [ ] M6 zoomable model layers (S4 D) - not started.
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

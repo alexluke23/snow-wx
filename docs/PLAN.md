@@ -343,6 +343,11 @@ screenshots checked. Suggested session grouping in brackets.
   (issue time, weather.gov link, collapsible text loaded on open, paragraphs mentioning the area's
   name/region highlighted). about.html (methods, sources, attribution, disclaimer) in the nav; ⓘ
   tooltips link to it.
+- ✔ S4 C: ridge-top (free-air) summit wind from HRRR (0–48 h) / RRFS (to 84 h), sampled during the
+  model runs (no extra downloads beyond the u/v/HGT level messages), on area pages (meteogram +
+  "next 24 h" note) and as Powder Finder's "Ridge" column; about.html explains why NBM 10 m wind runs
+  lower on exposed summits. Live check 00Z 8 Nov: Timberline ridge 57–79 mph SW vs NBM summit wind
+  ~37 / gust 53 mph. Lighthouse: finder 96–98, area page 85 → 90 (charts drawn one per task).
 
 **M6 — Interactive model layers** [Session 3]
 - 3857 value PNGs + client colorizer + hover readout for HRRR/RRFS surface

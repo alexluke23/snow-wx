@@ -143,6 +143,7 @@
           <span class="num" data-label="Obs 24 h">${r.obs === null ? "–" : `${fmt(r.obs)}"`}</span>
           <span class="num" data-label="Snow level" title="${r.sl === null ? "" : `lowest snow level in 72 h: ${Math.round(r.sl).toLocaleString()} ft`}">${slTxt}</span>
           <span class="num" data-label="Gust">${r.gust === null ? "–" : `${Math.round(r.gust)}`}<small> mph</small></span>
+          ${(() => { const m = ridgeMax(r.a.id); return `<span class="num" data-label="Ridge">${m ? `${m[0]}<small> mph ${COMPASS[Math.round(m[1] / 22.5) % 16]}</small>` : "–<small> mph</small>"}</span>`; })()}
         </span>
       </div>`;
     }).join("") : `<p class="hint">No ski areas match these filters.</p>`;
@@ -151,7 +152,8 @@
         `probabilistic guidance for the 2.5 km grid cell. ${SEPARATE} Small number: NBM's most-likely ${st.w.replace("h", " h").replace("d", " d")} amount.`
       : `Most likely snowfall at the ${st.e} (${st.src === "nws" ? "NWS forecast, 2.5 km grid cell" : "NBM"})` +
         `${st.src === "nws" ? "" : "; small numbers: NBM 10–90%"}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest in the next 72 h vs the base ` +
-        `("–" when the chance of precipitation is under 20 %). Gust: highest summit gust in 72 h. ★ favorites list first.`;
+        `("–" when the chance of precipitation is under 20 %). Gust: highest summit gust in 72 h (NBM). Ridge: highest ridge-top wind at summit height in the window ` +
+        `(HRRR, then RRFS; to 84 h). ★ favorites list first.`;
     $("rows").querySelectorAll(".star").forEach((b) => b.addEventListener("click", () => {
       const s = favs(); s.has(b.dataset.id) ? s.delete(b.dataset.id) : s.add(b.dataset.id); saveFavs(s); render();
     }));
@@ -159,6 +161,31 @@
   }
 
   function update() { buildRows(); render(); }
+
+  // ridge-top wind (HRRR then RRFS, to 84 h): highest in the chosen window, loaded after first paint
+  let ridge = null;
+  const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+  function ridgeMax(id) {
+    const r = ridge?.areas?.[id];
+    if (!r) return null;
+    let a, b;
+    if (st.m === "prob") {
+      const w = pwin();
+      if (!w?.start[st.pd]) return null;
+      a = new Date(w.start[st.pd]).getTime(); b = new Date(w.end[st.pd]).getTime();
+    } else {
+      a = new Date(nbm.issued).getTime(); b = a + { "24h": 24, "72h": 72, "7d": 168, "10d": 240 }[st.w] * 3.6e6;
+    }
+    let best = null, covered = false;
+    ridge.valid.forEach((t, i) => {
+      const x = new Date(t).getTime();
+      if (x > a && x <= b) {
+        covered = true;
+        if (r.mph[i] !== null && (!best || r.mph[i] > best[0])) best = [r.mph[i], r.dir[i]];
+      }
+    });
+    return covered ? best : null;
+  }
 
   async function ensureExceed() {
     if (exceed) return;
@@ -226,6 +253,7 @@
     $("fresh").textContent = `NBM ${when(nbm.issued)} run${nws ? ` · NWS issued ${when(nws.issued)}` : ""}${obs?.snowfall_end ? ` · observed to ${when(obs.snowfall_end)}` : ""}`;
     if (st.m === "prob") await ensureExceed();
     update();
+    getJSON("data/ridge.json").then((x) => { ridge = x; render(); }).catch(() => {});
     (window.requestIdleCallback || ((f) => setTimeout(f, 300)))(initMap, { timeout: 1500 });
   }
   load();

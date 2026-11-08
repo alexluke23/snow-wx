@@ -109,6 +109,10 @@
         taken from the HRRR (0–48 h) and RRFS (to 84 h) models' pressure-level winds and interpolated to the
         pressure at the summit elevation. This is what a well-exposed ridge experiences; sheltered terrain and the
         lee side of ridges will see less, and gusts can be higher.</p>
+      <p>Details: we use the model grid column nearest the summit and interpolate the wind in height between the
+        pressure levels around the summit (RRFS every 50 mb; HRRR only 850, 700 and 500 mb, so between those its
+        values are interpolated over 1.5–2.5 km of height). Levels that lie below the model's own terrain are skipped.
+        HRRR is used to 48 hours, then RRFS to 84 hours.</p>
     </section>
 
     <section id="afd">
