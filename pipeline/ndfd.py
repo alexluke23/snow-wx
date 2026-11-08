@@ -275,6 +275,18 @@ def point_doc(data: dict, k: int, elev_ft: float | None, tz) -> tuple[list[str],
                                                             "periods": out_periods, "totals": totals}
 
 
+def summary_row(aid: str, doc: dict) -> dict:
+    """Powder Finder row: [snow, lo, hi] per window (NWS has no range) + 72-h extremes."""
+    row = {"id": aid}
+    for k, pt in doc["points"].items():
+        row[k] = {n: [t["snow_in"], None, None] for n, t in pt["totals"].items()}
+    first = doc["points"].get("summit") or next(iter(doc["points"].values()))
+    per = first["periods"][:6]
+    row["snowlvl_min_72h_ft"] = min([p["snowlvl_min_ft"] for p in per if p["snowlvl_min_ft"] is not None], default=None)
+    row["gust_max_72h_mph"] = max([p["gust_max_mph"] for p in per if p["gust_max_mph"] is not None], default=None)
+    return row
+
+
 def forecast_points(repo: Path = REPO_ROOT) -> list[dict]:
     """[{id, tz, points: {key: {lat, lon, elev_ft}}}] for ski areas and SNOTEL sites."""
     out = []
@@ -323,7 +335,8 @@ def run(cfg: dict, session, out: Path, *, published: str | None = None, github_o
     for old in out.glob("*.json"):
         old.unlink()
     generated = utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    sizes = []
+    sizes, summary = [], []
+    cat_ids = {a["id"] for a in json.loads((REPO_ROOT / "data" / "ski_areas.json").read_text(encoding="utf-8"))["areas"]}
     for f in pts:
         tz = ZoneInfo(f.get("tz") or "America/Denver")
         doc = {"id": f["id"], "source": SOURCE, "issued": issued.strftime("%Y-%m-%dT%H:%MZ"),
@@ -335,6 +348,10 @@ def run(cfg: dict, session, out: Path, *, published: str | None = None, github_o
         path = out / f"{f['id']}.json"
         write_json(path, doc)
         sizes.append(path.stat().st_size)
+        if f["id"] in cat_ids:          # one row per ski area for Powder Finder
+            summary.append(summary_row(f["id"], doc))
+    write_json(out / "summary.json", {"issued": issued.strftime("%Y-%m-%dT%H:%MZ"), "source": SOURCE,
+                                      "generated_at": generated, "areas": summary})
     write_json(out / "index.json", {"key": key, "issued": issued.strftime("%Y-%m-%dT%H:%MZ"),
                                     "generated_at": generated, "source": SOURCE, "count": len(pts)})
     log.info("NDFD %s: wrote %d files (max %.0f KB, total %.1f MB)", key, len(sizes), max(sizes) / 1024, sum(sizes) / 1e6)

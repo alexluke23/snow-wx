@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snow-Wx · Powder Finder</title>
+  <meta name="description" content="Where will it snow most? Forecast snowfall for every western US ski area, with ranges, snow level, wind and observed snowfall.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="finder-page">
+  <header>
+    <h1>Snow-Wx <span>Western US</span></h1>
+    <nav class="site-nav">
+      <a href="index.html">Obs map</a>
+      <a href="finder.html" class="active" aria-current="page">Powder Finder</a>
+      <a href="models.html">Model maps</a>
+    </nav>
+    <div id="updated"></div>
+  </header>
+
+  <main class="finder" id="finder">
+    <div class="finder-head">
+      <h2>Powder Finder</h2>
+      <p class="fresh" id="fresh">Loading forecasts…</p>
+    </div>
+    <div class="finder-controls" role="group" aria-label="Forecast options">
+      <!-- static buttons = final size before the data arrives (no layout shift); finder.js re-renders them -->
+      <div class="seg" role="group" aria-label="Time window" id="win"><button type="button">24 h</button><button type="button" class="on">72 h</button><button type="button">7 d</button><button type="button">10 d</button></div>
+      <div class="seg" role="group" aria-label="Elevation" id="elev"><button type="button" class="on">Summit</button><button type="button">Base</button></div>
+      <div class="seg" role="group" aria-label="Forecast source" id="src"><button type="button" class="on">NBM</button><button type="button">NWS</button></div>
+      <label class="sel">State <select id="state"><option value="">All</option></select></label>
+      <label class="sel">Region <select id="region"><option value="">All</option></select></label>
+      <label class="sel">Sort <select id="sort">
+        <option value="snow">Most snow</option><option value="obs">Most observed (24 h)</option>
+        <option value="sl">Lowest snow level</option><option value="name">Name</option></select></label>
+      <label class="chk"><input type="checkbox" id="favonly"> Favorites only</label>
+    </div>
+    <div class="finder-body">
+      <section class="finder-list" aria-label="Ski areas">
+        <div class="frow fhead" role="row">
+          <span></span><span>Ski area</span><span class="num" id="snow-head">Snow</span>
+          <span class="num">Obs 24 h</span><span class="num">Snow level</span><span class="num">Gust</span>
+        </div>
+        <div id="rows" role="list"></div>
+        <p class="note" id="legend-note"></p>
+      </section>
+      <section class="finder-map" aria-label="Map"><div id="fmap"></div></section>
+    </div>
+  </main>
+
+  <footer class="area-foot">
+    Forecasts: NOAA/NWS National Blend of Models (NBM) and NDFD. Observed: NOAA/NWS NOHRSC snowfall analysis.
+    Ski areas © OpenStreetMap contributors, OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center.
+  </footer>
+
+  <script src="js/colors.js"></script>
+  <script src="js/finder.js"></script>
+</body>
+</html>

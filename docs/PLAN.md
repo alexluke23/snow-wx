@@ -310,6 +310,10 @@ screenshots checked. Suggested session grouping in brackets.
 - Map + sortable/filterable table (state/region; 24 h / 72 h / 7 d; range;
   snow level; wind), favorites first.
 - ✅ when: sort/filter work on mobile; markers use the shared snowfall palette.
+- ✔ Done (S3): finder.html — 160 areas, 24 h/72 h/7 d/10 d (NBM) or 24/72 h (NWS), summit/base,
+  state/region filters, sort by snow / observed 24 h / snow level, favorites first, Leaflet map
+  (shared SNOWFALL palette) loaded after the list. Lighthouse mobile 99 (FCP 1.1 s, LCP 2.1 s,
+  TBT 59–86 ms, CLS 0, 243 KB), accessibility 100.
 
 **M5 — NWS official** [Session 3]
 - NDFD base/summit, alerts banner, AFD link; NBM ↔ NWS toggle; about.html
