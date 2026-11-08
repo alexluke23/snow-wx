@@ -50,6 +50,7 @@
   // NOHRSC / SNODAS raster overlays (overlays.js), one at a time; o= in the URL hash.
   const overlays = SnowOverlays(map, { panel: document.getElementById("overlays"),
     onChange: () => { avyLayer.setStyle(avyStyle); writeHash(); } });
+  window.snowwx.overlays = overlays;      // test handle (tools/browser_check.py)
 
   // SNOTEL, ASOS and ski areas share one canvas (points-canvas.js); the layer
   // control gets one toggle per group.
@@ -330,10 +331,11 @@
         ...(smooth ? [{ x: xs, y: ts.SNWD, mode: "lines", line: { color: SnowCharts.OI.blue, width: 1 }, opacity: 0.35,
           hovertemplate: "raw %{y:.0f} in<extra></extra>" }] : []),
         { x: xs, y: dep, mode: "lines", line: { color: SnowCharts.OI.blue, width: 2.4 }, hovertemplate: "depth %{y:.0f} in<extra></extra>" },
-      ], "Snow depth (in)", { yaxis: { rangemode: "tozero" },
+      ], "Snow depth (in)", { yaxis: { range: SnowCharts.extent([dep, ts.SNWD], { zero: true, min: 4, pad: 0.1 }) },
         annotations: [C.endLabel(xs, dep, smooth ? "median" : "Depth", SnowCharts.OI.blue)] });
       panel("ch-swe", 200, [{ x: xs, y: ts.WTEQ, mode: "lines", line: { color: SnowCharts.OI.green, width: 2.2 },
-        hovertemplate: "SWE %{y:.1f} in<extra></extra>" }], "Snow water equivalent (in)", { yaxis: { rangemode: "tozero" } });
+        hovertemplate: "SWE %{y:.1f} in<extra></extra>" }], "Snow water equivalent (in)",
+        { yaxis: { range: SnowCharts.extent([ts.WTEQ], { zero: true, min: 1, pad: 0.1 }) } });
       const r32 = C.refLine(32, "32 °F", { color: "#0b6e85", dash: "dot", where: "left" });
       panel("ch-temp", 200, [{ x: xs, y: ts.TOBS, mode: "lines", line: { color: SnowCharts.OI.vermillion, width: 1.8 },
         hovertemplate: "%{y:.0f} °F<extra></extra>" }], "Temperature (°F)", { shapes: [r32.shape], annotations: [r32.ann] });
@@ -430,22 +432,8 @@
     }
   }
 
-  function searchStations(query, limit = 10) {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    const hits = [];
-    for (const s of stationIndex) {
-      const ids = s.ids.map((x) => x.toLowerCase()), name = s.name.toLowerCase();
-      let score = -1;
-      if (ids.includes(q)) score = 0;
-      else if (name.startsWith(q) || ids.some((x) => x.startsWith(q))) score = 1;
-      else if (name.split(/[\s\-/()]+/).some((w) => w.startsWith(q))) score = 2;
-      else if (name.includes(q)) score = 3;
-      if (score >= 0) hits.push([score, s]);
-    }
-    hits.sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name));
-    return hits.slice(0, limit).map((h) => h[1]);
-  }
+  // same ranking as the header search (js/search.js)
+  const searchStations = (query, limit = 10) => SnowSearch.rank(stationIndex, query, limit);
 
   function selectStation(s, { fly = true } = {}) {
     if (fly) map.setView([s.lat, s.lon], Math.max(map.getZoom(), 10));
@@ -523,7 +511,10 @@
   function drawStatus(meta) {
     const items = Object.entries(meta.sources || {}).map(([name, s]) => {
       const label = SOURCE_LABEL[name] || name;
-      const what = s.ok ? [s.count !== undefined ? `${s.count} ${s.unit || UNIT[name] || ""}`.trim() : "", s.detail || ""]
+      // "1 alert", "2 alerts" (units are plural nouns: drop the "s" for exactly one)
+      const unit = (n, u) => (n === 1 && /s$/.test(u) ? u.slice(0, -1) : u);
+      const what = s.ok ? [s.count !== undefined ? `${s.count} ${unit(s.count, s.unit || UNIT[name] || "")}`.trim() : "",
+        (s.detail || "").replace(/^1 (ski areas|offices|alerts|stations|layers|models) /, (m, u) => `1 ${u.slice(0, -1)} `)]
         .filter(Boolean).join(" · ") : `failed (${esc(s.error)})`;
       const when = s.at ? ` <span class="hint" title="${esc(s.at)}">${ago(s.at)}</span>` : "";
       return `<li class="${s.ok ? "ok" : "bad"}">${esc(label)}: ${esc(what)}${when}</li>`;

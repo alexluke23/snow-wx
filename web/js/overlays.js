@@ -19,15 +19,53 @@ function SnowOverlays(map, { panel, onChange, base = "data/nohrsc/" } = {}) {
   map.getPane("analysis").style.zIndex = 350;        // above tiles, below avalanche zones and stations
   map.getPane("analysis").style.pointerEvents = "none";
 
-  // An ImageOverlay that shows a canvas instead of an <img>.
-  const CanvasOverlay = L.ImageOverlay.extend({
-    _initImage() {
-      const c = (this._image = this._url);
-      L.DomUtil.addClass(c, "leaflet-image-layer");
-      if (this._zoomAnimated) L.DomUtil.addClass(c, "leaflet-zoom-animated");
-      if (this.options.className) L.DomUtil.addClass(c, this.options.className);
-      c.onselectstart = L.Util.falseFn; c.onmousemove = L.Util.falseFn;
-      this._updateOpacity();
+  // The colourized layer is drawn onto a canvas the size of the map view, redrawn after
+  // every move/zoom with only the visible part of the source. (An L.ImageOverlay sizes its
+  // element to the whole overlay: ~270,000 x 285,000 px at zoom 14 for the western US,
+  // beyond GPU texture limits, so real browsers dropped the layers and showed the grey
+  // map background. Fix 1, Nov 8.) Nearest-neighbour scaling shows the true data cells.
+  const ViewOverlay = L.Layer.extend({
+    options: { pane: "analysis", opacity: 0.75 },
+    initialize(source, bounds, options) {
+      this._src = source; this._llb = L.latLngBounds(bounds); L.setOptions(this, options);
+    },
+    onAdd() {
+      const c = (this._canvas = L.DomUtil.create("canvas", "leaflet-layer view-overlay leaflet-zoom-animated"));
+      c.style.pointerEvents = "none";
+      this.getPane().appendChild(c);
+      this.setOpacity(this.options.opacity);
+      this._reset();
+    },
+    onRemove() { L.DomUtil.remove(this._canvas); this._canvas = null; },
+    getEvents() {
+      return { moveend: this._reset, viewreset: this._reset, resize: this._reset, zoomanim: this._animateZoom };
+    },
+    setOpacity(o) { this.options.opacity = o; if (this._canvas) this._canvas.style.opacity = o; return this; },
+    elementSize() { return this._canvas ? [this._canvas.offsetWidth, this._canvas.offsetHeight] : null; },   // tests
+    _animateZoom(e) {     // scale the current picture while Leaflet animates, like L.Renderer
+      const map = this._map, scale = map.getZoomScale(e.zoom, this._zoom);
+      L.DomUtil.setTransform(this._canvas, map._latLngToNewLayerPoint(this._nw, e.zoom, e.center), scale);
+    },
+    _reset() {
+      const map = this._map, c = this._canvas;
+      if (!map || !c) return;
+      const size = map.getSize(), dpr = window.devicePixelRatio || 1;
+      this._zoom = map.getZoom();
+      this._nw = map.containerPointToLatLng([0, 0]);
+      L.DomUtil.setPosition(c, map.containerPointToLayerPoint([0, 0]));
+      c.width = Math.max(1, Math.round(size.x * dpr)); c.height = Math.max(1, Math.round(size.y * dpr));
+      c.style.width = `${size.x}px`; c.style.height = `${size.y}px`;
+      const ctx = c.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, size.x, size.y);
+      // the source is a regular EPSG:3857 grid, so it maps linearly onto container pixels
+      const a = map.latLngToContainerPoint(this._llb.getNorthWest()), b = map.latLngToContainerPoint(this._llb.getSouthEast());
+      const W = this._src.width, H = this._src.height, kx = (b.x - a.x) / W, ky = (b.y - a.y) / H;
+      const sx0 = Math.max(0, Math.floor(-a.x / kx)), sy0 = Math.max(0, Math.floor(-a.y / ky));
+      const sx1 = Math.min(W, Math.ceil((size.x - a.x) / kx)), sy1 = Math.min(H, Math.ceil((size.y - a.y) / ky));
+      if (sx1 <= sx0 || sy1 <= sy0) return;
+      ctx.drawImage(this._src, sx0, sy0, sx1 - sx0, sy1 - sy0, a.x + sx0 * kx, a.y + sy0 * ky, (sx1 - sx0) * kx, (sy1 - sy0) * ky);
     },
   });
 
@@ -125,7 +163,7 @@ function SnowOverlays(map, { panel, onChange, base = "data/nohrsc/" } = {}) {
     try {
       const rec = await decodeLayer(l);
       if (active !== l.id) return;          // switched while loading
-      overlay = new CanvasOverlay(rec.canvas, L.latLngBounds(l.bounds), { pane: "analysis", opacity, interactive: false });
+      overlay = new ViewOverlay(rec.canvas, l.bounds, { pane: "analysis", opacity });
       overlay.addTo(map);
       if (el) el.textContent = "Hover or tap the map for a value.";
     } catch (e) {
@@ -144,5 +182,5 @@ function SnowOverlays(map, { panel, onChange, base = "data/nohrsc/" } = {}) {
     return index;
   }
 
-  return { load, set, current: () => active };
+  return { load, set, current: () => active, layer: () => overlay };
 }

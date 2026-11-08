@@ -17,7 +17,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from .common import REPO_ROOT, utcnow, write_json
+from .common import plural, REPO_ROOT, utcnow, write_json
 
 log = logging.getLogger("snow-wx.afd")
 LIST_URL = "https://api.weather.gov/products/types/AFD/locations/{wfo}"
@@ -100,4 +100,4 @@ def run(cfg: dict, session, outdir: Path) -> dict:
     log.info("AFD: %d of %d offices%s", len(index), len(wfos), f" (failed: {','.join(failed)})" if failed else "")
     if not index:
         raise RuntimeError("no AFD fetched")
-    return {"count": len(index), "unit": "discussions", "detail": f"{len(index)} offices"}
+    return {"count": len(index), "unit": "discussions", "detail": plural(len(index), "office")}

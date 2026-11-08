@@ -124,6 +124,8 @@ def build_site(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
         src = REPO_ROOT / "data" / name
         if src.exists():
             shutil.copy2(src, outdir / "data" / name)
+    from .search import write_index
+    write_index(outdir / "data")              # header search on every page (web/js/search.js)
     try:
         from .models.catalog import write_catalog
         from .models.config import load_models_config
