@@ -52,6 +52,7 @@ Ski areas and point forecasts:
 python -m pipeline catalog              # rebuild data/ski_areas.json (on demand; run `build` first)
 python -m pipeline points               # NBM forecasts for every ski area -> build/data/points/
 python -m pipeline.nbm.sanity           # NBM 24-h snow vs the NWS forecast for 10 areas
+python -m pipeline nohrsc                # NOHRSC snowfall + SNODAS overlay layers -> build/data/nohrsc/
 ```
 
 ## 3. Put it on GitHub and publish
@@ -127,6 +128,8 @@ CLAUDE.md                  context for Claude Code
 | api.weather.gov | NWS grid lookup, forecast cross-check | Public domain; descriptive User-Agent |
 | OpenSkiMap / OpenStreetMap | ski areas and lifts | ODbL: attribution; derived catalog shared under ODbL |
 | USGS 3DEP (elevation.nationalmap.gov) | base/summit and grid-cell elevations | Public domain |
+| NOAA/NWS NOHRSC National Snowfall Analysis v2.1 | 24/48/72-h observed snowfall overlay | Public domain (US Government); credit NOAA/NWS NOHRSC |
+| NOHRSC SNODAS via NSIDC (G02158) | SWE, snow depth, 24-h SWE change overlay | NOAA data, free; cite NSIDC G02158 |
 | Natural Earth | map outlines on model maps | Public domain |
 | Iowa Environmental Mesonet | ASOS/AWOS currents | Free for any lawful use, incl. commercial |
 | avalanche.org public API | danger by zone | Show unaltered, expire correctly, link to full forecast |
