@@ -473,6 +473,13 @@ screenshots checked. Suggested session grouping in brackets.
 **M9-prep — Forecast archive** [Session 5, small, time-sensitive]
 - All daily leads (Decisions log, Nov 8). ✅ when: first monthly file appears in
   the `verification` release and docs/verification.md documents the format.
+- ✔ Code done (S5): `pipeline/archive.py` + `python -m pipeline archive`, run by update-site.yml after
+  every build (continue-on-error). Monthly `nbm|ndfd|snotel-YYYYMM.csv.gz` + `state.json` on the
+  `verification` prerelease; NBM points now carry per-window cell percentiles and the cell mean.
+  Local dry run (01Z 8 Nov): 20,826 NBM rows (154 KB gz), 2,314 NDFD, 5,691 SNOTEL; rerun adds
+  nothing. Starts collecting once merged to main.
+- ✔ Local disk hygiene (S5): every run prunes data_cache files older than 2 days (keeps catalog/
+  and openskimap/) and logs disk use (`pipeline/cache.py`, settings `cache:`).
 
 **M9 — Verification & bias correction**: score NBM/NDFD/models vs SNOTEL 24 h
 snow & temps by area/elevation; publish on about.html; later a per-site

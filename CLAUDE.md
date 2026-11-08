@@ -37,6 +37,8 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 - `web/` — static site (Leaflet + Plotly from CDN, plain JS, no build step).
   `web/js/colors.js` holds color scales/legends.
 - `tests/` — pytest; extend `tests/fakes.py` with canned responses for new sources.
+- `pipeline/archive.py` — forecast archive for verification (docs/verification.md);
+  `pipeline/cache.py` — data_cache pruning at the start of every run.
 - `config/models.yml` + `pipeline/models/` — model maps (see below); `web/models.html`
   + `web/js/models.js` — loop viewer.
 - `.github/workflows/update-site.yml` (hourly obs + deploy) and `models.yml` (model maps).
@@ -206,6 +208,10 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       right after, owner merges early) -> bugs B1-B7 (PLAN.md §8 M3.6) -> §6-B chart overhaul
       (shared web/js/charts/theme.js, heat table, lazy charts below the fold) -> M4.5 Sno-Parks
       (research sources + licences first, ask before unclear ones).
+- [x] S5 item 1 (M9-prep): forecast archive -> docs/verification.md. `python -m pipeline archive
+      --data build/data [--local DIR]` (CI: update-site.yml step, gh release "verification"; use
+      --local into the scratchpad for dry runs and delete the output: the archive never lives on the
+      PC). Every run prunes data_cache > 2 days (`pipeline/cache.py`; keeps catalog/, openskimap/).
 - [ ] M6 zoomable model layers + HRRR prs file: deferred to S6 (baseline numbers in PLAN.md §2).
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.
