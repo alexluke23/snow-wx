@@ -143,6 +143,16 @@
     el.removeAttribute("role");               // a real table: keep its own semantics
   }
 
+  /** The day/night chart's one-sentence summary: data only, so it can be shown before Plotly loads. */
+  function periodSummary(fc, pt) {
+    const per = fc.points[pt].periods;
+    const tot = fc.points[pt].totals["10d"] || fc.points[pt].totals["7d"] || fc.points[pt].totals["72h"];
+    const big = per.reduce((b, p) => ((p.snow_in ?? 0) > (b?.snow_in ?? 0) ? p : b), null);
+    return big && big.snow_in >= 0.5
+      ? `Snowiest period: ${big.label} (${big.local}), most likely ${inches(big.snow_in)} in${big.snow_hi !== null && big.snow_hi !== undefined ? ` (${range(big.snow_lo, big.snow_hi)})` : ""}. Total over ${per.length / 2} days: ${inches(tot?.snow_in)} in.`
+      : `Little or no snow in any day or night period of the next ${Math.round(per.length / 2)} days.`;
+  }
+
   function periodChart(el, fc, pt, tz) {
     const per = fc.points[pt].periods;
     const x = per.map((p, i) => i);
@@ -188,11 +198,7 @@
       yaxis: C.yaxis({ rangemode: "tozero", range: [0, top * 1.18] }),
       xaxis: { fixedrange: true, tickfont: C.font(C.tick()), tickvals: ticks.map(([i]) => i), tickangle: 0, ticks: "",
                ticktext: ticks.map(([, p]) => C.dayName(C.wall(p.start, tz).slice(0, 10), two)) } }));
-    const tot = fc.points[pt].totals["10d"] || fc.points[pt].totals["7d"] || fc.points[pt].totals["72h"];
-    const big = per.reduce((b, p) => ((p.snow_in ?? 0) > (b?.snow_in ?? 0) ? p : b), null);
-    C.summary(el, big && big.snow_in >= 0.5
-      ? `Snowiest period: ${big.label} (${big.local}), most likely ${inches(big.snow_in)} in${big.snow_hi !== null && big.snow_hi !== undefined ? ` (${range(big.snow_lo, big.snow_hi)})` : ""}. Total over ${per.length / 2} days: ${inches(tot?.snow_in)} in.`
-      : `Little or no snow in any day or night period of the next ${Math.round(per.length / 2)} days.`);
+    C.summary(el, periodSummary(fc, pt));
     C.tableToggle(el, `Snowfall by day and night (${POINT_LABEL[pt].toLowerCase()})`,
       ["Period", "Local time", "Most likely (in)", "Range (in)", "Liquid (in)", "Chance of precip"],
       per.map((p) => [p.label, p.local, plain(p.snow_in), p.snow_hi === null || p.snow_hi === undefined ? "–" : range(p.snow_lo, p.snow_hi),
@@ -720,6 +726,7 @@
             (${esc(ridge.models.map((m) => m.label).join(", then "))}), what exposed ridges feel; NBM's 10 m wind runs lower on exposed
             summits. <a href="about.html#ridge-wind">Why →</a>` : "";
         });
+        C.summary($("period-chart"), periodSummary(d, pt));     // text first (LCP), chart when near view
         C.lazy($("period-chart"), withPlotly(() => periodChart($("period-chart"), d, pt, tz)));
         if (!$("ex-sec").hidden) C.lazy($("ex-chart"), () => exceedTable($("ex-chart"), d, pt, tz));
         C.lazy($("sl-chart"), withPlotly(() => snowLevelChart($("sl-chart"), d, keys, tz)));

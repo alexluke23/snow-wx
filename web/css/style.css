@@ -372,3 +372,5 @@ header { position: relative; }
 }
 .chart.chart-none { min-height: 0; border-style: dashed; }
 .chart .none-line { margin: 0; padding: 12px 14px; font-size: 14px; color: #1d2733; }
+/* area pages render their content after a fetch: keep the footer below the fold meanwhile (CLS) */
+body.area-page > main { min-height: 100vh; min-height: 100dvh; }
