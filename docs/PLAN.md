@@ -76,6 +76,13 @@ percentiles, snow level method, verification).
 | Nov 7 (S2) | Add NBM + NDFD forecasts for all SNOTEL sites; NDFD sampled from GRIB2 on AWS (api.weather.gov only for alerts/AFD/missing elements). |
 | Nov 7 (S2) | Add NOHRSC overlays to obs map: SNODAS SWE, snow depth, 24 h SWE change; National Gridded Snowfall Analysis 24/48/72 h. Builds the interactive-layer system (§5.4) first used here. |
 | Nov 7 (S2) | Obs map performance work (canvas rendering, lazy charts). |
+| Nov 7 (S3) | 1. Extended outlook (>48 h): NBM deterministic and probabilistic fields are calibrated independently, so the deterministic value may fall outside the percentile range — no clamping. Bars = NBM deterministic (additive, sum to totals); whiskers = NBM probabilistic guidance; beyond 48 h QPF 25th–75th × SLR × P(snow), labelled "likely range". A tooltip explains when the deterministic value lies outside the range. Keep the calibration report for rechecks after real storms. |
+| Nov 7 (S3) | 2. NWS view shows NDFD raw: no elevation/temperature adjustment and no snow-level scaling (NDFD snow already contains the forecasters' rain/snow decisions). Label "NWS forecast for the 2.5 km grid cell (elev. X ft)". |
+| Nov 7 (S3) | 3. SNOTEL NBM cell elevation = full 3DEP cell average, computed once and stored in the catalog (no 5-point shortcut). |
+| Nov 7 (S3) | 4. With a NOHRSC overlay on, avalanche zones draw as outlines only; SWE overlay palette stays the SNOTEL SWE palette. |
+| Nov 7 (S3) | 5. Keyboard: search is the only keyboard route to individual stations for now (known accessibility gap, §10). |
+| Nov 7 (S3) | 6. NDFD stays on the 3-hourly schedule. |
+| Nov 7 (S3) | 7–8. CI: one job saves the micromamba cache; "already published" includes a renderer/config version so config changes re-render the current cycle. |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
@@ -343,6 +350,9 @@ bias correction (MOS-lite) [later]
 ---
 
 ## 10. Known limitations & open questions
+
+- Accessibility: map stations are drawn on a canvas, so the search box is the only keyboard
+  route to an individual station or ski area (owner-accepted gap, S3).
 
 - Kuchera/snow level from 5 pressure levels; Stull wet-bulb warm bias in dry air.
 - NBM grid (2.5 km) under-resolves narrow ridges/valleys → elevation
