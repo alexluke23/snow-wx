@@ -53,13 +53,14 @@
     if (!s) return "";
     const where = keys.length > 1 ? " at the summit" : "";
     let txt;
-    if ((s.snow_hi ?? 0) < 0.5) {
+    const rng = (t) => (t.snow_hi === null || t.snow_hi === undefined ? "" : ` (${range(t.snow_lo, t.snow_hi)} range)`);
+    if ((s.snow_hi ?? s.snow_in ?? 0) < 0.5) {
       txt = `No significant snow in the next 72 hours${where}.`;
     } else {
-      txt = `Next 72 h${where}: most likely <strong>${inches(s.snow_in)} in</strong> ` +
-            `<span class="rng">(${range(s.snow_lo, s.snow_hi)} range)</span>.`;
+      txt = `Next 72 h${where}: most likely <strong>${inches(s.snow_in)} in</strong>` +
+            `<span class="rng">${rng(s)}</span>.`;
       const b = keys.includes("base") ? fc.points.base.totals["72h"] : null;
-      if (b) txt += ` Base: ${inches(b.snow_in)} in (${range(b.snow_lo, b.snow_hi)}).`;
+      if (b) txt += ` Base: ${inches(b.snow_in)} in${rng(b)}.`;
     }
     // rain vs snow by elevation, from the wet day/night periods in the first 72 h
     const wet = (k) => fc.points[k].periods.slice(0, 6).filter((p) => (p.qpf_in ?? 0) >= 0.05);
@@ -85,7 +86,7 @@
       const c = colorFor(SNOWFALL, t.snow_in) || "#f4f6f8";
       return `<div class="tile${t.extended ? " ext" : ""}"><span class="label">${label}</span>
         <span class="swatch" style="background:${c}"></span><strong>${inches(t.snow_in)}<small> in</small></strong>
-        <span class="rng">${range(t.snow_lo, t.snow_hi)} range</span>
+        <span class="rng">${t.snow_hi === null || t.snow_hi === undefined ? "no range (NWS)" : `${range(t.snow_lo, t.snow_hi)} range`}</span>
         <span class="rng liquid">${(t.qpf_in ?? 0).toFixed(2)} in liquid</span></div>`;
     };
     return `<p class="tiles-for">${POINT_LABEL[pt]} · ${ft(elev)} · most likely snowfall</p>
@@ -139,7 +140,7 @@
     const n48 = s.snowlvl_p90.filter((v) => v !== null).length;
     const tb = t.slice(0, n48);
     const wet = s.snowlvl_ft.map((v, i) => ((s.pop[i] ?? 0) >= 0.2 ? v : null));
-    const lines = keys.map((k) => [POINT_LABEL[k], fc.points[k].elev_ft, k === "base" ? "#7a5a2a" : "#222"]);
+    const lines = keys.map((k) => [POINT_LABEL[k], fc.points[k].elev_ft, k === "base" || k === "point" ? "#7a5a2a" : "#222"]);
     const elevs = keys.map((k) => fc.points[k].elev_ft);
     const minBase = Math.min(...elevs);
     const lo = Math.max(0, minBase - 3000), top = Math.max(...elevs) + 3000;
@@ -271,16 +272,31 @@
     document.title = "Snow-Wx · Ski areas";
   }
 
+  // A forecast site: a ski area (summit + base) or a SNOTEL station (one elevation).
+  function siteFromStation(st) {
+    return { kind: "snotel", id: `snotel-${st.triplet.replace(/:/g, "-")}`, name: st.name, state: st.state, tz: st.tz,
+      lat: st.lat, lon: st.lon, elev_ft: st.elev_ft, triplet: st.triplet,
+      nearest: { snotel: [{ id: st.triplet, name: st.name, elev_ft: st.elev_ft }] } };
+  }
+
   async function render() {
     const id = decodeURIComponent(location.hash.replace(/^#/, ""));
     const main = $("area");
-    // One request for the forecast (it embeds the catalog record); the whole
-    // catalog only for the list page or when no forecast exists yet.
-    const [fcR, avyR] = await Promise.allSettled([
+    const isStation = id.startsWith("snotel-");
+    // One request per source (each file embeds its site record); catalogs only as fallback.
+    const [fcR, nwsR, avyR] = await Promise.allSettled([
       id ? getJSON(`data/points/${encodeURIComponent(id)}.json`) : Promise.reject(new Error("no id")),
-      getJSON("data/avalanche_ratings.json")]);
-    const fc = fcR.status === "fulfilled" ? fcR.value : null;
-    let a = fc?.area;
+      id ? getJSON(`data/ndfd/${encodeURIComponent(id)}.json`) : Promise.reject(new Error("no id")),
+      isStation ? Promise.resolve(null) : getJSON("data/avalanche_ratings.json")]);
+    const nbm = fcR.status === "fulfilled" ? fcR.value : null;
+    const nws = nwsR.status === "fulfilled" ? nwsR.value : null;
+    let a = isStation ? (nbm?.station && siteFromStation(nbm.station)) : nbm?.area;
+    if (!a && isStation) {
+      try {
+        const st = (await getJSON("data/snotel_points.json")).points.find((x) => x.id === id);
+        if (st) a = siteFromStation(st);
+      } catch { /* fall through */ }
+    }
     if (!a) {
       let cat;
       try { cat = await getJSON("data/ski_areas.json"); } catch (e) {
@@ -291,14 +307,18 @@
     }
     document.title = `Snow-Wx · ${a.name}`;
     const tz = a.tz || "America/Denver";
-    const keys = fc ? ["summit", "base"].filter((k) => fc.points[k]) : [];
-    let pt = keys[0];
+    let src = nbm ? "nbm" : nws ? "nws" : null;
+    const doc = () => (src === "nws" ? nws : nbm);
+    const keysOf = (d) => (d ? ["summit", "base", "point"].filter((k) => d.points[k]) : []);
+    let pt = keysOf(doc())[0];
     const isFav = favs().includes(a.id);
-    const stale = fc && (Date.now() - new Date(fc.issued)) / 3.6e6 > 18;
     const nwsLink = (p) => `https://forecast.weather.gov/MapClick.php?lat=${p.lat}&lon=${p.lon}`;
-    const seg = keys.length > 1 ? `<div class="seg" role="group" aria-label="Elevation">${keys.map((k, i) =>
-      `<button type="button" data-pt="${k}" class="${i ? "" : "on"}" aria-pressed="${!i}">${POINT_LABEL[k]} ${ft(fc.points[k].elev_ft)}</button>`).join("")}</div>` : "";
-    const dayLocal = fc?.points[pt].periods.find((p) => p.is_day)?.local || "about 5 AM–5 PM";
+    const sub = isStation
+      ? `SNOTEL ${esc(a.triplet)} · ${esc(a.state)} · ${ft(a.elev_ft)}`
+      : `${esc(a.region)}, ${esc(a.state)} · Summit ${ft(a.summit.elev_ft)} · Base ${ft(a.base.elev_ft)} · ${ft(a.vertical_ft)} vertical`;
+    const srcSeg = nbm && nws ? `<div class="seg" role="group" aria-label="Forecast source">
+        <button type="button" data-src="nbm" class="on" aria-pressed="true">NBM blend</button>
+        <button type="button" data-src="nws" aria-pressed="false">NWS official</button></div>` : "";
     main.innerHTML = `
       <div class="area-head">
         <h2>${esc(a.name)}</h2>
@@ -307,33 +327,34 @@
           <button id="share" type="button" title="Share link">Share</button>
         </div>
       </div>
-      <p class="sub">${esc(a.region)}, ${esc(a.state)} · Summit ${ft(a.summit.elev_ft)} · Base ${ft(a.base.elev_ft)} · ${ft(a.vertical_ft)} vertical</p>
-      ${fc ? `<p class="headline">${headline(fc, keys)}</p>
-      <p class="fresh${stale ? " stale" : ""}">NBM ${esc(localFmt(fc.issued, tz, { weekday: "short", hour: "numeric", timeZoneName: "short" }))} run ·
-        issued ${ago(fc.issued)}${stale ? " — out of date" : ""}</p>
-      <div class="sec-head">${seg}</div>
+      <p class="sub">${sub}</p>
+      ${src ? `<p class="headline" id="headline"></p>
+      <p class="fresh" id="fresh"></p>
+      <div class="sec-head seg-row">${srcSeg}<span id="elev-seg"></span></div>
       <div id="tiles"></div>
       <section><h3>Snowfall by day and night</h3>
         <div class="chart" id="period-chart"><p class="hint">Loading chart…</p></div>
-        <p class="note">Bars: most likely (NBM mean; they add up to the totals). Whiskers: 10–90% range.
-          Days are 12Z–00Z (${esc(dayLocal)}); nights are lighter. Hatched: extended outlook, where the range
-          comes from NBM precipitation × snow ratio.</p></section>
-      <section><h3>Snow level vs the mountain</h3><div class="chart" id="sl-chart"><p class="hint">Loading chart…</p></div>
+        <p class="note" id="period-note"></p></section>
+      <section><h3>Snow level vs the ${isStation ? "station" : "mountain"}</h3><div class="chart" id="sl-chart"><p class="hint">Loading chart…</p></div>
         <p class="note">Below the line precipitation falls as rain. Solid blue where precipitation is possible
-          (≥ 20% chance), dotted grey where it is unlikely; shaded 10–90% for the first 48 h.</p></section>
+          (≥ 20% chance), dotted grey where it is unlikely; shaded 10–90% for the first 48 h (NBM).</p></section>
       <section><h3>Hour by hour</h3><div class="chart" id="met-chart"><p class="hint">Loading chart…</p></div>
-        <p class="note">Temperatures adjusted from the 2.5-km NBM grid to each elevation (6.5 °C/km).
-          Hourly to 36 h, then 6-hour amounts.</p></section>`
-      : `<p class="hint">The NBM point forecast is not available yet.</p>`}
+        <p class="note" id="met-note"></p></section>`
+      : `<p class="hint">No point forecast is available for this site yet.</p>`}
       <section><h3>Recent observations</h3><div id="nohrsc-obs"></div><div id="obs"></div></section>
-      <section><h3>Avalanche danger</h3>${avalanche(a.avalanche, avyR.status === "fulfilled" ? avyR.value : null)}</section>
+      ${isStation ? "" : `<section><h3>Avalanche danger</h3>${avalanche(a.avalanche, avyR.status === "fulfilled" ? avyR.value : null)}</section>`}
       <section><h3>More</h3>
-        <p>NWS point forecast: <a href="${nwsLink(a.summit)}" target="_blank" rel="noopener">summit</a> ·
-          <a href="${nwsLink(a.base)}" target="_blank" rel="noopener">base</a>
-          ${a.url ? ` · <a href="${esc(safeUrl(a.url))}" target="_blank" rel="noopener">Area website</a>` : ""}
-          · <a href="index.html#map=12/${a.summit.lat}/${a.summit.lon}&s=area:${encodeURIComponent(a.id)}">Map</a></p>
-        <h4>Nearby SNOTEL</h4><ul>${stationRows(a.nearest.snotel, "snotel")}</ul>
-        <h4>Nearby airports</h4><ul>${stationRows(a.nearest.asos, "asos")}</ul></section>`;
+        ${isStation
+          ? `<p>NWS point forecast: <a href="${nwsLink(a)}" target="_blank" rel="noopener">this site</a> ·
+               <a href="index.html#v=depth_in&map=11/${a.lat}/${a.lon}&s=${encodeURIComponent(a.triplet).replace(/%3A/gi, ":")}">Map</a> ·
+               <a href="https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=${encodeURIComponent(a.triplet.split(":")[0])}" target="_blank" rel="noopener">NRCS station page</a></p>`
+          : `<p>NWS point forecast: <a href="${nwsLink(a.summit)}" target="_blank" rel="noopener">summit</a> ·
+               <a href="${nwsLink(a.base)}" target="_blank" rel="noopener">base</a>
+               ${a.url ? ` · <a href="${esc(safeUrl(a.url))}" target="_blank" rel="noopener">Area website</a>` : ""}
+               · <a href="index.html#map=12/${a.summit.lat}/${a.summit.lon}&s=area:${encodeURIComponent(a.id)}">Map</a></p>
+             <h4>Nearby SNOTEL</h4><ul>${stationRows(a.nearest.snotel, "snotel")}</ul>
+             <h4>Nearby airports</h4><ul>${stationRows(a.nearest.asos, "asos")}</ul>`}
+      </section>`;
 
     $("fav").addEventListener("click", (e) => {
       const list = favs(), on = !list.includes(a.id);
@@ -348,25 +369,46 @@
         else { await navigator.clipboard.writeText(location.href); e.currentTarget.textContent = "Link copied"; }
       } catch { /* dismissed */ }
     });
-    if (fc) {
-      const drawNumbers = () => { $("tiles").innerHTML = tiles(fc, pt, fc.points[pt].elev_ft); };
+    if (src) {
+      const drawNumbers = () => {
+        const d = doc(), keys = keysOf(d);
+        if (!keys.includes(pt)) pt = keys[0];
+        const stale = (Date.now() - new Date(d.issued)) / 3.6e6 > (src === "nws" ? 12 : 18);
+        $("headline").innerHTML = headline(d, keys);
+        $("fresh").className = `fresh${stale ? " stale" : ""}`;
+        $("fresh").textContent = `${src === "nws" ? "NWS forecast (NDFD) issued" : "NBM"} ${localFmt(d.issued, tz,
+          { weekday: "short", hour: "numeric", timeZoneName: "short" })}${src === "nws" ? "" : " run"} · ${ago(d.issued)}${stale ? " — out of date" : ""}`;
+        $("elev-seg").innerHTML = keys.length > 1 ? `<span class="seg" role="group" aria-label="Elevation">${keys.map((k) =>
+          `<button type="button" data-pt="${k}" class="${k === pt ? "on" : ""}" aria-pressed="${k === pt}">${POINT_LABEL[k]} ${ft(d.points[k].elev_ft)}</button>`).join("")}</span>` : "";
+        $("elev-seg").querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {
+          pt = btn.dataset.pt; drawNumbers(); drawCharts();
+        }));
+        $("tiles").innerHTML = tiles(d, pt, d.points[pt].elev_ft);
+        const dayLocal = d.points[pt].periods.find((p) => p.is_day)?.local || "about 5 AM–5 PM";
+        $("period-note").textContent = src === "nws"
+          ? `NWS official snowfall (to 72 h) for the 2.5-km forecast cell, scaled by the chance that the NWS snow level is below this elevation. Days are 12Z–00Z (${dayLocal}).`
+          : `Bars: most likely (NBM mean; they add up to the totals). Whiskers: 10–90% range. Days are 12Z–00Z (${dayLocal}); nights are lighter. Hatched: extended outlook, where the range comes from NBM precipitation × snow ratio.`;
+        $("met-note").textContent = src === "nws"
+          ? "NWS official forecast for the 2.5-km grid cell (not elevation-adjusted). Precipitation in 6-hour amounts."
+          : "Temperatures adjusted from the 2.5-km NBM grid to each elevation (6.5 °C/km). Hourly to 36 h, then 6-hour amounts.";
+      };
       const drawCharts = () => loadPlotly().then(() => {
-        periodChart(ready($("period-chart")), fc, pt);
-        meteogram(ready($("met-chart")), fc, pt, keys);
+        const d = doc(), keys = keysOf(d);
+        periodChart(ready($("period-chart")), d, pt);
+        meteogram(ready($("met-chart")), d, pt, keys);
+        snowLevelChart(ready($("sl-chart")), d, keys);
       });
       drawNumbers();     // plain HTML first; charts after the library arrives
-      main.querySelectorAll(".seg button").forEach((btn) => btn.addEventListener("click", () => {
-        pt = btn.dataset.pt;
-        main.querySelectorAll(".seg button").forEach((b) => {
-          b.classList.toggle("on", b === btn); b.setAttribute("aria-pressed", String(b === btn));
-        });
+      main.querySelectorAll("[data-src]").forEach((btn) => btn.addEventListener("click", () => {
+        src = btn.dataset.src;
+        main.querySelectorAll("[data-src]").forEach((x) => { x.classList.toggle("on", x === btn); x.setAttribute("aria-pressed", String(x === btn)); });
         drawNumbers(); drawCharts();
       }));
-      requestAnimationFrame(() => drawCharts().then(() => snowLevelChart(ready($("sl-chart")), fc, keys)).catch((e) => {
+      requestAnimationFrame(() => drawCharts().catch((e) => {
         main.querySelectorAll(".chart .hint").forEach((h) => { h.textContent = `Charts unavailable: ${e.message}`; });
       }));
     }
-    nohrscObs($("nohrsc-obs"), a, tz);
+    if (!isStation) nohrscObs($("nohrsc-obs"), a, tz);
     recentObs($("obs"), a);
   }
 

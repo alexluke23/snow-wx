@@ -163,6 +163,15 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       no data) + `web/js/overlays.js` (decode once with createImageBitmap(premultiplyAlpha:
       none, colorSpaceConversion: none), colourize with colors.js palettes, exact hover value).
       SNODAS glacier cells are capped at 32767 mm (shown as "glacier / permanent snow").
-- [ ] M3.5 D SNOTEL/NDFD forecasts
+- [x] M3.5 D forecasts at every SNOTEL site + NWS official:
+      `python -m pipeline catalog --snotel` -> data/snotel_points.json (NBM cell + elevation;
+      new cells use a 5-point 3DEP mean, the full-cell statistics call is too slow for ~800
+      cells). NBM points now include SNOTEL (`snotel-<triplet with dashes>` files).
+      `python -m pipeline ndfd` samples NDFD GRIB2 (whole files from noaa-ndfd-pds
+      opnl/AR.conus/VP.001-003 + VP.004-007, ~320 MB, no .idx) at all points -> build/data/ndfd/,
+      same JSON shape as NBM so area.js toggles NBM <-> NWS. NDFD has snowlevel in GRIB
+      (api.weather.gov not needed); snow/QPF/snowlevel only to 72 h. Values checked against
+      api.weather.gov gridpoints (temps within 0.1 F, 6-h snow exact).
+- [ ] Not done: alerts banner + AFD (M5), Powder Finder (M4), ridge-top wind.
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

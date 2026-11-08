@@ -211,3 +211,5 @@ main.area h4 { margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
 .metrics.nohrsc { width: 100%; font-variant-numeric: tabular-nums; }
 .metrics.nohrsc th { font-size: 12px; color: var(--muted); font-weight: 600; text-align: right; }
 .metrics.nohrsc td:not(:first-child) { text-align: right; }
+
+.seg-row { flex-wrap: wrap; justify-content: flex-start; gap: 8px; margin: 6px 0; }

@@ -295,6 +295,9 @@ screenshots checked. Suggested session grouping in brackets.
   hover/tap readout, legend, opacity, one at a time, valid time); NOHRSC 24/48/72 h
   snowfall (3 km cells) + SNODAS SWE, depth, 24 h SWE change (1.5 km). SNODAS SWE vs
   SNOTEL (211 sites ≥ 1 in): r 0.87, MAE 0.67 in. Ski-area pages show both at base/summit.
+- ✔ SNOTEL forecasts done (S2): NBM at all 837 SNOTEL sites (area.html#snotel-…), NDFD (NWS
+  official) for every ski area and SNOTEL site from AWS GRIB2 with an NBM ↔ NWS toggle;
+  linked from the SNOTEL panel on the obs map.
 
 **M4 — Powder Finder** [Session 2–3]
 - Map + sortable/filterable table (state/region; 24 h / 72 h / 7 d; range;

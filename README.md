@@ -53,6 +53,8 @@ python -m pipeline catalog              # rebuild data/ski_areas.json (on demand
 python -m pipeline points               # NBM forecasts for every ski area -> build/data/points/
 python -m pipeline.nbm.sanity           # NBM 24-h snow vs the NWS forecast for 10 areas
 python -m pipeline nohrsc                # NOHRSC snowfall + SNODAS overlay layers -> build/data/nohrsc/
+python -m pipeline catalog --snotel      # data/snotel_points.json (SNOTEL forecast points; on demand)
+python -m pipeline ndfd                  # NWS official forecast (NDFD) at all ski areas + SNOTEL -> build/data/ndfd/
 ```
 
 ## 3. Put it on GitHub and publish
@@ -125,6 +127,7 @@ CLAUDE.md                  context for Claude Code
 | USDA NRCS AWDB (SNOTEL) | snow, SWE, temp | Public domain |
 | NOAA/NCEP HRRR, RRFS, GFS via NOAA Open Data Dissemination (AWS) | model maps | Public domain (US Government) |
 | NOAA/NWS National Blend of Models (NBM) via NODD (AWS) | ski-area point forecasts | Public domain (US Government) |
+| NOAA/NWS NDFD via NODD (AWS) | NWS official point forecasts | Public domain (US Government) |
 | api.weather.gov | NWS grid lookup, forecast cross-check | Public domain; descriptive User-Agent |
 | OpenSkiMap / OpenStreetMap | ski areas and lifts | ODbL: attribution; derived catalog shared under ODbL |
 | USGS 3DEP (elevation.nationalmap.gov) | base/summit and grid-cell elevations | Public domain |

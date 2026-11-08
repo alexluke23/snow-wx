@@ -398,11 +398,29 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
     return files, summary
 
 
+def station_outputs(stations: list[dict], data, hours, init, col, generated) -> dict:
+    """Single-elevation forecasts at SNOTEL sites (area.html#snotel-...)."""
+    times = [(init + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%MZ") for h in hours]
+    out = {}
+    for st in stations:
+        g = st["nbm_grid"]
+        fc = point_forecast(data, hours, init, col[(g["i"], g["j"])], st["elev_ft"], g.get("elev_ft"),
+                            ZoneInfo(st.get("tz") or "America/Denver"))
+        out[st["id"]] = {"id": st["id"], "name": st["name"], "tz": st.get("tz"), "source": SOURCE,
+                         "cycle": init.strftime("%Y%m%d%H"), "issued": init.strftime("%Y-%m-%dT%H:%MZ"),
+                         "generated_at": generated, "times": times, "fhours": hours, "station": st,
+                         "points": {"point": {"elev_ft": st["elev_ft"], "grid_elev_ft": g.get("elev_ft"),
+                                              "grid": [g["i"], g["j"]], **fc}}}
+    return out
+
+
 def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
                published: str | None = None, max_hour: int = 264, workers: int = 6,
                github_output: str | None = None, catalog: Path = CATALOG, now=None) -> int:
     cat = json.loads(Path(catalog).read_text(encoding="utf-8"))
     grid = cat["nbm_grid"]          # grid definition stored with the catalog
+    sp = Path(catalog).with_name("snotel_points.json")
+    stations = json.loads(sp.read_text(encoding="utf-8"))["points"] if sp.exists() else []
 
     def emit(**kv):
         if github_output:
@@ -422,7 +440,8 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
         emit(new="false", cycle=cid)
         return 0
 
-    cells = sorted({(a["nbm_grid"][k]["i"], a["nbm_grid"][k]["j"]) for a in cat["areas"] for k in ("base", "summit")})
+    cells = sorted({(a["nbm_grid"][k]["i"], a["nbm_grid"][k]["j"]) for a in cat["areas"] for k in ("base", "summit")}
+                   | {(s["nbm_grid"]["i"], s["nbm_grid"]["j"]) for s in stations})
     col = {c: n for n, c in enumerate(cells)}
     ij = (np.array([c[0] for c in cells]), np.array([c[1] for c in cells]))
     hours = [h for h in forecast_hours(max_hour)]
@@ -430,7 +449,8 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
     import hashlib
     key = hashlib.md5(repr((cells, SELECTION_VERSION)).encode()).hexdigest()[:10]
     cache_dir = CACHE / f"{cid}_{key}"
-    log.info("NBM %s: %d forecast hours, %d grid cells for %d areas", cid, len(hours), len(cells), len(cat["areas"]))
+    log.info("NBM %s: %d forecast hours, %d grid cells for %d areas + %d SNOTEL sites", cid, len(hours), len(cells),
+             len(cat["areas"]), len(stations))
     t0 = time.time()
     data: dict[int, dict] = {}
     with ThreadPoolExecutor(workers) as ex:
@@ -441,6 +461,7 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
 
     generated = utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     files, summary = build_outputs(cat, data, hours, cycle, col, generated)
+    files.update(station_outputs(stations, data, hours, cycle, col, generated))
     out.mkdir(parents=True, exist_ok=True)
     for old in out.glob("*.json"):
         old.unlink()

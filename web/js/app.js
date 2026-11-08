@@ -301,6 +301,7 @@
         <tr><td>Temp now (24-hr hi / lo)</td><td>${num(p.temp_f, 0, "°")} (${num(p.tmax_24h, 0, "°")} / ${num(p.tmin_24h, 0, "°")})</td></tr>
       </table>
       <div id="chart"></div>
+      <p class="forecast-link"><a href="area.html#snotel-${encodeURIComponent(p.triplet.replace(/:/g, "-"))}">Forecast for this site (NBM / NWS) →</a></p>
       <p class="hint"><a href="https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=${encodeURIComponent(p.id)}"
         target="_blank" rel="noopener">NRCS station page →</a></p>`;
     if (window.innerWidth < 800) box.scrollIntoView({ behavior: "smooth" });
