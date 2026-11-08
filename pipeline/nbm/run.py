@@ -278,6 +278,22 @@ def exceedance(data: dict, hours: list[int], init: datetime, i: int) -> dict:
         out[f"{L}h"] = {"start": [(init + timedelta(hours=h - L)).strftime("%Y-%m-%dT%H:%MZ") for h in ends],
                         "end": [(init + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%MZ") for h in ends],
                         "thr": [float(t) for t in thr], "p": rows}
+        # the same windows' snowfall percentiles for the grid cell (forecast archive, M9)
+        pct = {str(q): [_r(_val(data, h, f"snow{L}_p{q}", i), 1) for h in ends] for q in (10, 50, 90)}
+        if any(x is not None for v in pct.values() for x in v):
+            out[f"{L}h"]["pct"] = pct
+    return out
+
+
+def cell_window_sums(W: dict, init: datetime, starts: list[str], ends: list[str]) -> list:
+    """NBM deterministic snowfall for the grid cell (not scaled by P(snow) at the point)
+    over each window: the sum of the raw 6-h amounts; None unless every 6-h step is there."""
+    out = []
+    for a, b in zip(starts, ends):
+        h0 = int((datetime.strptime(a, "%Y-%m-%dT%H:%MZ").replace(tzinfo=init.tzinfo) - init).total_seconds() // 3600)
+        h1 = int((datetime.strptime(b, "%Y-%m-%dT%H:%MZ").replace(tzinfo=init.tzinfo) - init).total_seconds() // 3600)
+        ws = [W.get(e) for e in range(h1, h0, -6)]
+        out.append(round(sum(w["raw"] for w in ws), 1) if ws and all(w is not None for w in ws) else None)
     return out
 
 
@@ -515,6 +531,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
     ex = exceedance(data, hours, init, i)
     for w in ex.values():
         w["mean"] = window_means(out_periods, w["start"], w["end"])
+        w["cell_mean"] = cell_window_sums(W, init, w["start"], w["end"])
     return {"series": series, "precip": precip, "periods": out_periods, "totals": totals, "exceed": ex}
 
 
@@ -639,7 +656,7 @@ def exceed_summary(files: dict, cat: dict) -> dict:
             continue
         ex = {k: doc["points"][k]["exceed"] for k in ("summit", "base")}
         if windows is None:
-            windows = {L: {kk: vv for kk, vv in w.items() if kk not in ("p", "mean")} for L, w in ex["summit"].items()}
+            windows = {L: {kk: vv for kk, vv in w.items() if kk in ("start", "end", "thr")} for L, w in ex["summit"].items()}
         areas[a["id"]] = {k: {**{L: w["p"] for L, w in e.items()}, "mean": {L: w.get("mean") for L, w in e.items()}}
                           for k, e in ex.items()}
     return {"windows": windows or {}, "areas": areas}

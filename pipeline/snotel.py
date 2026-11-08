@@ -54,7 +54,25 @@ def normalize_station(row: dict) -> dict | None:
         "lat": float(lat),
         "lon": float(lon),
         "elev_ft": row.get("elevation"),
+        "utc_offset_h": utc_offset(row.get("dataTimeZone"), row.get("stateCode") or (parts[1] if len(parts) > 1 else None),
+                                   float(lon)),
     }
+
+
+PACIFIC_STATES = {"WA", "OR", "CA", "NV"}
+
+
+def utc_offset(data_tz, state: str | None, lon: float) -> float:
+    """Hours from UTC of the station's (standard-time) data clock: AWDB's dataTimeZone,
+    else by state (Pacific for WA/OR/CA/NV and northern Idaho west of 115.5 W)."""
+    try:
+        if data_tz is not None and -12 <= float(data_tz) <= 0:
+            return float(data_tz)
+    except (TypeError, ValueError):
+        pass
+    if state in PACIFIC_STATES or (state == "ID" and lon < -115.5):
+        return -8.0
+    return -7.0
 
 
 def fetch_stations(session, states: Iterable[str]) -> list[dict]:
@@ -301,7 +319,8 @@ def run(cfg: dict, session, outdir: Path) -> dict:
             fname = trip.replace(":", "_")
             write_json(
                 outdir / "snotel" / f"{fname}.json",
-                {"triplet": trip, "name": st["name"], "elev_ft": st["elev_ft"], **ts},
+                {"triplet": trip, "name": st["name"], "elev_ft": st["elev_ft"],
+                 "utc_offset_h": st.get("utc_offset_h"), **ts},   # times are local standard time
             )
             props = {k: st[k] for k in ("triplet", "id", "state", "name", "elev_ft")}
             props["file"] = f"snotel/{fname}.json"
