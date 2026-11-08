@@ -330,3 +330,12 @@ h3 .h3sub { font-weight: 400; font-size: 13px; color: #4a5666; margin-left: 6px;
 .tbl-wrap.heat td { font-weight: 600; }
 .tbl-wrap.heat td.na { color: #6b7686; background: #f6f8fb; font-weight: 400; }
 .metrics.nohrsc th[scope="row"] { text-align: left; font-weight: 400; padding: 2px 0; border-bottom: 1px solid #eef1f4; }
+
+/* ---- document pages (area, finder, about): one scrollbar, footer at the end (fix 2) ----
+   Only the obs map and model viewer use the full-viewport app layout above (body = flex
+   column of 100% height, <main> scrolling inside). Document pages scroll the page itself. */
+html:has(body.doc-page) { height: auto; }
+body.doc-page { display: block; height: auto; min-height: 100vh; min-height: 100dvh; }
+body.doc-page { display: flex; flex-direction: column; }
+body.doc-page > main { flex: 1 0 auto; display: block; overflow: visible; min-height: 0; }
+body.doc-page > footer { flex: 0 0 auto; }

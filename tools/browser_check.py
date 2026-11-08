@@ -111,8 +111,9 @@ class Browser:
         return r.get("result", {}).get("value")
 
     def open(self, url, width=1280, height=800, wait=6.0, block=None, zoom=1.0):
-        self.cmd("Emulation.setDeviceMetricsOverride", width=width, height=height, deviceScaleFactor=zoom,
-                 mobile=width < 500)
+        # browser zoom z: the page sees a CSS viewport of width/z px at z device pixels per CSS px
+        self.cmd("Emulation.setDeviceMetricsOverride", width=int(width / zoom), height=int(height / zoom),
+                 deviceScaleFactor=zoom, mobile=width < 500)
         self.cmd("Network.setBlockedURLs", urls=block or [])
         self.cmd("Network.setCacheDisabled", cacheDisabled=bool(block))   # blocked URLs must not come from cache
         self.cmd("Page.navigate", url="about:blank")      # a hash-only change would not reload the page
