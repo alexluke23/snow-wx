@@ -1,7 +1,7 @@
 """Point-forecast processing shared by NBM (and later NDFD / models): pure functions.
 
 Methods (owner decisions, PLAN.md §3, session 2; documented for about.html):
-- Amounts (bars, "most likely", totals) are NBM deterministic (mean) values, summed
+- Amounts (bars, "Expected", totals) are NBM deterministic (mean) values, summed
   over 6-h windows, so day/night bars add up to the totals. Snow is zeroed when the
   window's expected QPF is < 0.01".
 - Point snow = NBM snowfall × P(snow level below the point), the probability taken
