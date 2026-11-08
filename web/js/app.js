@@ -575,6 +575,38 @@
     $("status").innerHTML = items.join("");
   }
 
+  // ---------------------------------------------------------------- My mountains landing (owner S9)
+  // A visitor with favorites who opens the map directly (no hash, not coming from another page of
+  // this site) gets a dismissible banner, or straight to My mountains if they chose "Always".
+  // Shared links (with a hash) and new visitors always land on the map.
+  (function homeBanner() {
+    let favs = [], pref = null;
+    try { favs = JSON.parse(localStorage.getItem("snowwx.favorites")) || []; pref = localStorage.getItem("snowwx.home"); } catch { return; }
+    const fromSite = document.referrer && new URL(document.referrer, location.href).origin === location.origin;
+    if (!favs.length || location.hash.length > 1 || fromSite) return;
+    let dismissed = false;
+    try { dismissed = sessionStorage.getItem("snowwx.home.dismissed") === "1"; } catch { /* ignore */ }
+    if (pref === "mine") { location.replace("mine.html"); return; }
+    if (dismissed) return;
+    const C = L.Control.extend({ options: { position: "topright" },
+      onAdd() {
+        const d = L.DomUtil.create("div", "home-banner");
+        d.setAttribute("role", "region"); d.setAttribute("aria-label", "My mountains");
+        d.innerHTML = `<p>You have ${favs.length} favorite${favs.length === 1 ? "" : "s"}.</p>
+          <a class="btn" href="mine.html">Go to My mountains</a>
+          <button type="button" class="btn ghost" data-act="always">Always open My mountains</button>
+          <button type="button" class="close" data-act="close" aria-label="Dismiss">×</button>`;
+        L.DomEvent.disableClickPropagation(d);
+        d.addEventListener("click", (e) => {
+          const act = e.target.closest("[data-act]")?.dataset.act;
+          if (act === "always") { try { localStorage.setItem("snowwx.home", "mine"); } catch { /* ignore */ } location.href = "mine.html"; }
+          if (act === "close") { try { sessionStorage.setItem("snowwx.home.dismissed", "1"); } catch { /* ignore */ } map.removeControl(ctl); }
+        });
+        return d;
+      } });
+    const ctl = new C().addTo(map);
+  })();
+
   async function load() {
     // Start the base-map tiles and every data file at once (they used to wait for meta.json).
     if (initialHash.view) map.setView(initialHash.view.center, initialHash.view.zoom);

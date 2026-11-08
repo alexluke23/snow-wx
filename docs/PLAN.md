@@ -56,6 +56,7 @@ percentiles, snow level method, verification).
   (3 m 21 s with it), GFS 66–68 s. HRRR `wrfprs` has 25-mb levels 1000–50 mb; per forecast hour,
   the 21 levels 1000–500 mb cost TMP 12.3 MB, RH 16.6 MB (DPT 22.6 MB), HGT 15.3 MB,
   UGRD+VGRD 25.7 MB (byte ranges from the idx).
+- **Session 9 (dev9, Nov 8):** snow forecast overlays on the obs map (Track 2 item 7), "My mountains" favorites page (Track 1 item 4). Powder quality and M7 not started.
 - **Session 7 (dev7, Nov 8):** "Expected" rename done; hour-by-hour temperature/wind to day 10 (6-hourly,
   shaded); Sno-Park source research written up (docs/sources_recreation.md), awaiting approval.
 - **Session 6 (dev6, Nov 8):** Part A fixes 1–9 from the dev5 live review done (PLAN.md §8 M3.6); Part B
@@ -129,6 +130,9 @@ percentiles, snow level method, verification).
 | Nov 8 (S8) | 3. Sno-Park activities only as the source states them (no inferred list: motorized vs non-motorized mistakes matter); otherwise show the site type and a link to the managing agency. |
 | Nov 8 (S8) | 4. Sno-Park permits: the source's permit text only; otherwise "Parking permits may be required — check [official state program or managing national forest]" with the link. Never "Likely". |
 | Nov 8 (S8) | 5. Sites with no NWS grid point show "NWS alerts not available for this location". |
+| Nov 8 (S9) | 1. Landing: a visitor with favorites who opens the obs map directly (no link hash, not from another Snow-Wx page) gets a dismissible banner: "Go to My mountains", "Always open My mountains" (localStorage `snowwx.home`, try/catch; turn off on My mountains), dismiss (for the session). Shared links and new visitors land on the map. |
+| Nov 8 (S9) | 2. Forecast overlays carry the note "Grid values (2.5 km); site pages adjust for elevation."; near-zero snowfall (< 0.1 in) and chances < 5 % stay transparent. |
+| Nov 8 (S9) | 3. "Send feedback" link (mailto) in the footer of every page. |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
@@ -388,7 +392,7 @@ rename, day-10 temp/wind panels, Sno-Park research).
    model pipeline. Meteorologist-grade but readable (§6-B).
 3. **Powder quality** indicator (SLR + wind, §5.2 heuristic), clearly
    labeled as a heuristic, on area pages and in the finder.
-4. **"My mountains" home view**: favorites dashboard (next 24/72 h
+4. ✔ (S9) **"My mountains" home view** — mine.html + js/mine.js: one card per favorite (ski areas, Sno-Parks, SNOTEL): expected 24/72 h with NBM 10–90 %, chance of ≥ 6" (first 24/72-h windows), lowest snow level while precip is likely vs the base, alerts, avalanche danger; empty state explains ☆; remove from the card. Nav link "★ My mountains" on every page (short labels on phones). Lighthouse 100. Landing-page question open. Original text:: favorites dashboard (next 24/72 h
    expected + chance of ≥ 6", snow level, alerts) as the landing page for
    returning visitors.
 5. **Point verification panel** (after ~4–6 weeks of archive data): "How
@@ -398,7 +402,7 @@ rename, day-10 temp/wind panels, Sno-Park research).
 6. ✔ (S8) **Obs map mobile performance pass** — Lighthouse mobile (gzip, like Pages) 81 → 87: tiles and all data start at once (no wait for meta.json), compact data/map_points.json (ski areas + Sno-Parks) instead of full catalogs, Leaflet self-hosted (web/vendor, BSD-2), preconnect to USGS tiles, Plotly fetched on first interaction. Original text:: stations and overlays render
    before basemap tiles finish; preconnect to tile hosts; smaller first
    payload. Target Lighthouse mobile performance ≥ 85 (currently 47–71).
-7. **Snow forecast overlays on the obs map**: NBM expected snowfall
+7. ✔ (S9) **Snow forecast overlays on the obs map** — pipeline/nbm/layers.py at the end of the points job: 9 layers (expected 24 h / 72 h / 7 d; P(≥4/6/12") 24 h and 72 h), first windows ending 12Z, full-suite cycles only; ~0.3 MB total (7 d 210 KB, others 6–28 KB), ~9 s extra in the points job (local). Picker groups Observed / Forecast with window + NBM run; hover values; obs map Lighthouse (gzip) 86. Original text:: NBM expected snowfall
    (24/72 h) and chance of ≥ 4/6/12" as zoomable layers with hover values
    (NOHRSC layer system). This is the consumer replacement for most
    model-map use.

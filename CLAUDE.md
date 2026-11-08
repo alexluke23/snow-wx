@@ -238,6 +238,12 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       summit = high terrain; `common.forecast_areas()` = ski areas + Sno-Parks for every point product). Obs map perf
       pass (map_points.json, vendored Leaflet, parallel loads). Lighthouse realistic numbers: serve build/ with gzip
       (scratchpad gzserve.py pattern); the plain http.server has no gzip and understates mobile scores.
+- [x] S9 (dev9): NBM forecast overlays (pipeline/nbm/layers.py in the points job -> data/points/layers/; overlays.js
+      loads Observed + Forecast indexes) and "My mountains" (mine.html, js/mine.js; favorites in localStorage
+      "snowwx.favorites"). Browser checks: forecast, mine. Follow-up (owner S9): landing banner on the obs map
+      for visitors with favorites (app.js homeBanner; pref localStorage "snowwx.home" = "mine", toggle on mine.html),
+      forecast-overlay grid note, "Send feedback" mailto in every footer. NEXT: powder quality (Track 1 item 3),
+      then M7 precipitation by model.
 - [x] S8 follow-up (owner decisions 2-5): Sno-Park facts only as stated by the source (rec.activities/permit_for);
       no permit -> "Parking permits may be required — check <permit_check link>" (state program, else agency page,
       else fs.usda.gov); "NWS alerts not available" when a site has no NWS grid point. Finder default stays Ski areas.

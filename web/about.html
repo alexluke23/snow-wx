@@ -12,9 +12,10 @@
   <header>
     <h1>Snow-Wx <span>Western US</span></h1>
     <nav class="site-nav">
-      <a href="index.html">Obs map</a>
-      <a href="finder.html">Powder Finder</a>
-      <a href="models.html">Model maps</a>
+      <a href="mine.html"><span class="nav-long">★ My mountains</span><span class="nav-short">★ Mine</span></a>
+      <a href="index.html"><span class="nav-long">Obs map</span><span class="nav-short">Map</span></a>
+      <a href="finder.html"><span class="nav-long">Powder Finder</span><span class="nav-short">Finder</span></a>
+      <a href="models.html"><span class="nav-long">Model maps</span><span class="nav-short">Models</span></a>
       <a href="about.html" class="active" aria-current="page">About</a>
     </nav>
     <form class="site-search" role="search" autocomplete="off">
@@ -39,7 +40,7 @@
       <a href="https://avalanche.org/" target="_blank" rel="noopener">avalanche center</a> before heading out.</p>
 
     <nav class="toc" aria-label="On this page">
-      <a href="#nbm">NBM forecasts</a> · <a href="#probabilities">Ranges and chances</a> ·
+      <a href="#nbm">NBM forecasts</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#forecast-map">Forecast map</a> ·
       <a href="#snow-level">Snow level</a> · <a href="#elevation">Elevation</a> · <a href="#nws">NWS forecast</a> ·
       <a href="#ridge-wind">Ridge-top wind</a> · <a href="#snoparks">Sno-Parks</a> · <a href="#afd">Forecaster discussion</a> ·
       <a href="#sources">Data sources</a> · <a href="#disclaimer">Disclaimer</a>
@@ -87,6 +88,15 @@
         windows across the western US: they agree within about 1–4 percentage points on average. The chances are
         for the 2.5-km grid cell and are not adjusted to the summit or base elevation. They are NBM-only, because
         the NWS forecast has no snowfall probabilities.</p>
+    </section>
+
+    <section id="forecast-map">
+      <h3>Snow forecast map</h3>
+      <p>The obs map's overlay picker has a <b>Forecast</b> group next to the observed NOHRSC/SNODAS layers: NBM's
+        expected snowfall for the next 24 hours, 72 hours and 7 days, and NBM's chance of at least 4, 6 or 12 inches in
+        24 and 72 hours. Windows run from about 5 AM (12Z) to 5 AM, starting with the first full window of the newest
+        01/07/13/19Z NBM run; the picker shows the window and the run. Values are NBM's own fields for its 2.5 km grid
+        (not adjusted to a summit or base) and show the true grid cells when zoomed in.</p>
     </section>
 
     <section id="snow-level">
@@ -181,7 +191,8 @@
     </section>
   </main>
   <footer>Forecasts: NOAA/NWS. Snowpack: USDA NRCS, NOAA/NWS NOHRSC. Ski areas © OpenStreetMap contributors,
-    OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center.</footer>
+    OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center. · <a class="site-feedback" href="mailto:alexluke2323@gmail.com?subject=Snow-Wx%20feedback">Send feedback</a>
+  </footer>
   <script src="js/search.js" defer></script>
 </body>
 </html>

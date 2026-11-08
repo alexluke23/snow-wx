@@ -1,19 +1,22 @@
-// Value-encoded raster overlays (PLAN.md §5.4) for the obs map: NOHRSC snowfall
-// analysis and SNODAS SWE / depth / 24-h SWE change.
+// Value-encoded raster overlays (PLAN.md §5.4) for the obs map, in two groups:
+// Observed = NOHRSC snowfall analysis and SNODAS SWE / depth / 24-h SWE change;
+// Forecast = NBM expected snowfall and chance of >= 4/6/12" (pipeline/nbm/layers.py).
 // Each layer is a PNG on an EPSG:3857 grid whose pixels encode values
 // (code = R*256 + G, value = offset + scale*code, alpha 0 = no data). The browser
 // decodes it once, colourizes it with the site palettes and reads exact values
 // under the cursor.
 
-/* global L, colorFor, SNOWFALL, SNOTEL_VARS */
+/* global L, colorFor, SNOWFALL, PROB, SNOTEL_VARS */
 // eslint-disable-next-line no-unused-vars
-function SnowOverlays(map, { panel, onChange, base = "data/nohrsc/" } = {}) {
+function SnowOverlays(map, { panel, onChange, sources = [
+  { base: "data/nohrsc/", group: "Observed" },
+  { base: "data/points/layers/", group: "Forecast" }] } = {}) {
   const R = 6378137;
   const mercX = (lon) => (R * lon * Math.PI) / 180;
   const mercY = (lat) => R * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => (
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const palette = (key) => (key === "SNOWFALL" ? SNOWFALL : SNOTEL_VARS[key]);
+  const palette = (key) => (key === "SNOWFALL" ? SNOWFALL : key === "PROB" ? PROB : SNOTEL_VARS[key]);
 
   map.createPane("analysis");
   map.getPane("analysis").style.zIndex = 350;        // above tiles, below avalanche zones and stations
@@ -74,7 +77,7 @@ function SnowOverlays(map, { panel, onChange, base = "data/nohrsc/" } = {}) {
 
   async function decodeLayer(l) {
     if (cache.has(l.id)) return cache.get(l.id);
-    const blob = await (await fetch(`${base}${l.file}?v=${encodeURIComponent(index.key)}`)).blob();
+    const blob = await (await fetch(`${l._base}${l.file}?v=${encodeURIComponent(l._key)}`)).blob();
     const bmp = await createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
     const w = bmp.width, h = bmp.height;
     const work = document.createElement("canvas");
@@ -118,21 +121,28 @@ function SnowOverlays(map, { panel, onChange, base = "data/nohrsc/" } = {}) {
   }
 
   const fmtValid = (iso) => new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", timeZoneName: "short" });
+  const fmtShort = (iso) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric" });
+  const when = (l) => (l._group === "Forecast"
+    ? `${fmtShort(l.start)} → ${fmtValid(l.valid)} · ${l.source} run`
+    : `${l.id.startsWith("sf") ? "ending" : "valid"} ${fmtValid(l.valid)} · ${l.source}`);
 
   function renderPanel() {
     if (!panel) return;
-    const opts = (index?.layers || []).map((l) => `<option value="${esc(l.id)}"${l.id === active ? " selected" : ""}>${esc(l.label)}</option>`);
+    const groups = [...new Set((index?.layers || []).map((l) => l._group))];
+    const opts = groups.map((g) => `<optgroup label="${esc(g)}">${index.layers.filter((l) => l._group === g).map((l) =>
+      `<option value="${esc(l.id)}"${l.id === active ? " selected" : ""}>${esc(l.label)}</option>`).join("")}</optgroup>`);
     const l = index?.layers.find((x) => x.id === active);
     panel.innerHTML = `
-      <label for="overlay-select" class="label">Snow analysis overlay</label>
+      <label for="overlay-select" class="label">Snow overlay (observed or forecast)</label>
       <select id="overlay-select"><option value="">None</option>${opts.join("")}</select>
       ${l ? `<div class="overlay-meta">
           ${legend(l)}
-          <p class="hint">${esc(l.units)} · ${l.id.startsWith("sf") ? "ending" : "valid"} ${esc(fmtValid(l.valid))} · ${esc(l.source)}</p>
+          <p class="hint">${esc(l.units)} · ${esc(when(l))}</p>
+          ${l._group === "Forecast" ? `<p class="hint">Grid values (2.5 km); site pages adjust for elevation. Below ${l.units === "%" ? "5 %" : "0.1 in"} is left clear so the terrain shows.</p>` : ""}
           <label class="opacity">Opacity <input id="overlay-opacity" type="range" min="0.2" max="1" step="0.05" value="${opacity}"></label>
           <p id="overlay-readout" class="readout" aria-live="polite">Hover or tap the map for a value.</p>
         </div>` : ""}
-      <p class="hint credit">${index ? `Source: ${esc(index.attribution)}` : "No snow analysis available yet."}</p>`;
+      <p class="hint credit">${index?.layers.length ? `Source: ${esc((l ? l._attr : [...new Set(index.layers.map((x) => x._attr))].join("; ")))}` : "No snow overlays available yet."}</p>`;
     panel.querySelector("#overlay-select").addEventListener("change", (e) => set(e.target.value || null));
     panel.querySelector("#overlay-opacity")?.addEventListener("input", (e) => {
       opacity = Number(e.target.value); overlay?.setOpacity(opacity);
@@ -172,11 +182,14 @@ function SnowOverlays(map, { panel, onChange, base = "data/nohrsc/" } = {}) {
   }
 
   async function load(initial) {
-    try {
-      index = await (await fetch(`${base}index.json?v=${Date.now()}`)).json();
-    } catch {
-      index = null;
-    }
+    // every source's index; layers remember where they came from (group, base, cache key)
+    const parts = await Promise.all(sources.map(async (s) => {
+      try {
+        const ix = await (await fetch(`${s.base}index.json`, { cache: "no-cache" })).json();
+        return (ix.layers || []).map((l) => ({ ...l, _base: s.base, _group: s.group, _key: ix.key, _attr: ix.attribution }));
+      } catch { return []; }
+    }));
+    index = { layers: parts.flat() };
     renderPanel();
     if (initial) await set(initial);
     return index;
