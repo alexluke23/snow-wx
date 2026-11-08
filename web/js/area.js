@@ -382,6 +382,22 @@
     const keep = pr.end.map((e, i) => i).filter((i) => new Date(pr.end[i]).getTime() <= D.t1);
     const mid = keep.map((i) => C.wall(new Date(pr.end[i]).getTime() - pr.hours[i] * 1.8e6, tz));
     const rate = keep.map((i) => (pr.snow_in[i] === null ? null : f1(pr.snow_in[i] / pr.hours[i] * 10) / 10));
+    const days = Math.round(HOURS_DETAIL / 24 * 2) / 2;
+    const totalIn = keep.reduce((a, i) => a + (pr.snow_in[i] ?? 0), 0);
+    if (totalIn < 0.05) {          // nothing to chart: one line instead of an empty panel (fix 9)
+      if (el.data && window.Plotly) Plotly.purge(el);       // it may have held a chart before (base/summit switch)
+      el.style.height = "";
+      el.classList.add("chart-none");
+      el.removeAttribute("role"); el.removeAttribute("aria-label");
+      el.previousElementSibling?.classList.contains("chart-sum") && el.previousElementSibling.remove();
+      el.nextElementSibling?.classList.contains("chart-table") && el.nextElementSibling.remove();
+      const liq = keep.reduce((a, i) => a + (pr.qpf_in[i] ?? 0), 0);
+      el.innerHTML = `<p class="none-line">No snow expected at the ${POINT_LABEL[pt].toLowerCase()} in the next ${days} days` +
+        `${liq >= 0.05 ? ` (about ${liq.toFixed(2)} in of rain or mixed precipitation)` : ""}.</p>`;
+      return;
+    }
+    el.classList.remove("chart-none");
+    el.querySelector(":scope > .none-line")?.remove();
     const ax = C.timeAxis(D.w0, D.w1, el.clientWidth - C.MARGIN.l - 70);
     const hourly = keep.map((i) => pr.hours[i] === 1);
     const text = keep.map((i) => `${localDT(new Date(new Date(pr.end[i]).getTime() - pr.hours[i] * 3.6e6).toISOString(), tz)}–` +

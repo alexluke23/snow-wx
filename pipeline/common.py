@@ -76,3 +76,8 @@ def feature(lon: float, lat: float, props: dict) -> dict:
 
 def feature_collection(features: list[dict], **extra: Any) -> dict:
     return {"type": "FeatureCollection", "features": features, **extra}
+
+
+def plural(n: int, word: str) -> str:
+    """'1 ski area', '2 ski areas' (word given in the singular; trailing 's' added)."""
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"

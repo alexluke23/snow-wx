@@ -17,7 +17,7 @@ import json
 import logging
 from pathlib import Path
 
-from .common import REPO_ROOT, utcnow, write_json
+from .common import plural, REPO_ROOT, utcnow, write_json
 
 log = logging.getLogger("snow-wx.alerts")
 URL = "https://api.weather.gov/alerts/active"
@@ -127,5 +127,5 @@ def run(cfg: dict, session, outdir: Path) -> dict:
     write_json(out / "details.json", details)
     log.info("alerts: %d active in %s; %d affect %d ski areas and %d SNOTEL sites", len(features), ",".join(states),
              index["count"], len(index["areas"]), len(index["points"]))
-    return {"count": index["count"], "unit": "alerts", "detail": f"{len(index['areas'])} ski areas affected",
+    return {"count": index["count"], "unit": "alerts", "detail": f"{plural(len(index['areas']), 'ski area')} affected",
             "areas": len(index["areas"]), "points": len(index["points"])}
