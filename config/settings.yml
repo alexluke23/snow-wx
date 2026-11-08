@@ -36,7 +36,6 @@ avalanche:
   coord_precision: 4
 
 http:
-  # Data providers appreciate a descriptive User-Agent. Replace with your
-  # repo URL once it exists.
-  user_agent: "snow-wx/0.1 (+https://github.com/YOUR_USERNAME/snow-wx)"
+  # Data providers appreciate a descriptive User-Agent (api.weather.gov asks for one).
+  user_agent: "snow-wx/0.2 (+https://github.com/alexluke23/snow-wx)"
   timeout: 60

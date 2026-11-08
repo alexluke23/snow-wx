@@ -5,6 +5,10 @@ mountains, built for skiers and snow-science users. Owner is a meteorologist
 comfortable with Python. Free hosting: GitHub Actions (hourly) builds static
 JSON/PNG + HTML and deploys to GitHub Pages. No servers, no API keys.
 
+**Product plan: `docs/PLAN.md`** (vision, specs, milestones M0–M10, decisions log).
+Read it with this file at the start of every session; keep its §2 Status, §3
+Decisions log and §8 milestone checkboxes current as work lands.
+
 ## Commands
 Use the project's conda env Python for every Python command (no `conda activate`
 needed), e.g.
@@ -91,43 +95,83 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
     runs warm). At/below-ground classification agrees on 92–99.7% of points.
     The 0 °C cap barely changes RRFS (it has 925 mb heights).
 
-## Roadmap (see project plan)
-1. Observations map (done: SNOTEL, ASOS, avalanche danger)
-2. Model map pipeline with Herbie: HRRR, RRFS (operational Nov 2026, replaced
-   NAM), GFS, NBM, ECMWF IFS/AIFS — western domain + subregions, loop viewer
-   (done on `dev`: HRRR, RRFS, GFS + viewer + CI; ECMWF and NBM maps not yet)
-3. Point forecasts: NBM/NDFD meteograms, ensemble plumes, elevation bands
-4. Snow-science products: SLR comparisons, snow level vs terrain, wind loading
-5. Verification vs SNOTEL/ASOS, alerts, mobile polish
+## Ski areas and point forecasts (M1/M2)
+- `python -m pipeline catalog` (on demand; needs build/data/snotel|asos.geojson from a
+  `build`) → `data/ski_areas.json` (committed, ODbL) + `data/ski_areas_verify.csv`.
+  Seeds: OpenSkiMap ski_areas + lifts GeoJSON (cached in data_cache/openskimap, ~140 MB).
+  Base = lowest lift bottom terminal, skipping lifts that start > `transport_drop_m`
+  below the lowest run (city trams/valley gondolas); summit = highest lift top
+  terminal (lift-served, not hike-to). Elevations = USGS 3DEP ImageServer getSamples,
+  checked against OpenSkiMap's per-vertex z (`verify`: ok | dem-only | review).
+  Joins: region (config boxes), tz + NWS grid (api.weather.gov /points), avalanche
+  zone (point in polygon; `zone_id` = avalanche.org feature id, now kept in
+  avalanche.geojson), nearest SNOTEL/ASOS, NBM i/j + cell elevation (3DEP mean over
+  the 2.5-km cell; NBM files have no terrain). Slow lookups cached in data_cache/catalog
+  (3DEP ~1 s per point, cell stats ~10 s each). Fixes go in `config/ski_areas.yml`.
+- `python -m pipeline points` → `build/data/points/<id>.json` + `summary.json`
+  (CI: `points` entry in the models.yml matrix → `points-<cycle>.tar` on the
+  model-maps release → update-site unpacks it into build/data). Code: `pipeline/nbm/`
+  (inventory parse/select, fetch+decode+sample) and pure `pipeline/points.py`.
+- NBM inventory facts (7 Nov 2026): every core cycle reaches f264 (hourly to f048,
+  3-hourly to f192, 6-hourly to f264); qmd only 00/06/12/18Z. ASNOW percentiles to
+  f048 (6-h to f054), SNOWLVL + SNOWLR percentiles to f048, deterministic after.
+  QPF percentiles (qmd, 0..100 by 5) in 6/12-h windows to f264, plus day blocks
+  0-1, 0-3, 3-5, 5-7, 7-10 day. SNOWLVL is metres MSL; SNOWLR is ~0 where
+  no snow falls (average it over snowy steps only). ecCodes names these `unknown`.
+  **core GRIB uses alternativeRowScanning** (odd rows stored reversed; qmd does not):
+  index with `run.flat_index`, or odd-row cells read the mirror column (this bug once
+  made Wasatch values come from the eastern US). Check decodes against the NBS text
+  bulletins (`blend.YYYYMMDD/HH/text/blend_nbstx.tHHz`: TMP, Q06, SLV in 100s ft).
+- Methods (pure, tested): lapse 6.5 °C/km grid→point (cap 4000 ft); P(snow) = P(snow
+  level < point) from p10/50/90 (det ±800 ft ramp later); 12-h periods 00Z–12Z /
+  12Z–00Z; snow range = QPF percentiles × det snow/QPF ratio; 7/10-day ranges add block
+  percentiles rank by rank (wider than true). Sanity vs NDFD:
+  `python -m pipeline.nbm.sanity`.
 
 ## TODO / session handoff (keep current; newest state wins)
-Branch `dev` (not pushed). Plan: A1–A5 polish → HRRR end-to-end (fetch → plots →
-viewer → CI) → RRFS → GFS → NBM points → ECMWF.
-Git note: the global `user.name` in ~/.gitconfig contains pasted command text, so
-commits on `dev` were made with `git -c user.name="Alex Lukinbeal" commit ...`
-(the global config was left alone; owner to fix).
-- [x] 0. Env bootstrap (DLL path, emoji-safe stdout), this TODO list
-- [x] A1 ASOS temp rounding · A2 %-median guard · A3 label declutter · A4 smoothed depth · A5 search + URL hash
-- [x] B6+B7 HRRR fetch/derive/plots (`pipeline/models/`, `config/models.yml`, tests/test_models.py)
-- [x] B8 full HRRR run: 1361 images, 59 MB, 216 s locally · B9 web/models.html viewer
-- [x] B10 CI: `.github/workflows/models.yml` + release-asset hand-off in `update-site.yml`.
-      NOT yet exercised on GitHub (schedules only run on the default branch): after
-      merging to main, run Actions → Model maps → Run workflow and check the
-      `model-maps` release + site.
-- [x] RRFS enabled (config + CI matrix); WBZ cross-check done (see Model maps notes)
-- [x] GFS enabled (moisture rh, native ABSV, west only) + CI matrix [hrrr, rrfs, gfs].
-      Local full runs, 12Z 7 Nov (home internet; CI on AWS should be faster):
-      HRRR 1361 img / 114 MB / 214 s, RRFS 1349 img / 100 MB / 240 s,
-      GFS 362 img / 23 MB / 178 s. Whole site 240 MB. Terrain contours roughly
-      doubled HRRR PNG size (59 -> 114 MB); drop them in plot.Canvas.add_terrain if
-      bandwidth matters more than context.
-- [ ] C11 NBM points (not started). Findings: NBM `core` CONUS 2.5 km files (~200 MB,
-      `blend.tHHz.core.fFFF.co.grib2`, Herbie `nbm`, product `co`) already hold ASNOW
-      percentiles (`ASNOW:surface:18-24 hour acc@(fcst,dt=6 hour),missing=0:10% level`,
-      also 50%/90%, and 1-h windows), 6-h APCP and SNOWLR percentiles — no `qmd` file
-      needed. Plan: `config/points.yml` (SNOTEL triplets + ski areas with lat/lon/elev),
-      reuse fetch.download_frame/decode with an NBM var catalog, nearest-grid-point
-      extraction (precompute indices once), 6-hourly to 168 h, write
-      `data/nbm/<id>.json`, meteogram in the station panel (p10/p50/p90 band).
-- [ ] C12 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
+Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff.
+Branch `dev2` (from main after PR #1; not pushed). Session 2 scope: M0 → M1 → M2,
+then M3 for 3 areas if time allows.
+Done earlier (branch `dev`, merged): Phase-1 polish A1–A5; model maps HRRR/RRFS/GFS
+(B6–B10) + CI. Full local runs 12Z 7 Nov: HRRR 1361 img / 114 MB / 214 s,
+RRFS 1349 / 100 MB / 240 s, GFS 362 / 23 MB / 178 s (before M0 removed upper air
+from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
+- [x] M0 upper air (h500/t700) removed from HRRR/RRFS; snow-level note on maps +
+      viewer caption; Actions bumped to node24 majors (checkout v7, cache v6,
+      setup-micromamba v3, configure-pages v6, upload-pages-artifact v5,
+      deploy-pages v5), runners pinned `ubuntu-24.04`. CI not re-run yet (needs push).
+- [x] M1 ski-area catalog: 161 areas, `data/ski_areas.json` (+ `_verify.csv`), map layer,
+      search, area.html stub. Full run ~21 min cold (3DEP), ~7 s cached. Open items:
+      Kirkwood / Olympic Valley summits unverified (see PLAN.md Status).
+- [x] M2 NBM point pipeline: `pipeline/nbm/`, `pipeline/points.py`, `points` CI matrix
+      entry (untested on GitHub), sanity script. Known weak spot: when NBM's
+      deterministic QPF is ~0 but its QPF percentiles are not, the fallback ratio
+      (SLR × P(snow)) can overstate trace snow (Mission Ridge 1.1 vs det 0.2 in).
+- [x] M3 ski-area page: owner decisions applied (means for bars/totals, NBM snowfall pct
+      ranges 0–48 h, extended outlook after, P(snow at elevation), local period labels).
+      Lighthouse via `PATH=/c/miniforge3/envs/tools:$PATH npx -y lighthouse@12.6.1 URL
+      --only-categories=performance` (Node lives in a separate `tools` conda env).
+      Points files embed the area record; `avalanche_ratings.json` = zone_id → rating.
+- [x] M3.5 B obs-map performance: SNOTEL/ASOS/ski symbols on one canvas
+      (`web/js/points-canvas.js`, declutter cached per zoom, capture-phase hit testing so
+      points win over avalanche polygons), Plotly lazy + idle prefetch. Benchmark:
+      `tools/mapbench.py URL` (CDP, 4x CPU). Lighthouse obs map 46 -> 72, TBT 1270 -> 132 ms.
+      Keyboard focus on individual markers is gone (search box is the keyboard path).
+- [x] M3.5 C NOHRSC overlays: `python -m pipeline nohrsc` -> build/data/nohrsc/ (6 layers,
+      ~0.9 MB, 25 s; CI `nohrsc` in the models.yml matrix). Layer system = `pipeline/layers.py`
+      (EPSG:3857 grid, nearest regrid, 16-bit value code in R/G of an RGBA PNG, alpha =
+      no data) + `web/js/overlays.js` (decode once with createImageBitmap(premultiplyAlpha:
+      none, colorSpaceConversion: none), colourize with colors.js palettes, exact hover value).
+      SNODAS glacier cells are capped at 32767 mm (shown as "glacier / permanent snow").
+- [x] M3.5 D forecasts at every SNOTEL site + NWS official:
+      `python -m pipeline catalog --snotel` -> data/snotel_points.json (NBM cell + elevation;
+      new cells use a 5-point 3DEP mean, the full-cell statistics call is too slow for ~800
+      cells). NBM points now include SNOTEL (`snotel-<triplet with dashes>` files).
+      `python -m pipeline ndfd` samples NDFD GRIB2 (whole files from noaa-ndfd-pds
+      opnl/AR.conus/VP.001-003 + VP.004-007, ~320 MB, no .idx) at all points -> build/data/ndfd/,
+      same JSON shape as NBM so area.js toggles NBM <-> NWS. NDFD has snowlevel in GRIB
+      (api.weather.gov not needed); snow/QPF/snowlevel only to 72 h. Values checked against
+      api.weather.gov gridpoints (temps within 0.1 F, 6-h snow exact).
+- [ ] Not done: alerts banner + AFD (M5), Powder Finder (M4), ridge-top wind.
+- [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

@@ -19,7 +19,8 @@ FIELD_INFO = {
     "qpf24":     {"label": "24-hr precipitation (in)", "group": "Precipitation"},
     "qpf_total": {"label": "Total precipitation since init (in)", "group": "Precipitation"},
     "snow":      {"label": "Snowfall since init: 10:1 vs Kuchera (in)", "group": "Snow"},
-    "snowlevel": {"label": "Snow level vs terrain (ft MSL)", "group": "Snow"},
+    "snowlevel": {"label": "Snow level vs terrain (ft MSL)", "group": "Snow",
+                  "note": "Snow level ≈ wet-bulb 0 °C height (computed from model T/Td)."},
     "t2m":       {"label": "2-m temperature (°F)", "group": "Surface"},
     "gust":      {"label": "Surface wind gust (kt)", "group": "Surface"},
 }

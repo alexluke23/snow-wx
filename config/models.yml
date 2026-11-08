@@ -33,12 +33,12 @@ models:
     herbie: {model: hrrr}
     products: {sfc: sfc, upper: sfc}     # HRRR wrfsfc has 1000-500 mb levels
     moisture: dpt                         # pressure-level moisture field (dpt or rh)
-    vorticity: compute                    # no ABSV in wrfsfc -> compute from u/v
+    vorticity: compute                    # no ABSV in wrfsfc -> compute from u/v (only if h500 is re-enabled)
     levels: [1000, 925, 850, 700, 500]
     cycles: [0, 6, 12, 18]                # the 48-hr runs
     fhours: [[0, 18, 1], [21, 48, 3]]     # [start, stop, step] inclusive
     domains: [west, pnw, sierra, nrockies, wasatch, colorado]
-    fields: [h500, t700, qpf1, qpf6, qpf24, qpf_total, snow, snowlevel, t2m, gust]
+    fields: [qpf1, qpf6, qpf24, qpf_total, snow, snowlevel, t2m, gust]   # no upper air (PLAN.md, Nov 7)
     smooth_km: 30                         # Gaussian smoothing for 500 mb heights/vorticity
     attribution: "NOAA/NCEP HRRR via NOAA Open Data Dissemination (AWS)"
 
@@ -53,7 +53,7 @@ models:
     cycles: [0, 6, 12, 18]                # the 84-hr runs
     fhours: [[0, 84, 3]]
     domains: [west, pnw, sierra, nrockies, wasatch, colorado]
-    fields: [h500, t700, qpf6, qpf24, qpf_total, snow, snowlevel, t2m, gust]
+    fields: [qpf6, qpf24, qpf_total, snow, snowlevel, t2m, gust]   # no upper air (PLAN.md, Nov 7)
     smooth_km: 30
     attribution: "NOAA/NCEP RRFS via NOAA Open Data Dissemination (AWS)"
 

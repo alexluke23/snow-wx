@@ -167,7 +167,8 @@
   });
   $("frame").addEventListener("load", () => {
     const m = model();
-    $("caption").textContent = `${m.label} run ${m.init.replace("T", " ")} · ${m.attribution || ""}`;
+    const note = field().note ? `${field().note} · ` : "";
+    $("caption").textContent = `${note}${m.label} run ${m.init.replace("T", " ")} · ${m.attribution || ""}`;
   });
 
   document.addEventListener("keydown", (e) => {

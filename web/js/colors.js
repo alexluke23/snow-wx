@@ -76,3 +76,13 @@ function fmtValue(spec, v) {
 
 // NAADS danger colors (match pipeline/avalanche.py)
 const DANGER_TEXT = { 0: "#333", 1: "#fff", 2: "#333", 3: "#111", 4: "#fff", 5: "#fff" };
+
+// Forecast snowfall (in): same bins/colors as the model maps (pipeline/models/plot.py
+// SNOW, NWS-style). Shared by the area page, Powder Finder and legends (PLAN.md §6).
+const SNOWFALL = {
+  label: "Snowfall (in)",
+  bins: [0.1, 1, 2, 3, 4, 6, 8, 12, 18, 24, 30, 36, 48],
+  colors: ["#f4f6f8", "#bdd7e7", "#6baed6", "#3182bd", "#08519c", "#082694", "#ffff96", "#ffc400",
+           "#ff8700", "#db1400", "#9e0000", "#690000", "#ccccff", "#9f8ccd"],
+  digits: 0,
+};

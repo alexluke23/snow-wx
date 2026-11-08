@@ -121,3 +121,19 @@ def test_one_source_failing_does_not_stop_others(cfg, tmp_path, monkeypatch):
     assert meta["sources"]["avalanche"]["ok"] is False
     assert meta["sources"]["snotel"]["ok"] is True
     assert meta["sources"]["asos"]["ok"] is True
+
+
+def test_meta_merges_partial_runs_and_products(cfg, tmp_path):
+    import json as _json
+    from pipeline.__main__ import product_status, write_meta
+    write_meta(cfg, tmp_path, {"snotel": {"ok": True, "count": 5}, "asos": {"ok": True, "count": 3}})
+    write_meta(cfg, tmp_path, {"avalanche": {"ok": True, "count": 2}})          # e.g. obs --only avalanche
+    assert set(_json.loads((tmp_path / "meta.json").read_text())["sources"]) == {"snotel", "asos", "avalanche"}
+    site = tmp_path / "site"
+    (site / "data" / "points").mkdir(parents=True)
+    (site / "data" / "points" / "summary.json").write_text(_json.dumps(
+        {"cycle": "2026110712", "generated_at": "2026-11-07T15:00:00Z", "areas": [{}, {}]}))
+    st = product_status(site)
+    assert st["points"] == {"ok": True, "count": 2, "unit": "ski areas", "detail": "NBM 12Z run",
+                            "at": "2026-11-07T15:00:00Z"}
+    assert st["models"]["ok"] is False
