@@ -140,6 +140,6 @@ if __name__ == "__main__":
         prev = Path(a.out).read_text(encoding="utf-8")
         if "<!-- notes -->" in prev:
             notes = prev[prev.index("<!-- notes -->"):]
-    Path(a.out).write_text(markdown(a.day, rows) + ("
-" + notes if notes else ""), encoding="utf-8")
+    nl = chr(10)
+    Path(a.out).write_text(markdown(a.day, rows) + (nl + notes if notes else ""), encoding="utf-8")
     print("wrote", a.out, file=sys.stderr)

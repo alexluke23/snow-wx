@@ -257,7 +257,7 @@ def test_point_forecast_periods_and_totals():
     assert (per["snow_ext_lo"], per["snow_ext_hi"]) == (3.0, 9.0) and per["range"] == "NBM 10-90"
     late = fc["periods"][4]                                                  # 60-72 h: extended outlook
     assert late["extended"] and late["snow_in"] == 6.0 and (late["snow_lo"], late["snow_hi"]) == (3.0, 9.0)
-    assert late["range"] == "likely 25-75"
+    assert late["range"] == "derived 25-75"
     tot = fc["totals"]
     assert tot["24h"]["snow_in"] == 12.0 and (tot["24h"]["snow_lo"], tot["24h"]["snow_hi"]) == (4.0, 20.0)
     # 72 h: likely range from the 0-3 day QPF block 25/75 (1.0/3.0) x 15; the mean (36 in)
@@ -312,10 +312,32 @@ def test_calibration_report_counts_means_outside_ranges():
     files = {"a": {"points": {"summit": {"periods": [
         per(2.0, 1.0, 4.0, "2026-11-08T12:00Z", elo=0.5, ehi=1.5),          # 0-48 h: in NBM, above likely
         per(5.0, 1.0, 4.0, "2026-11-09T00:00Z"),                            # 0-48 h: above NBM
-        per(3.0, 1.0, 2.0, "2026-11-12T00:00Z", rng="likely 25-75"),        # beyond: above likely
+        per(3.0, 1.0, 2.0, "2026-11-12T00:00Z", rng="derived 25-75"),        # beyond: above likely
         per(1.5, 1.0, 2.0, "2026-11-12T12:00Z"),                            # beyond: inside NBM
         per(0.0, 0.0, 0.1, "2026-11-13T00:00Z")]}}}}                        # dry: skipped
     r = calibration_report(files, "2026110800")
     assert r["first_48h"]["nbm_10_90"]["periods"] == 2 and r["first_48h"]["nbm_10_90"]["mean_inside"] == 0.5
-    assert r["first_48h"]["likely_25_75"]["mean_above"] == 1.0
-    assert r["beyond_48h"]["likely_25_75"]["mean_above"] == 1.0 and r["beyond_48h"]["nbm_10_90"]["mean_inside"] == 1.0
+    assert r["first_48h"]["derived_25_75"]["mean_above"] == 1.0
+    assert r["beyond_48h"]["derived_25_75"]["mean_above"] == 1.0 and r["beyond_48h"]["nbm_10_90"]["mean_inside"] == 1.0
+
+
+def test_s4_fallback_order_thresholds_and_exceedance():
+    from datetime import timezone
+    from pipeline.nbm.run import companion_cycle, exceedance, latest_cycle
+    utc = timezone.utc
+    now = datetime(2026, 11, 8, 4, 30, tzinfo=utc)
+    # newest full-suite (01Z) incomplete, previous (19Z, 9.5 h old) complete -> 19Z, not the newer 00Z
+    done = {datetime(2026, 11, 7, 19, tzinfo=utc), datetime(2026, 11, 8, 0, tzinfo=utc)}
+    assert latest_cycle(None, now, 264, complete=lambda s, t, h: t in done) == datetime(2026, 11, 7, 19, tzinfo=utc)
+    # previous full-suite cycle too old (> 12 h) -> synoptic cycle
+    late = datetime(2026, 11, 8, 9, 0, tzinfo=utc)
+    done = {datetime(2026, 11, 7, 19, tzinfo=utc), datetime(2026, 11, 8, 6, tzinfo=utc)}
+    assert latest_cycle(None, late, 264, complete=lambda s, t, h: t in done) == datetime(2026, 11, 8, 6, tzinfo=utc)
+    assert companion_cycle(datetime(2026, 11, 8, 7, tzinfo=utc)) == datetime(2026, 11, 8, 6, tzinfo=utc)
+    assert companion_cycle(datetime(2026, 11, 8, 6, tzinfo=utc)) is None
+    assert inv.threshold_in(">0.1016") == "4" and inv.threshold_in(">0.00254") == "0.1" and inv.threshold_in(">1.2192") == "48"
+    init = datetime(2026, 11, 8, 1, tzinfo=utc)
+    data = {35: {"snow24_gt4": np.array([12.0]), "snow24_gt1": np.array([40.0])}, 29: {"snow24_gt4": np.array([5.0])}}
+    ex = exceedance(data, [29, 35], init, 0)
+    # only windows ending at valid 12Z (01Z + 35 h); thresholds sorted numerically
+    assert ex["24h"] == {"start": ["2026-11-08T12:00Z"], "end": ["2026-11-09T12:00Z"], "thr": [1.0, 4.0], "p": [[40, 12]]}

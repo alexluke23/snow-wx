@@ -30,7 +30,7 @@ BUCKET = "https://noaa-nbm-grib2-pds.s3.amazonaws.com"
 CACHE = REPO_ROOT / "data_cache" / "nbm"
 CATALOG = REPO_ROOT / "data" / "ski_areas.json"
 SOURCE = "NOAA/NWS National Blend of Models (NBM) via NOAA Open Data Dissemination (AWS)"
-SELECTION_VERSION = 4          # bump when inventory.selections changes (invalidates the sample cache)
+SELECTION_VERSION = 5          # bump when inventory.selections changes (invalidates the sample cache)
 
 K_TO_F = lambda k: (k - 273.15) * 1.8 + 32.0  # noqa: E731
 MS_TO_MPH = 2.236936
@@ -45,6 +45,8 @@ def url(cycle: datetime, product: str, fhour: int) -> str:
 
 
 def convert(key: str, v: np.ndarray) -> np.ndarray:
+    if "_gt" in key:                    # exceedance probabilities: percent, keep as is
+        return v
     if key in ("t2m", "tmax12", "tmin12"):
         return K_TO_F(v)
     if key in ("wind", "gust"):
@@ -89,20 +91,44 @@ def cycle_complete(session, t: datetime, max_hour: int) -> bool:
 
 
 def latest_cycle(session, now: datetime, max_hour: int, lookback_h: int = 36,
-                 complete=cycle_complete) -> datetime | None:
-    """Newest complete full-suite cycle (01/07/13/19Z: NBM snowfall percentiles and
-    exceedances to ~day 11, see docs/nbm_inventory.md); if none is complete within the
-    lookback, the newest complete 00/06/12/18Z cycle. An incomplete newest cycle simply
-    falls back to the previous complete one."""
+                 complete=cycle_complete, full_suite_max_age_h: int = 12) -> datetime | None:
+    """Owner fallback order (S4): newest complete full-suite cycle (01/07/13/19Z: NBM
+    snowfall percentiles and exceedances to ~day 11, docs/nbm_inventory.md) -> the
+    previous full-suite cycle if it is at most 12 h old -> only then the newest complete
+    00/06/12/18Z cycle within the lookback."""
     t = now.replace(minute=0, second=0, microsecond=0)
-    fallback = None
-    for k in range(lookback_h + 1):
+    for k in range(full_suite_max_age_h + 1):
         c = t - timedelta(hours=k)
         if c.hour in FULL_SUITE_CYCLES and complete(session, c, max_hour):
             return c
-        if fallback is None and c.hour % 6 == 0 and complete(session, c, max_hour):
-            fallback = c
-    return fallback
+    for k in range(lookback_h + 1):
+        c = t - timedelta(hours=k)
+        if c.hour % 6 == 0 and complete(session, c, max_hour):
+            return c
+    return None
+
+
+def companion_cycle(cycle: datetime) -> datetime | None:
+    """The 00/06/12/18Z cycle an hour before a full-suite cycle (preferred QPF source)."""
+    return cycle - timedelta(hours=1) if cycle.hour in FULL_SUITE_CYCLES else None
+
+
+def liquid_source(session, cycle: datetime, max_back_h: int = 13) -> datetime | None:
+    """QPF percentiles (qmd) for a full-suite cycle. qmd is published ~7.5 h after its
+    cycle (measured 6-7 Nov 2026), so the companion an hour before the full-suite cycle is
+    usually not out yet when the full suite completes (~1.7 h): use the newest
+    00/06/12/18Z cycle at most 13 h older whose qmd is complete (f276)."""
+    if cycle.hour not in FULL_SUITE_CYCLES:
+        return None
+    for k in range(1, max_back_h + 1):
+        c = cycle - timedelta(hours=k)
+        if c.hour % 6 == 0:
+            try:
+                if session.head(url(c, "qmd", 276) + ".idx", timeout=30).status_code == 200:
+                    return c
+            except Exception:  # noqa: BLE001
+                pass
+    return None
 
 
 def list_hours(session, cycle: datetime) -> list[int]:
@@ -172,7 +198,7 @@ def _decode_at(blob: bytes, ij: tuple[np.ndarray, np.ndarray], grid: dict) -> np
 
 
 def fetch_hour(session, cycle: datetime, fhour: int, ij: tuple, grid: dict,
-               cache_dir: Path) -> tuple[dict[str, np.ndarray], list[str]]:
+               cache_dir: Path, comp: datetime | None = None) -> tuple[dict[str, np.ndarray], list[str]]:
     """({key: values at the cells}, [missing required keys]) for one forecast hour.
 
     Fail-soft: a missing idx/product or message is missing data for this hour, never
@@ -183,17 +209,24 @@ def fetch_hour(session, cycle: datetime, fhour: int, ij: tuple, grid: dict,
             out = {k: z[k] for k in z.files if k != "__missing__"}
             return out, [str(x) for x in z["__missing__"]] if "__missing__" in z.files else []
     out: dict[str, np.ndarray] = {}
-    for product in ("core", "qmd"):
-        if product == "qmd" and cycle.hour % 6:
+    sources = [(cycle, "core", fhour), (cycle, "qmd", fhour)]
+    if comp is not None and (cycle.hour + fhour) % 12 == 0:
+        # liquid ranges: a 00/06/12/18Z cycle's qmd 12-h QPF percentiles at the same
+        # valid time (its forecast hour is larger by the cycle difference)
+        sources.append((comp, "qmd", fhour + int((cycle - comp).total_seconds() // 3600)))
+    for src, product, fh in sources:
+        if product == "qmd" and src.hour % 6:
             continue                                  # qmd exists only for 00/06/12/18Z
-        r = _get(session, url(cycle, product, fhour) + ".idx")
+        r = _get(session, url(src, product, fh) + ".idx")
         if r is None:
-            log.debug("%s f%03d: no idx", product, fhour)
+            log.debug("%s %s f%03d: no idx", src, product, fh)
             continue
-        chosen = {m: k for m, k in select(parse_idx(r.text), fhour, cycle.hour, product).items() if m.length}
+        chosen = {m: k for m, k in select(parse_idx(r.text), fh, src.hour, product).items() if m.length}
+        if src is not cycle:
+            chosen = {m: k for m, k in chosen.items() if k.startswith("qpf12_")}
         for start, end, members in merge_ranges(list(chosen)):
             try:
-                blob = _get(session, url(cycle, product, fhour), {"Range": f"bytes={start}-{end}"}).content
+                blob = _get(session, url(src, product, fh), {"Range": f"bytes={start}-{end}"}).content
             except Exception as e:  # noqa: BLE001
                 log.warning("%s f%03d: byte range failed (%s)", product, fhour, e)
                 continue
@@ -223,6 +256,29 @@ def _val(data, h, key, i):
         return None
     v = float(arr[i])
     return None if math.isnan(v) else v
+
+
+def exceedance(data: dict, hours: list[int], init: datetime, i: int) -> dict:
+    """NBM's own snowfall exceedance probabilities (%) for 24/48/72-h windows ending at
+    valid 12Z (about 4-5 AM local in the West), at every threshold NBM provides."""
+    out = {}
+    for L in (24, 48, 72):
+        ends = [h for h in hours if (init.hour + h) % 24 == 12 and any(k.startswith(f"snow{L}_gt") for k in data.get(h, {}))]
+        if not ends:
+            continue
+        thr = sorted({k[len(f"snow{L}_gt"):] for h in ends for k in data[h] if k.startswith(f"snow{L}_gt")}, key=float)
+        rows = []
+        for h in ends:
+            row = []
+            for t in thr:
+                a = data[h].get(f"snow{L}_gt{t}")
+                x = None if a is None else float(a[i])
+                row.append(None if x is None or math.isnan(x) else int(round(x)))
+            rows.append(row)
+        out[f"{L}h"] = {"start": [(init + timedelta(hours=h - L)).strftime("%Y-%m-%dT%H:%MZ") for h in ends],
+                        "end": [(init + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%MZ") for h in ends],
+                        "thr": [float(t) for t in thr], "p": rows}
+    return out
 
 
 def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: int,
@@ -357,7 +413,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
             **P.period_label(init, s, e, tz),
             "snow_in": _r(snow, 1),
             "snow_lo": _r(rng[0], 1) if rng else None, "snow_hi": _r(rng[1], 1) if rng else None,
-            "extended": extended, "range": "likely 25-75" if extended else "NBM 10-90",
+            "extended": extended, "range": "derived 25-75" if extended else "NBM 10-90",
             # 0-48 h only: the extended-outlook (likely) range too, for the calibration report
             "snow_ext_lo": _r(ext_rng[0], 1) if (ext_rng and not extended) else None,
             "snow_ext_hi": _r(ext_rng[1], 1) if (ext_rng and not extended) else None,
@@ -442,9 +498,10 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
                         "qpf_lo": _r(qrng[0], 2) if qrng else None, "qpf_hi": _r(qrng[1], 2) if qrng else None,
                         "p_snow": _r(P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws]), 2),
                         "extended": cover is None and L > 48,
-                        "range": "NBM 10-90" if cover is not None else ("likely 25-75" if srng else None),
+                        "range": "NBM 10-90" if cover is not None else ("derived 25-75" if srng else None),
                         "from": (init + timedelta(hours=t0)).strftime("%Y-%m-%dT%H:%MZ")}
-    return {"series": series, "precip": precip, "periods": out_periods, "totals": totals}
+    return {"series": series, "precip": precip, "periods": out_periods, "totals": totals,
+            "exceed": exceedance(data, hours, init, i)}
 
 
 def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: datetime,
@@ -454,7 +511,7 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
     for a in cat["areas"]:
         tz = ZoneInfo(a.get("tz") or "America/Denver")
         doc = {"id": a["id"], "name": a["name"], "tz": a.get("tz"),
-               "source": SOURCE, "cycle": init.strftime("%Y%m%d%H"),
+               "source": SOURCE, "cycle": init.strftime("%Y%m%d%H"), "liquid_cycle": liquid_cycle(init, data),
                "issued": init.strftime("%Y-%m-%dT%H:%MZ"), "generated_at": generated,
                "times": times, "fhours": hours, "points": {},
                # the catalog record, so the area page needs one request instead of the whole catalog
@@ -499,15 +556,15 @@ def calibration_report(files: dict, cid: str, min_in: float = 0.5) -> dict:
 
     def bucket():
         return {"periods": 0, "inside": 0, "below": 0, "above": 0, "lo": 0.0, "hi": 0.0, "mean": 0.0}
-    acc = {(lead, kind): bucket() for lead in ("first_48h", "beyond_48h") for kind in ("nbm_10_90", "likely_25_75")}
+    acc = {(lead, kind): bucket() for lead in ("first_48h", "beyond_48h") for kind in ("nbm_10_90", "derived_25_75")}
     for doc in files.values():
         for pt in doc["points"].values():
             for per in pt["periods"]:
                 lead = (_dt.strptime(per["end"], "%Y-%m-%dT%H:%MZ") - init).total_seconds() / 3600
                 lead = "first_48h" if lead <= 48 else "beyond_48h"
-                ranges = [("nbm_10_90" if per.get("range") == "NBM 10-90" else "likely_25_75", per["snow_lo"], per["snow_hi"])]
+                ranges = [("nbm_10_90" if per.get("range") == "NBM 10-90" else "derived_25_75", per["snow_lo"], per["snow_hi"])]
                 if per.get("snow_ext_lo") is not None:          # derived range kept for comparison
-                    ranges.append(("likely_25_75", per["snow_ext_lo"], per["snow_ext_hi"]))
+                    ranges.append(("derived_25_75", per["snow_ext_lo"], per["snow_ext_hi"]))
                 m = per["snow_in"]
                 for kind, lo, hi in ranges:
                     if m is None or lo is None or hi is None or hi < min_in:
@@ -540,6 +597,31 @@ def data_quality(missing: dict[int, list[str]], cycle_hour: int) -> dict:
             "share": round(n / required, 4) if required else 1.0, "by_field": by_field}
 
 
+LIQUID_FROM: dict[str, str | None] = {}     # cycle id -> QPF-percentile cycle id (set per run)
+
+
+def liquid_cycle(init: datetime, data: dict) -> str | None:
+    """Which cycle the QPF (liquid) percentiles come from, if any."""
+    if not any(k.startswith("qpf12_p") for d in data.values() for k in d):
+        return None
+    return LIQUID_FROM.get(init.strftime("%Y%m%d%H")) or init.strftime("%Y%m%d%H")
+
+
+def exceed_summary(files: dict, cat: dict) -> dict:
+    """Powder Finder "Chance of" mode: per area and elevation, P(>=x) per window
+    (lazy-loaded file; the windows/thresholds are shared by every area)."""
+    areas, windows = {}, None
+    for a in cat["areas"]:
+        doc = files.get(a["id"])
+        if not doc:
+            continue
+        ex = {k: doc["points"][k]["exceed"] for k in ("summit", "base")}
+        if windows is None:
+            windows = {L: {kk: vv for kk, vv in w.items() if kk != "p"} for L, w in ex["summit"].items()}
+        areas[a["id"]] = {k: {L: w["p"] for L, w in e.items()} for k, e in ex.items()}
+    return {"windows": windows or {}, "areas": areas}
+
+
 def station_outputs(stations: list[dict], data, hours, init, col, generated) -> dict:
     """Single-elevation forecasts at SNOTEL sites (area.html#snotel-...)."""
     times = [(init + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%MZ") for h in hours]
@@ -549,7 +631,7 @@ def station_outputs(stations: list[dict], data, hours, init, col, generated) -> 
         fc = point_forecast(data, hours, init, col[(g["i"], g["j"])], st["elev_ft"], g.get("elev_ft"),
                             ZoneInfo(st.get("tz") or "America/Denver"))
         out[st["id"]] = {"id": st["id"], "name": st["name"], "tz": st.get("tz"), "source": SOURCE,
-                         "cycle": init.strftime("%Y%m%d%H"), "issued": init.strftime("%Y-%m-%dT%H:%MZ"),
+                         "cycle": init.strftime("%Y%m%d%H"), "liquid_cycle": liquid_cycle(init, data), "issued": init.strftime("%Y-%m-%dT%H:%MZ"),
                          "generated_at": generated, "times": times, "fhours": hours, "station": st,
                          "points": {"point": {"elev_ft": st["elev_ft"], "grid_elev_ft": g.get("elev_ft"),
                                               "grid": [g["i"], g["j"]], **fc}}}
@@ -595,7 +677,10 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
         return 1
     # samples are columns in cell order: key the cache on the cell list and the selections
     import hashlib
-    key = hashlib.md5(repr((cells, SELECTION_VERSION)).encode()).hexdigest()[:10]
+    comp = liquid_source(session, cycle)
+    LIQUID_FROM[cid] = comp.strftime("%Y%m%d%H") if comp else None
+    log.info("NBM %s: liquid (QPF) percentiles from %s", cid, comp.strftime("%Y%m%d%H") if comp else "-")
+    key = hashlib.md5(repr((cells, SELECTION_VERSION, comp)).encode()).hexdigest()[:10]
     cache_dir = CACHE / f"{cid}_{key}"
     log.info("NBM %s: %d forecast hours, %d grid cells for %d areas + %d SNOTEL sites", cid, len(hours), len(cells),
              len(cat["areas"]), len(stations))
@@ -603,7 +688,7 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
     data: dict[int, dict] = {}
     missing: dict[int, list[str]] = {}
     with ThreadPoolExecutor(workers) as ex:
-        futs = {h: ex.submit(fetch_hour, session, cycle, h, ij, grid, cache_dir) for h in hours}
+        futs = {h: ex.submit(fetch_hour, session, cycle, h, ij, grid, cache_dir, comp) for h in hours}
         for h, fut in futs.items():
             data[h], missing[h] = fut.result()
     log.info("NBM fetch+decode %.0f s", time.time() - t0)
@@ -627,6 +712,8 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
         p = out / f"{aid}.json"
         write_json(p, doc)
         sizes.append(p.stat().st_size)
+    write_json(out / "exceed_summary.json", {"cycle": cid, "issued": cycle.strftime("%Y-%m-%dT%H:%MZ"),
+                                             "source": SOURCE, **exceed_summary(files, cat)})
     cal = calibration_report(files, cid)
     write_json(out / "calibration.json", cal)
     log.info("calibration: %s", json.dumps({k: v for k, v in cal.items() if k in ("first_48h", "beyond_48h")}))

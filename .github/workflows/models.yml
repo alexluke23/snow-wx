@@ -15,6 +15,9 @@ on:
     # 6 h. GitHub often starts cron runs 10-60 min late; the pipeline always
     # picks the newest *complete* cycle and exits cleanly if it is already published.
     - cron: "55 1-22/3 * * *"
+    # NBM points only: the 01/07/13/19Z full-suite cycles reach f264 ~1.7 h after init
+    # (measured 6-7 Nov 2026), so run at 02:55/08:55/14:55/20:55.
+    - cron: "55 2,8,14,20 * * *"
   workflow_dispatch:
     inputs:
       models:
@@ -82,6 +85,7 @@ jobs:
         id: sel
         run: |
           want="${{ github.event.inputs.models }}"
+          if [ "${{ github.event.schedule }}" = "55 2,8,14,20 * * *" ]; then want="points"; fi
           if [ -n "$want" ] && ! echo " $want " | grep -q " $MODEL "; then
             echo "run=false" >> "$GITHUB_OUTPUT"; echo "skipping $MODEL"
           else
