@@ -128,6 +128,8 @@ def build_site(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
         from .models.catalog import write_catalog
         from .models.config import load_models_config
         write_catalog(outdir / "models", list(load_models_config()["models"]))
+        from .models.ridge import merge as merge_ridge
+        merge_ridge(outdir / "models", outdir / "data" / "ridge.json")
     except Exception:
         logging.getLogger("snow-wx").exception("model catalog failed")
     write_meta(cfg, outdir / "data", product_status(outdir))

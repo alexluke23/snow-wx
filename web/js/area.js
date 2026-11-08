@@ -208,7 +208,25 @@
       xaxis: { type: "date", fixedrange: true } }), PLOT_CFG);
   }
 
-  function meteogram(el, fc, pt, keys) {
+  // ridge-top (free-air) summit wind from HRRR then RRFS (pipeline/models/ridge.py)
+  let ridgeP = null;
+  const loadRidge = () => (ridgeP ||= getJSON("data/ridge.json").catch(() => null));
+  const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+  const compass = (d) => (d === null || d === undefined ? "" : COMPASS[Math.round(d / 22.5) % 16]);
+  function ridgeSummary(ridge, id, hours = 24) {
+    const r = ridge?.areas?.[id];
+    if (!r) return null;
+    const now = Date.now(), end = now + hours * 3.6e6;
+    let best = null;
+    ridge.valid.forEach((t, i) => {
+      const x = new Date(t).getTime();
+      if (x >= now - 1.8e6 && x <= end && r.mph[i] !== null && (!best || r.mph[i] > best.mph))
+        best = { mph: r.mph[i], dir: r.dir[i], model: ridge.models[ridge.src[i]]?.label };
+    });
+    return best;
+  }
+
+  function meteogram(el, fc, pt, keys, ridge, id) {
     const t = fc.times, P = fc.points, s = P[pt].series;
     const pr = P[pt].precip;
     const width = pr.hours.map((h) => h * 3.6e6 * 0.85);
@@ -220,6 +238,9 @@
       ...temps,
       { x: t, y: P[wk].series.gust_mph, name: `${POINT_LABEL[wk]} gust`, line: { color: "#7c3aed", width: 1, dash: "dot" }, yaxis: "y2" },
       { x: t, y: P[wk].series.wind_mph, name: `${POINT_LABEL[wk]} wind`, line: { color: "#7c3aed", width: 2 }, yaxis: "y2" },
+      ...(ridge?.areas?.[id] ? [{ x: ridge.valid, y: ridge.areas[id].mph, name: "Ridge-top wind", yaxis: "y2",
+        mode: "lines", line: { color: "#0f766e", width: 2 }, customdata: ridge.areas[id].dir.map((d, i) => `${compass(d)} (${ridge.models[ridge.src[i]]?.label || ""})`),
+        hovertemplate: "Ridge-top %{y} mph from %{customdata}<extra></extra>" }] : []),
       { x: mid, y: pr.snow_in, width, name: `Snow at ${POINT_LABEL[pt].toLowerCase()} (in)`, type: "bar", marker: { color: "#3182bd" }, yaxis: "y3" },
       { x: mid, y: pr.qpf_in, name: "Liquid (in, right axis)", mode: "lines+markers", line: { color: "#b45309", width: 1.5, shape: "hvh" },
         marker: { size: 3 }, yaxis: "y4" },
@@ -449,7 +470,7 @@
       <section><h3>Snow level vs the ${isStation ? "station" : "mountain"}</h3><div class="chart" id="sl-chart"><p class="hint">Loading chart…</p></div>
         <p class="note">Below the line precipitation falls as rain. Solid blue where precipitation is possible
           (≥ 20% chance), dotted grey where it is unlikely; shaded 10–90% for the first 48 h (NBM).</p></section>
-      <section><h3>Hour by hour</h3><div class="chart" id="met-chart"><p class="hint">Loading chart…</p></div>
+      <section><h3>Hour by hour</h3><p class="note" id="ridge-note"></p><div class="chart" id="met-chart"><p class="hint">Loading chart…</p></div>
         <p class="note" id="met-note"></p></section>`
       : `<p class="hint">No point forecast is available for this site yet.</p>`}
       <section id="afd"></section>
@@ -507,12 +528,19 @@
           ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), as issued — not adjusted to this elevation. Precipitation in 6-hour amounts.`
           : "Temperatures adjusted from the 2.5-km NBM grid to each elevation (6.5 °C/km). Hourly to 36 h, then 6-hour amounts.";
       };
-      const drawCharts = () => loadPlotly().then(() => {
+      const drawCharts = () => Promise.all([loadPlotly(), isStation ? null : loadRidge()]).then(([, ridge]) => {
         const d = doc(), keys = keysOf(d);
-        periodChart(ready($("period-chart")), d, pt);
-        if (!$("ex-sec").hidden) exceedChart(ready($("ex-chart")), d, pt, tz);
-        meteogram(ready($("met-chart")), d, pt, keys);
-        snowLevelChart(ready($("sl-chart")), d, keys);
+        const rs = ridgeSummary(ridge, a.id);
+        $("ridge-note").innerHTML = rs ? `<b>Ridge-top wind</b>, next 24 h: up to <b>${rs.mph} mph</b> from ${compass(rs.dir)}
+          (${esc(rs.model || "")}, free air at summit height; exposed ridges). NBM's 10 m wind runs lower on exposed summits.
+          <a href="about.html#ridge-wind">Why →</a>` : "";
+        // one chart per task (yield in between) so no single long main-thread task
+        const yieldT = () => new Promise((r) => setTimeout(r, 0));
+        return [() => periodChart(ready($("period-chart")), d, pt),
+          () => { if (!$("ex-sec").hidden) exceedChart(ready($("ex-chart")), d, pt, tz); },
+          () => snowLevelChart(ready($("sl-chart")), d, keys),
+          () => meteogram(ready($("met-chart")), d, pt, keys, ridge, a.id)]
+          .reduce((pr, f) => pr.then(yieldT).then(f), Promise.resolve());
       });
       $("ex-win")?.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {
         exWin = btn.dataset.w;
