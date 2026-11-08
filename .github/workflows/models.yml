@@ -38,7 +38,31 @@ env:
   RELEASE: model-maps
 
 jobs:
+  # Warm the caches once. When six matrix jobs miss a cache together, every one of
+  # them tries to save it ("Unable to reserve cache" warnings); after this job they
+  # all restore a hit and none saves.
+  env:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+      - name: Cache Natural Earth basemap files
+        id: ne
+        uses: actions/cache@v6
+        with:
+          path: ~/.local/share/cartopy
+          key: cartopy-naturalearth-50m-v1
+      - name: Download Natural Earth files (first run only)
+        if: steps.ne.outputs.cache-hit != 'true'
+        shell: bash -el {0}
+        run: python -c "import pipeline; from pipeline.models.plot import ensure_basemap_data; ensure_basemap_data()"
+
   render:
+    needs: env
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -83,9 +107,12 @@ jobs:
       - name: Find the published cycle
         if: steps.sel.outputs.run == 'true'
         id: pub
+        # Assets are <product>-<YYYYMMDDHH>-<version>.tar; the version hashes the
+        # product's code + config (pipeline/version.py), so a renderer/config change
+        # re-renders the current cycle. Old assets without a version never match.
         run: |
           cyc=$(gh release view "$RELEASE" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null \
-                | sed -n "s/^${MODEL}-\([0-9]\{10\}\)\.tar$/\1/p" | sort | tail -1 || true)
+                | sed -n -E "s/^${MODEL}-([0-9]{10}(-[0-9a-f]{8})?)\.tar$/\1/p" | sort | tail -1 || true)
           if [ "${{ github.event.inputs.force }}" = "true" ]; then cyc=""; fi
           echo "published: ${cyc:-none}"
           echo "cycle=$cyc" >> "$GITHUB_OUTPUT"
@@ -124,12 +151,13 @@ jobs:
               --notes "Newest model-map images per model, replaced automatically by the Model maps workflow. Not a software release." \
               || gh release view "$RELEASE" >/dev/null
           fi
-          # Upload the new run first, then delete only THIS model's older runs.
+          # Upload the new run first, then delete THIS product's other assets (older
+          # cycles or older versions); other products' assets are never touched.
           gh release upload "$RELEASE" "$asset" --clobber
           for old in $(gh release view "$RELEASE" --json assets -q '.assets[].name' \
-                       | sed -n "s/^${MODEL}-\([0-9]\{10\}\)\.tar$/\1/p"); do
-            if [ "$old" \< "$cyc" ]; then
-              gh release delete-asset "$RELEASE" "${MODEL}-${old}.tar" -y
+                       | grep -E "^${MODEL}-[0-9]{10}(-[0-9a-f]{8})?\.tar$" || true); do
+            if [ "$old" != "$asset" ]; then
+              gh release delete-asset "$RELEASE" "$old" -y
             fi
           done
 
