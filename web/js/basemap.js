@@ -45,7 +45,9 @@ function snowBasemaps(map, { initial = "Shaded relief (USGS)", maxZoom = 17, onS
   }
 
   function judge(name) {
-    if (name !== current) return;
+    // only the base layer that is on the map right now can trigger a switch; overlay
+    // layers and base layers that were just switched away from never count
+    if (name !== current || !layers[name]._map) return;
     const s = stats[name], now = Date.now();
     s.recent = s.recent.filter(([t]) => now - t < WINDOW_MS);
     const errs = s.recent.filter(([, ok]) => !ok).length, oks = s.recent.length - errs;
@@ -84,5 +86,14 @@ function snowBasemaps(map, { initial = "Shaded relief (USGS)", maxZoom = 17, onS
     if (current) stats[current].recent = [];
   });
   use(initial in layers ? initial : DEFS[0].name);
-  return { layers, use, current: () => current };
+  // re-measure when the map box changes size (layout shifts, sticky panels, browser zoom):
+  // otherwise Leaflet keeps loading tiles for the old size and the rest stays grey
+  if ("ResizeObserver" in window) {
+    let raf = 0;
+    new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => map.invalidateSize({ pan: false })); })
+      .observe(map.getContainer());
+  }
+  const api = { layers, use, current: () => current };
+  window.snowwx.basemap = api;            // test handle (tools/browser_check.py)
+  return api;
 }

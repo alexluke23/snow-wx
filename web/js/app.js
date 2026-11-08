@@ -50,6 +50,7 @@
   // NOHRSC / SNODAS raster overlays (overlays.js), one at a time; o= in the URL hash.
   const overlays = SnowOverlays(map, { panel: document.getElementById("overlays"),
     onChange: () => { avyLayer.setStyle(avyStyle); writeHash(); } });
+  window.snowwx.overlays = overlays;      // test handle (tools/browser_check.py)
 
   // SNOTEL, ASOS and ski areas share one canvas (points-canvas.js); the layer
   // control gets one toggle per group.
