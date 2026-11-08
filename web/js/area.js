@@ -351,7 +351,11 @@
       }
       let best = null;
       ridge.valid.forEach((x, i) => { if (r.mph[i] !== null && (!best || r.mph[i] > best.v)) best = { v: r.mph[i], i }; });
-      if (best) ridgeTxt = ` Ridge-top wind up to ${best.v} mph from the ${compass(r.dir[best.i])} (${localDT(ridge.valid[best.i], tz)}, ${names[ridge.src[best.i]]}).${ridgeTxt}`;
+      const day1 = ridgeSummary(ridge, id, 24);
+      if (best) {
+        ridgeTxt = ` Ridge-top wind up to ${best.v} mph from the ${compass(r.dir[best.i])} (${localDT(ridge.valid[best.i], tz)}, ${names[ridge.src[best.i]]})` +
+          (day1 && day1.mph < best.v ? `; next 24 h up to ${day1.mph} mph from the ${compass(day1.dir)} (${day1.model})` : "") + `.${ridgeTxt}`;
+      }
     }
     C.plot(el, traces, C.layout(220, { margin: { r: 70, b: ax.b }, shapes, annotations: annotations.filter(Boolean), xaxis: ax.axis,
       yaxis: C.yaxis({ rangemode: "tozero" }) }));
@@ -682,11 +686,11 @@
       const drawCharts = () => {
         const d = doc(), keys = keysOf(d);
         const withPlotly = (f) => () => Promise.all([loadPlotly(), isStation ? null : loadRidge()]).then(([, ridge]) => f(ridge));
+        // explanation only: the numbers live in the wind panel's summary (one source, fix 5)
         if (!isStation) loadRidge().then((ridge) => {
-          const rs = ridgeSummary(ridge, a.id);
-          $("ridge-note").innerHTML = rs ? `<b>Ridge-top wind</b>, next 24 h: up to <b>${rs.mph} mph</b> from ${compass(rs.dir)}
-            (${esc(rs.model || "")}, free air at summit height; exposed ridges). NBM's 10 m wind runs lower on exposed summits.
-            <a href="about.html#ridge-wind">Why →</a>` : "";
+          $("ridge-note").innerHTML = ridge?.areas?.[a.id] ? `The green <b>ridge-top wind</b> is the free-air wind at summit height
+            (${esc(ridge.models.map((m) => m.label).join(", then "))}), what exposed ridges feel; NBM's 10 m wind runs lower on exposed
+            summits. <a href="about.html#ridge-wind">Why →</a>` : "";
         });
         C.lazy($("period-chart"), withPlotly(() => periodChart($("period-chart"), d, pt, tz)));
         if (!$("ex-sec").hidden) C.lazy($("ex-chart"), () => exceedTable($("ex-chart"), d, pt, tz));
