@@ -152,6 +152,11 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       Lighthouse via `PATH=/c/miniforge3/envs/tools:$PATH npx -y lighthouse@12.6.1 URL
       --only-categories=performance` (Node lives in a separate `tools` conda env).
       Points files embed the area record; `avalanche_ratings.json` = zone_id → rating.
-- [ ] M3.5 B obs-map performance · C NOHRSC overlays · D SNOTEL/NDFD forecasts
+- [x] M3.5 B obs-map performance: SNOTEL/ASOS/ski symbols on one canvas
+      (`web/js/points-canvas.js`, declutter cached per zoom, capture-phase hit testing so
+      points win over avalanche polygons), Plotly lazy + idle prefetch. Benchmark:
+      `tools/mapbench.py URL` (CDP, 4x CPU). Lighthouse obs map 46 -> 72, TBT 1270 -> 132 ms.
+      Keyboard focus on individual markers is gone (search box is the keyboard path).
+- [ ] M3.5 C NOHRSC overlays · D SNOTEL/NDFD forecasts
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

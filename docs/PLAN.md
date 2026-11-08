@@ -288,6 +288,9 @@ screenshots checked. Suggested session grouping in brackets.
 - NBM + NDFD point forecasts at every SNOTEL site (NDFD via AWS GRIB2).
 - ✅ when: map interactions feel instant; overlays zoom smoothly with hover
   values; any SNOTEL station opens a forecast view.
+- ✔ Performance done (S2): canvas symbols; 4x-CPU benchmark per zoom step 300–385 ms
+  of long tasks -> 64–83 ms, pans 57–67 ms -> 0 ms, DOM 6,146 -> 227 elements; clicks
+  first frame < 40 ms, chart 160–190 ms; Lighthouse 46 -> 72 (TBT 1,270 -> 132 ms).
 
 **M4 — Powder Finder** [Session 2–3]
 - Map + sortable/filterable table (state/region; 24 h / 72 h / 7 d; range;

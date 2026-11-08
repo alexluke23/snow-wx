@@ -196,3 +196,6 @@ main.area h4 { margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
 .headline .rng { font-size: 15px; color: var(--muted); }
 .sec-head .seg button { font-variant-numeric: tabular-nums; }
 .chart > .hint { padding: 12px; margin: 0; }
+
+/* canvas point symbols (points-canvas.js) */
+.leaflet-container.points-hover { cursor: pointer; }
