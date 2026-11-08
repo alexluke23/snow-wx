@@ -777,6 +777,11 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
                                       "generated_at": generated, "source": SOURCE, "areas": summary})
     log.info("NBM %s: wrote %d area files (max %.0f KB, total %.1f MB) + summary.json",
              cid, len(files), max(sizes) / 1024, sum(sizes) / 1e6)
+    try:                         # snow forecast overlays for the obs map (fail-soft)
+        from .layers import build_layers
+        build_layers(session, cycle, out / "layers", grid, cfg["region"]["bbox"])
+    except Exception as e:  # noqa: BLE001 - the point forecasts must still publish
+        log.warning("NBM layers failed: %s", e)
     flagged = {k: d["checks"] for k, d in files.items() if d.get("checks")}
     if flagged:
         log.warning("plausibility flags (%d areas): %s", len(flagged),
