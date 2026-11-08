@@ -299,8 +299,8 @@ def summary_row(aid: str, doc: dict) -> dict:
 def forecast_points(repo: Path = REPO_ROOT) -> list[dict]:
     """[{id, tz, points: {key: {lat, lon, elev_ft}}}] for ski areas and SNOTEL sites."""
     out = []
-    cat = json.loads((repo / "data" / "ski_areas.json").read_text(encoding="utf-8"))
-    for a in cat["areas"]:
+    from .common import forecast_areas
+    for a in forecast_areas(repo):
         out.append({"id": a["id"], "tz": a.get("tz"), "points": {k: {"lat": a[k]["lat"], "lon": a[k]["lon"],
                                                                      "elev_ft": a[k]["elev_ft"],
                                                                      "grid_elev_ft": a["nbm_grid"][k].get("elev_ft")}

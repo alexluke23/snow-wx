@@ -1,4 +1,4 @@
-# Snow-Wx — Product Plan & Development Framework (v0.5, Nov 8 2026)
+# Snow-Wx — Product Plan & Development Framework (v0.6, Nov 8 2026)
 
 > Drop this file into the repo as `docs/PLAN.md`. Claude Code should read it
 > together with `CLAUDE.md` at the start of every session and tick off
@@ -121,6 +121,14 @@ percentiles, snow level method, verification).
 | Nov 8 (S5) | 3. Sno-Parks (M4.5), next session: research sources and licences first (USFS EDW, state Sno-Park lists, OSM gap-fill; public-domain and key-free preferred), write docs/sources_recreation.md, and get owner approval before building. |
 | Nov 8 (S6) | Rename "most likely" to **"Expected"** site-wide (next session): area tiles, day/night bars, Powder Finder (amount and chance modes), about.html; with an ⓘ tooltip: NBM's average amount, which typically has about a 1-in-3 chance of being reached (S6 fix 8 analysis). |
 | Nov 8 (S7) | Sno-Park sources approved: USFS EDW (public domain) as backbone + OpenStreetMap gap-fill (ODbL, attributed like the ski areas). WA/OR/CA/ID state lists only as a manual cross-check, never copied. Scope: Sno-Parks + snowplay areas + Nordic sites (+ winter trailheads named as such), ~450 points. Build M4.5 next session. |
+| Nov 8 | **Priority order: Obs map and per-site Forecast pages first; model maps last.** Keep models.html live as-is (low maintenance only; no new model-map features until the obs/forecast work is done). |
+| Nov 8 | Keep the model pipeline running: it feeds point products (ridge-top wind, future "precipitation by model"). |
+| Nov 8 | Consumer **snow forecast map** (NBM expected snowfall + chance-of layers) belongs on the Obs map as overlays, not on the models page (reuses the NOHRSC layer system). |
+| Nov 8 | **Monetization is on the back burner.** §11 records what must be true before charging money. Do not build §11 items unless the owner asks. |
+| Nov 8 (S8) | 1. dev8 pushed. 2. Powder Finder first-visit default stays "Ski areas" (each visitor's choice is remembered). |
+| Nov 8 (S8) | 3. Sno-Park activities only as the source states them (no inferred list: motorized vs non-motorized mistakes matter); otherwise show the site type and a link to the managing agency. |
+| Nov 8 (S8) | 4. Sno-Park permits: the source's permit text only; otherwise "Parking permits may be required — check [official state program or managing national forest]" with the link. Never "Likely". |
+| Nov 8 (S8) | 5. Sites with no NWS grid point show "NWS alerts not available for this location". |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
@@ -366,6 +374,49 @@ so every page looks like one product.
 Work top-down. Each milestone = its own commits with tests + a live run +
 screenshots checked. Suggested session grouping in brackets.
 
+
+### Roadmap order (Nov 8 b, replaces earlier "next" ordering)
+
+Done: M0–M5, M3.5, M3.6, M9-prep (archive), dev6 fixes, dev7 (Expected
+rename, day-10 temp/wind panels, Sno-Park research).
+
+**Track 1 — Forecast pages (highest priority)**
+1. **M4.5 Sno-Parks & winter recreation points** (approved sources: USFS
+   EDW + OSM; scope ~450 Sno-Parks/snowplay/Nordic). [next session]
+2. **M7 Precipitation by model at each point** — HRRR, RRFS, GFS (+ NBM)
+   cumulative snow/QPF and snow level on one chart, from the existing
+   model pipeline. Meteorologist-grade but readable (§6-B).
+3. **Powder quality** indicator (SLR + wind, §5.2 heuristic), clearly
+   labeled as a heuristic, on area pages and in the finder.
+4. **"My mountains" home view**: favorites dashboard (next 24/72 h
+   expected + chance of ≥ 6", snow level, alerts) as the landing page for
+   returning visitors.
+5. **Point verification panel** (after ~4–6 weeks of archive data): "How
+   did forecasts do here this season?" per site; feeds M9.
+
+**Track 2 — Obs map (in parallel / alternating with Track 1)**
+6. ✔ (S8) **Obs map mobile performance pass** — Lighthouse mobile (gzip, like Pages) 81 → 87: tiles and all data start at once (no wait for meta.json), compact data/map_points.json (ski areas + Sno-Parks) instead of full catalogs, Leaflet self-hosted (web/vendor, BSD-2), preconnect to USGS tiles, Plotly fetched on first interaction. Original text:: stations and overlays render
+   before basemap tiles finish; preconnect to tile hosts; smaller first
+   payload. Target Lighthouse mobile performance ≥ 85 (currently 47–71).
+7. **Snow forecast overlays on the obs map**: NBM expected snowfall
+   (24/72 h) and chance of ≥ 4/6/12" as zoomable layers with hover values
+   (NOHRSC layer system). This is the consumer replacement for most
+   model-map use.
+8. **Storm-total tracker**: observed snow over a selectable storm window
+   (NOHRSC snowfall + SNOTEL depth/SWE change), map + per-site totals.
+9. **Obs time slider**: step back through the last 24–72 h of
+   observations/NOHRSC analyses.
+10. **More observation networks** (research licenses first, ask before
+    building): MADIS category-3 public mesonets, state DOT RWIS,
+    avalanche-center telemetry (contact centers).
+
+**Track 3 — Later**
+11. **M9 Verification & bias correction** (site-wide scores; MOS-lite).
+12. **M8 ECMWF IFS/AIFS** (point sampling first; synoptic charts later).
+13. **M6 Zoomable model layers + HRRR pressure-level file** — last.
+
+### Milestones (detail and history)
+
 **M0 — Housekeeping** [Session 1]
 - Remove HRRR/RRFS `h500`, `t700`; snow-level legend note.
 - Bump all Actions to current major versions (clear Node 20 warnings); pin
@@ -483,6 +534,16 @@ screenshots checked. Suggested session grouping in brackets.
 **M4.5 — Sno-Parks & winter recreation points** [Session 5+]
 - §5.6. ✅ when: western Sno-Parks cataloged with sources; each opens a
   forecast view; Powder Finder Type filter works on mobile.
+- ✔ Done (S8, dev8): `python -m pipeline catalog --rec` → data/rec_points.json: 447 points (407 USFS EDW, 40 OSM)
+  in 10 states (WA 103, OR 102, MT 71, CA 42, ID 39, UT 24, WY 24, CO 22, NM 12, AZ 8; 344 Sno-Parks, 54 winter
+  trailheads, 30 snowplay, 19 Nordic). Trailhead + "high terrain" (highest 3DEP within 5 km, one 81×81 exportImage per
+  site); full 3DEP cell averages (741 new cells). Cold build 38 min, cached rerun 3 min. Same record shape as ski areas
+  (base = trailhead, summit = high terrain) → NBM/NDFD points, alerts, AFD, NOHRSC/SNODAS samples, archive, search.
+  Area page "snopark" view: key facts first (avalanche danger, SNODAS trailhead depth, coldest 24 h wind chill,
+  permit, activities (inferred marked), agency, source); wind chill line. Powder Finder Type filter (Ski areas /
+  Sno-Parks / All, square symbols); obs-map Sno-Parks layer; about.html attribution. Points job: 1,832 cells (was
+  1,090), local 4 m 44 s (network-bound; downloads unchanged); points output 25 → 44 MB, NDFD 9 → 14 MB, site 168 →
+  197 MB; archive 20.8k → 36.9k NBM rows per cycle (~0.3 MB gz). Browser check `snoparks`.
 - S7: source research done → docs/sources_recreation.md (USFS EDW public domain: 375 western winter sites;
   OSM ODbL: 182; WA/OR/CA/ID state lists have unstated or "All Rights Reserved" terms). Approved (S7): EDW + OSM, Sno-Parks + snowplay + Nordic; build next session.
 
@@ -561,6 +622,73 @@ bias correction (MOS-lite) [later]
 - GitHub cron reliability for hourly obs.
 - Open: external trigger service? custom domain (e.g. snow-wx.com)? app-like
   PWA (installable, offline favorites) after M4?
+
+---
+
+## 11. Monetization readiness (back burner — do not build unless asked)
+
+Goal: be able to charge money, if the owner decides to, without legal,
+hosting or brand problems. Decision point: **fall 2027**, using a
+season of usage analytics and verification results.
+
+### 11.1 Brand & naming
+- **Rename "Powder Finder"** — OpenSnow announced a "Powder Finder Map"
+  (2026–27 release). Pick a distinct name before any commercial launch.
+- Check availability of the site name (trademark search, domain,
+  social handles).
+
+### 11.2 Hosting & infrastructure
+- GitHub Pages is not allowed as hosting for an online business or
+  commercial SaaS, and has a ~100 GB/month soft bandwidth limit → plan a
+  move to a commercial-friendly static host (e.g. Cloudflare Pages,
+  Netlify) with a custom domain. Keep the GitHub Actions pipeline.
+- Repo visibility: GitHub Actions is free only for public repos. A
+  private repo would exceed free Actions minutes at the current schedule
+  (estimate the monthly cost before deciding). Public code is legal to
+  keep but copyable — owner decision.
+- Paid features like alerts need a small backend (accounts, scheduler,
+  email/SMS/push) — estimate cost and complexity before committing.
+
+### 11.3 Data & license audit (commercial use)
+| Source | Status for commercial use |
+|---|---|
+| NOAA/NWS (NBM, NDFD, HRRR, RRFS, GFS, NOHRSC, api.weather.gov) | OK; attribute |
+| USDA NRCS AWDB (SNOTEL), USGS (3DEP, basemaps) | Public domain |
+| Iowa Environmental Mesonet | OK (any lawful use incl. commercial) |
+| ECMWF open data | OK with CC BY 4.0 attribution |
+| OpenStreetMap / OpenSkiMap / OSM Sno-Parks | ODbL: attribution; derived databases shared under ODbL |
+| USFS EDW | Public domain |
+| **avalanche.org API** | **Verify** commercial-use terms; contact if unclear |
+| **OpenTopoMap tiles** | **Verify**: CC-BY-SA + fair-use policy; heavy commercial traffic may need self-hosted or paid tiles |
+| State Sno-Park lists (WA/OR/CA/ID) | Not copied; ask permission if ever needed |
+
+### 11.4 Legal & trust
+- Terms of use, privacy policy, clear safety/avalanche disclaimers
+  (already on site; review for a paid product).
+- Consider liability insurance before charging.
+- Accuracy claims only from our own published verification (M9).
+
+### 11.5 Measurement (low effort, can be done earlier if the owner wants)
+- Privacy-friendly analytics (no cookies/personal data) to learn which
+  pages and sites are used.
+- Optional feedback link.
+
+### 11.6 Candidate business models (to evaluate, not build)
+- **Freemium**: core forecasts/probabilities free; paid **alerts**
+  ("notify me when Alta has ≥ 50% chance of ≥ 12""), synced favorites,
+  ad-free.
+- **B2B**: custom pages/data feeds for ski patrols, guide services,
+  snowmobile clubs, small ski areas, avalanche centers.
+- **Sponsorships**: local shops, avalanche education, regional brands.
+- **Supporters**: voluntary memberships/donations.
+
+### 11.7 Differentiators to emphasize (verify before marketing)
+- Exceedance probabilities ("chance of ≥ X"), NBM + NWS side by side,
+  snow level vs each mountain, avalanche + SNOTEL + NOHRSC in one place,
+  Sno-Park/snowmobile coverage, public verification record, free core.
+- Competitor reality check: OpenSnow has ranges, model comparisons,
+  native apps with push alerts, human forecasters and PEAKS 2.0 — don't
+  claim features they lack without checking.
 
 ## Sources
 - OpenSnow 2026–27 winter release (PEAKS 2.0, Powder Finder Map): https://opensnow.com/news/post/2026-2027-winter-release

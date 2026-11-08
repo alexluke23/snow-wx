@@ -78,6 +78,18 @@ def feature_collection(features: list[dict], **extra: Any) -> dict:
     return {"type": "FeatureCollection", "features": features, **extra}
 
 
+def forecast_areas(repo: Path | None = None) -> list[dict]:
+    """Ski areas plus Sno-Parks / winter recreation points (data/rec_points.json, same record
+    shape: base = trailhead, summit = high terrain). Used by every point product."""
+    import json as _json
+    repo = repo or REPO_ROOT
+    areas = list(_json.loads((repo / "data" / "ski_areas.json").read_text(encoding="utf-8"))["areas"])
+    rp = repo / "data" / "rec_points.json"
+    if rp.exists():
+        areas += _json.loads(rp.read_text(encoding="utf-8"))["areas"]
+    return areas
+
+
 def plural(n: int, word: str) -> str:
     """'1 ski area', '2 ski areas' (word given in the singular; trailing 's' added)."""
     return f"{n} {word}" if n == 1 else f"{n} {word}s"

@@ -15,9 +15,9 @@ from .common import REPO_ROOT
 
 PRODUCT_FILES = {
     "models": ["config/models.yml", "pipeline/models/*.py"],
-    "points": ["pipeline/nbm/*.py", "pipeline/points.py", "data/ski_areas.json", "data/snotel_points.json"],
-    "nohrsc": ["pipeline/nohrsc.py", "pipeline/layers.py", "data/ski_areas.json"],
-    "ndfd": ["pipeline/ndfd.py", "pipeline/points.py", "data/ski_areas.json", "data/snotel_points.json"],
+    "points": ["pipeline/nbm/*.py", "pipeline/points.py", "data/ski_areas.json", "data/snotel_points.json", "data/rec_points.json"],
+    "nohrsc": ["pipeline/nohrsc.py", "pipeline/layers.py", "data/ski_areas.json", "data/rec_points.json"],
+    "ndfd": ["pipeline/ndfd.py", "pipeline/points.py", "data/ski_areas.json", "data/snotel_points.json", "data/rec_points.json"],
 }
 
 

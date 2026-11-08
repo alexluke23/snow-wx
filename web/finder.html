@@ -38,6 +38,7 @@
     </div>
     <div class="finder-controls" role="group" aria-label="Forecast options">
       <!-- static buttons = final size before the data arrives (no layout shift); finder.js re-renders them -->
+      <div class="seg" role="group" aria-label="Type of place" id="type"><button type="button" class="on">Ski areas</button><button type="button">Sno-Parks</button><button type="button">All</button></div>
       <div class="seg" role="group" aria-label="Expected amount or chance of" id="mode"><button type="button" class="on">Expected</button><button type="button">Chance of</button></div>
       <div class="seg" role="group" aria-label="Probability window" id="pwin" hidden></div>
       <div class="seg" role="group" aria-label="Snowfall threshold" id="thr" hidden></div>
@@ -69,7 +70,7 @@
 
   <footer class="area-foot">
     Forecasts: NOAA/NWS National Blend of Models (NBM) and NDFD. Observed: NOAA/NWS NOHRSC snowfall analysis.
-    Ski areas © OpenStreetMap contributors, OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center.
+    Ski areas © OpenStreetMap contributors, OpenSkiMap (ODbL); Sno-Parks: USDA Forest Service, © OpenStreetMap contributors (ODbL). Not a substitute for the NWS forecast or your local avalanche center.
   </footer>
 
   <script src="js/search.js" defer></script>

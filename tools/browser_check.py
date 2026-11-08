@@ -319,7 +319,41 @@ def check_charts(b: Browser, base: str, log):
         need(not b.errors, f"{area}: JS errors {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts}
+def check_snoparks(b: Browser, base: str, log):
+    """M4.5: a Sno-Park page, the Finder Type filter, the obs-map layer and search."""
+    rec = json.loads((Path(REPO / "data" / "rec_points.json")).read_text(encoding="utf-8"))["areas"]
+    sp = next((a for a in rec if a["source"] == "usfs-edw" and a.get("avalanche")), rec[0])
+    b.open(f"{base}/area.html#{sp['id']}", wait=6)
+    _draw_all(b)
+    st = b.eval("""(() => ({ seg: [...document.querySelectorAll('#elev-seg button')].map(x => x.textContent.trim()),
+        facts: !!document.querySelector('.rec-key'), avy: !!document.querySelector('.rec-key .rk-avy'),
+        depth: (document.getElementById('rk-depth') || {}).textContent, wc: (document.getElementById('rk-wc') || {}).textContent,
+        temp: document.getElementById('t-chart') && document.getElementById('t-chart').data ? document.getElementById('t-chart').data.map(t => t.name) : [] }))()""")
+    log(f"  snopark page {sp['id']}: {st}")
+    need(st["seg"] and st["seg"][0].startswith("Trailhead") and any(x.startswith("High terrain") for x in st["seg"]), f"labels: {st['seg']}")
+    need(st["facts"] and st["avy"] and st["wc"] not in (None, "", "–"), f"key facts missing: {st}")
+    need("Wind chill" in st["temp"], f"no wind chill line: {st['temp']}")
+    need(not b.errors, f"JS errors: {b.errors}")
+    for t, expect_sp in (("snopark", True), ("ski", False)):
+        b.open(f"{base}/finder.html#t={t}&m=amount&w=72h&e=summit", wait=6)
+        st = b.eval("""(() => ({ rows: document.querySelectorAll('#rows .frow').length, sp: document.querySelectorAll('#rows .frow .kind-sp').length,
+            elev: [...document.querySelectorAll('#elev button')].map(x => x.textContent.trim()) }))()""")
+        log(f"  finder t={t}: {st}")
+        need(st["rows"] > 0 and ((st["sp"] == st["rows"]) if expect_sp else (st["sp"] == 0)), f"finder t={t}: {st}")
+    need(st["elev"] == ["Summit", "Base"], f"finder elevation labels {st['elev']}")
+    b.open(f"{base}/index.html", wait=7)
+    n = b.eval("(() => { const g = window.snowwx.map && document.querySelector('.leaflet-control-layers'); return [...document.querySelectorAll('.leaflet-control-layers-overlays label')].map(l => l.textContent.trim()).join('|'); })()")
+    log(f"  obs map layers: {n}")
+    need("Sno-Parks" in n, f"no Sno-Parks layer in the layer control: {n}")
+    b.eval("document.querySelector('#search').focus()")
+    _type(b, sp["name"][:8].lower())
+    first = b.eval("[...document.querySelectorAll('#search-results li')].map(x => x.textContent).join(' | ')")
+    log(f"  obs search '{sp['name'][:8]}': {first[:120]}")
+    need(sp["name"].split()[0].lower() in first.lower(), f"search does not find {sp['name']}: {first[:200]}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks}
 
 
 def main(argv=None) -> int:

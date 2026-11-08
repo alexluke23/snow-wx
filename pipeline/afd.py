@@ -29,8 +29,8 @@ MAX_TEXT = 40000
 def offices(repo: Path = REPO_ROOT) -> list[str]:
     """Every WFO responsible for a ski area (summit or base) or a SNOTEL forecast point."""
     out = set()
-    cat = json.loads((repo / "data" / "ski_areas.json").read_text(encoding="utf-8"))
-    for a in cat["areas"]:
+    from .common import forecast_areas          # ski areas + Sno-Parks (M4.5)
+    for a in forecast_areas(repo):
         for pt in (a.get("nws") or {}).values():
             if pt and pt.get("wfo"):
                 out.add(pt["wfo"])
