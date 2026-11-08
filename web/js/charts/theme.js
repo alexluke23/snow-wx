@@ -110,6 +110,33 @@ const SnowCharts = (() => {
     }
     return null;
   }
+  /** Several end labels, nudged apart vertically so none overlap (fix 6). yrange must be the
+   *  y axis range actually used and plotHeight the plot area height in px. */
+  function endLabels(items, { yrange, plotHeight, gap = 15 }) {
+    const [y0, y1] = yrange, k = plotHeight / ((y1 - y0) || 1);
+    const L = items.map((it) => {
+      const a = endLabel(it.xs, it.ys, it.text, it.color, { yref: it.yref || "y" });
+      return a ? { a, base: (a.y - y0) * k, px: (a.y - y0) * k } : null;
+    }).filter(Boolean).sort((p, q) => p.px - q.px);
+    for (let i = 1; i < L.length; i++) L[i].px = Math.max(L[i].px, L[i - 1].px + gap);
+    const over = L.length ? L[L.length - 1].px - (plotHeight - 7) : 0;      // keep inside the plot
+    if (over > 0) {
+      L[L.length - 1].px -= over;
+      for (let i = L.length - 2; i >= 0; i--) L[i].px = Math.min(L[i].px, L[i + 1].px - gap);
+    }
+    return L.map((l) => ({ ...l.a, yanchor: "middle", yshift: l.px - l.base }));
+  }
+  /** Padded [min, max] of the finite values in several arrays (explicit ranges keep labels exact). */
+  function extent(arrays, { zero = false, pad = 0.06, min = null } = {}) {
+    const v = arrays.flat().filter((x) => x !== null && x !== undefined && Number.isFinite(x));
+    if (!v.length) return [0, 1];
+    let lo = zero ? 0 : Math.min(...v), hi = Math.max(...v);
+    if (min !== null) hi = Math.max(hi, lo + min);
+    const p = (hi - lo || 1) * pad;
+    return [zero ? 0 : lo - p, hi + p];
+  }
+  const plotH = (lay) => lay.height - lay.margin.t - lay.margin.b;
+
   function layout(height, extra = {}) {
     return { height, margin: { ...MARGIN, ...(extra.margin || {}) }, font: font(tick()), paper_bgcolor: "#fff",
       plot_bgcolor: "#fff", showlegend: false, hovermode: "x unified", dragmode: false, hoverdistance: 40,
@@ -207,6 +234,6 @@ const SnowCharts = (() => {
     return null;
   }
 
-  return { OI, INK, MUTED, GRID, font, tick, MARGIN, CONFIG, wall, dayName, narrow, markLabel, timeAxis, yaxis, axisTitle, refLine, endLabel,
+  return { OI, INK, MUTED, GRID, font, tick, MARGIN, CONFIG, wall, dayName, narrow, markLabel, endLabels, extent, plotH, timeAxis, yaxis, axisTitle, refLine, endLabel,
     layout, plot, summary, tableToggle, heatTable, textOn, lazy, small };
 })();

@@ -8,7 +8,7 @@
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="css/style.css">
 </head>
-<body class="about-page">
+<body class="about-page doc-page">
   <header>
     <h1>Snow-Wx <span>Western US</span></h1>
     <nav class="site-nav">
@@ -17,6 +17,17 @@
       <a href="models.html">Model maps</a>
       <a href="about.html" class="active" aria-current="page">About</a>
     </nav>
+    <form class="site-search" role="search" autocomplete="off">
+      <button type="button" class="ss-toggle" aria-label="Search ski areas and SNOTEL sites" aria-expanded="false" aria-controls="ss-input">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </button>
+      <div class="ss-box">
+        <label class="sr" for="ss-input">Search ski areas and SNOTEL sites</label>
+        <input id="ss-input" type="search" placeholder="Search ski areas, SNOTEL…" role="combobox" aria-autocomplete="list"
+          aria-expanded="false" aria-controls="ss-list" spellcheck="false" enterkeyhint="go">
+        <ul id="ss-list" class="search-results" role="listbox" aria-label="Search results" hidden></ul>
+      </div>
+    </form>
   </header>
 
   <main class="about">
@@ -50,6 +61,10 @@
       <p>NOAA calibrates the two separately, so they can disagree. The most-likely amount is not the median and can
         even fall outside the 10–90% range. This is expected; we show both as published rather than forcing one to
         fit the other. When they differ a lot, the forecast is uncertain.</p>
+      <p>In practice NBM's deterministic snowfall behaves like an <i>expected</i> (average) amount: snowfall outcomes are
+        skewed toward a few big totals, so the average sits above the middle outcome. In one full NBM run (8 Nov 2026) it
+        was above NBM's own median in 99% of snowy 24- and 72-hour windows, and NBM's chance of getting at least that
+        much was typically 30–40%. So "most likely 4 in, 13–35% chance of at least 4 in" is consistent, not an error.</p>
     </section>
 
     <section id="probabilities">
@@ -151,5 +166,6 @@
   </main>
   <footer>Forecasts: NOAA/NWS. Snowpack: USDA NRCS, NOAA/NWS NOHRSC. Ski areas © OpenStreetMap contributors,
     OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center.</footer>
+  <script src="js/search.js" defer></script>
 </body>
 </html>
