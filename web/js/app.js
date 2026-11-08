@@ -59,7 +59,8 @@
 
   const avyLayer = L.geoJSON(null, { style: avyStyle, onEachFeature: avyPopup });
   // NOHRSC / SNODAS raster overlays (overlays.js), one at a time; o= in the URL hash.
-  const overlays = SnowOverlays(map, { panel: document.getElementById("overlays"), onChange: () => writeHash() });
+  const overlays = SnowOverlays(map, { panel: document.getElementById("overlays"),
+    onChange: () => { avyLayer.setStyle(avyStyle); writeHash(); } });
 
   // SNOTEL, ASOS and ski areas share one canvas (points-canvas.js); the layer
   // control gets one toggle per group.
@@ -207,7 +208,8 @@
       weight: p.warning ? 3 : 1,
       dashArray: p.expired ? "4 4" : null,
       fillColor: p.color || "#ccc",
-      fillOpacity: p.danger_level > 0 ? 0.45 : 0.15,
+      // outlines only while a snow-analysis overlay is shown (owner S3), so its colours read cleanly
+      fillOpacity: overlays?.current?.() ? 0 : p.danger_level > 0 ? 0.45 : 0.15,
     };
   }
 
