@@ -204,7 +204,7 @@ LAYOUT = """(() => { const d = document.scrollingElement, f = document.querySele
 
 
 def check_layout(b: Browser, base: str, log):
-    pages = {"area": "area.html#alta-ski-area", "finder": "finder.html", "about": "about.html"}
+    pages = {"area": "area.html#alta-ski-area", "finder": "finder.html", "about": "about.html", "mine": "mine.html"}
     apps = {"obs map": "index.html", "models": "models.html"}
     for width, height, zoom in ((1280, 800, 1.0), (375, 740, 1.0), (1280, 800, 0.8), (1280, 800, 1.5)):
         for name, path in pages.items():
@@ -353,7 +353,75 @@ def check_snoparks(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks}
+def check_forecast_overlays(b: Browser, base: str, log):
+    """Track 2 item 7: NBM forecast layers in a "Forecast" group, view-sized, with hover values."""
+    b.open(f"{base}/index.html#v=depth_24h&map=7/46.0/-121.0", wait=7)
+    groups = b.eval("[...document.querySelectorAll('#overlay-select optgroup')].map(g => g.label + ':' + g.children.length)")
+    log(f"  overlay groups: {groups}")
+    need(any(g.startswith("Forecast:") and int(g.split(":")[1]) >= 6 for g in groups), f"no Forecast group: {groups}")
+    for lid in ("nbm72", "nbmp24_4"):
+        b.eval(f"(() => {{ const s = document.querySelector('#overlay-select'); s.value = '{lid}'; s.dispatchEvent(new Event('change')); return 1; }})()")
+        time.sleep(3)
+        st = b.eval("""(() => { const m = window.snowwx.map; m.fire('mousemove', {latlng: L.latLng(46.85, -121.76)});
+          const o = window.snowwx.overlays.layer(), sz = m.getSize();
+          return {size: o ? o.elementSize() : null, view: [sz.x, sz.y], read: document.querySelector('#overlay-readout').textContent,
+                  meta: (document.querySelector('.overlay-meta .hint') || {}).textContent}; })()""")
+        log(f"  {lid}: {st}")
+        need(st["size"] and st["size"][0] <= st["view"][0] + 2, f"{lid}: overlay not drawn view-sized ({st})")
+        need(any(ch.isdigit() for ch in st["read"]) and "run" in (st["meta"] or ""), f"{lid}: no value / no run info ({st})")
+        # dry grid cells stay clear (owner S9): alpha 0 where the value is below the threshold
+        clear = b.eval("""(() => { const m = window.snowwx.map, o = window.snowwx.overlays.layer(), c = o._canvas;
+          const ctx = c.getContext('2d'), dpr = c.width / m.getSize().x; let n = 0, clear = 0;
+          for (let x = 5; x < m.getSize().x; x += 40) for (let y = 5; y < m.getSize().y; y += 40) {
+            const ll = m.containerPointToLatLng([x, y]);
+            const a = ctx.getImageData(Math.floor(x * dpr), Math.floor(y * dpr), 1, 1).data[3]; n++; if (a === 0) clear++; }
+          return [clear, n]; })()""")
+        log(f"  {lid}: clear pixels {clear[0]}/{clear[1]}")
+        need(clear[0] > 0, f"{lid}: no transparent (dry) pixels at all")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_mine(b: Browser, base: str, log):
+    """Track 1 item 4: "My mountains" empty state, favorite cards, removing a favorite."""
+    b.open(f"{base}/mine.html", wait=4)
+    st = b.eval("(() => ({empty: !!document.querySelector('.mine-empty'), text: (document.querySelector('.mine-empty h3') || {}).textContent}))()")
+    log(f"  mine empty: {st}")
+    need(st["empty"] and "No favorites" in (st["text"] or ""), f"no empty state: {st}")
+    b.eval("localStorage.setItem('snowwx.favorites', JSON.stringify(['alta-ski-area','sp-dutchman-flat-snowpark','snotel-917-MT-SNTL'])); location.reload(); 1")
+    time.sleep(5)
+    st = b.eval("""(() => ({cards: document.querySelectorAll('.mcard[data-id]').length,
+        vals: [...document.querySelectorAll('.mcard[data-id]')].map(c => c.querySelectorAll('.mgrid b').length + '/' + c.querySelectorAll('.pchip').length)}))()""")
+    log(f"  mine cards: {st}")
+    need(st["cards"] == 3 and all(v.startswith("2/") for v in st["vals"]), f"cards: {st}")
+    b.eval("document.querySelector('.mcard .unfav').click(); 1")
+    time.sleep(2)
+    n = b.eval("JSON.parse(localStorage.getItem('snowwx.favorites')).length + ':' + document.querySelectorAll('.mcard[data-id]').length")
+    log(f"  after removing one: {n}")
+    need(n == "2:2", f"remove failed: {n}")
+    # landing banner (owner S9): favorites + direct visit -> banner; "Always" -> redirect; off again on mine.html
+    b.open(f"{base}/index.html", wait=6)
+    st = b.eval("(() => ({banner: !!document.querySelector('.home-banner'), url: location.pathname}))()")
+    log(f"  map with favorites, direct visit: {st}")
+    need(st["banner"], f"no My mountains banner: {st}")
+    b.open(f"{base}/index.html#map=8/40.6/-111.6", wait=5)
+    need(not b.eval("!!document.querySelector('.home-banner')"), "banner shown on a shared link")
+    b.open(f"{base}/index.html", wait=6)
+    b.eval("document.querySelector('.home-banner [data-act=always]').click(); 1")
+    time.sleep(3)
+    need(b.eval("location.pathname").endswith("mine.html"), "Always did not open My mountains")
+    b.open(f"{base}/index.html", wait=4)
+    url = b.eval("location.pathname")
+    log(f"  direct visit with 'always': {url}")
+    need(url.endswith("mine.html"), f"no redirect with the preference set ({url})")
+    b.eval("(() => { const c = document.getElementById('home-pref'); c.checked = false; c.dispatchEvent(new Event('change')); return 1; })()")
+    b.open(f"{base}/index.html", wait=6)
+    need(b.eval("location.pathname").endswith("index.html") and b.eval("!!document.querySelector('.home-banner')"),
+         "turning the preference off did not restore the map + banner")
+    b.eval("localStorage.removeItem('snowwx.favorites'); localStorage.removeItem('snowwx.home'); 1")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine}
 
 
 def main(argv=None) -> int:
