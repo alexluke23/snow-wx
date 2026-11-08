@@ -169,7 +169,19 @@ def classify(m: Msg, h: int, cycle_hour: int, product: str) -> str | None:
             return f"snow6_p{m.value}"
     if v == "ASNOW" and win in (24, 48, 72) and k == "pct" and m.value in PCTS and synoptic_end(h, cycle_hour):
         return f"snow{win}_p{m.value}"
+    if v == "ASNOW" and win in (24, 48, 72) and k == "prob" and synoptic_end(h, cycle_hour, 12):
+        t = threshold_in(m.value)
+        return None if t is None else f"snow{win}_gt{t}"
     return None
+
+
+def threshold_in(value: str) -> str | None:
+    """'>0.1016' (metres) -> '4' (inches, as NBM's thresholds are round inches; 0.1 kept)."""
+    m = re.match(r">([0-9.eE+-]+)", value or "")
+    if not m:
+        return None
+    x = float(m.group(1)) * 39.3701
+    return "0.1" if x < 0.5 else str(int(round(x)))
 
 
 def select(inv: list[Msg], h: int, cycle_hour: int, product: str) -> dict:

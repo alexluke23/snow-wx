@@ -334,3 +334,14 @@ Summary (max |diff|; n compared):
   48 h percentiles (in): n=54, max |diff| 0.984, exact (<0.01) 45/54
   72 h exceedance (%): n=54, max |diff| 53.000, exact (<0.01) 23/54
   72 h percentiles (in): n=54, max |diff| 0.866, exact (<0.01) 47/54
+
+## Status (8 Nov 2026)
+
+- Percentiles: reproduced exactly at the nearest cell (KMLP 54/54, KSMP 54/54); KTRK differs
+  (station on a cell edge; the viewer's location/processing differs).
+- **Exceedance probabilities: unresolved.** The viewer's values match neither NBM's
+  probability message for the window nor its later duplicate nor a percentile-derived value.
+- NBM's own probability fields are internally consistent with its percentiles across the
+  western grid (docs/nbm_prob_consistency_2026110801.md: mean |diff| 1-4 points, 90-100 % of
+  cells within 10 points, probability fields ~1 point higher). The site uses NBM's
+  probability fields directly.

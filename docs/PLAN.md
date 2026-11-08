@@ -45,7 +45,8 @@ percentiles, snow level method, verification).
 - **Session 1 (dev2, Nov 7):** M0 done; M1 catalog (161 areas, 60 major,
   3DEP elevations); M2 NBM points (fixed NBM alternating-row decode bug;
   matches NBM bulletins); M3 area page v1 reviewed — consistent with NWS.
-- **Not started:** NDFD, ECMWF, NOHRSC overlays, Powder Finder.
+- **Done since:** NDFD, NOHRSC overlays, Powder Finder (+ chance-of view, S4), alerts.
+- **Not started:** ECMWF.
 - **CI housekeeping:** Node 20 deprecation warnings (bump action versions);
   `ubuntu-latest` → Ubuntu 26 migration notice (pin `ubuntu-24.04`).
   GitHub hourly schedule is best-effort (only 2 runs overnight) — monitor.
@@ -83,6 +84,13 @@ percentiles, snow level method, verification).
 | Nov 7 (S3) | 5. Keyboard: search is the only keyboard route to individual stations for now (known accessibility gap, §10). |
 | Nov 7 (S3) | 6. NDFD stays on the 3-hourly schedule. |
 | Nov 7 (S3) | 7–8. CI: one job saves the micromamba cache; "already published" includes a renderer/config version so config changes re-render the current cycle. |
+| Nov 8 (S4) | 1. Snowfall ranges: NBM's own snowfall percentiles (6/24/48/72 h) from the 01/07/13/19Z full-suite cycles for all periods and totals (docs/nbm_inventory.md). The QPF-based range is a fallback only, labelled as such. Bars stay NBM deterministic; never clamp deterministic and probabilistic fields to agree. Calibration report rerun before/after. |
+| Nov 8 (S4) | 1a. Liquid (QPF) ranges come from the companion 00/06/12/18Z cycle (the hour before the full-suite cycle), labelled with that cycle. Fallback order: newest complete full-suite cycle → previous full-suite cycle (≤ 12 h old) → only then a 00/06/12/18Z cycle. Points schedule aligned with full-suite completion. |
+| Nov 8 (S4) | 1b. Exceedance probabilities: NBM's own probability fields (consistency with percentiles checked and reported). Thresholds as NBM provides (24 h to 24", 48 h to 36", 72 h to 48"); skier chips 4/6/8/12/18/24" (+30/36/48" for 48/72 h). GSL viewer mismatch stays documented as unresolved. |
+| Nov 8 (S4) | 2. NWS cell elevation: drop the "≈" only if NBM and NDFD CONUS share the identical 2.5 km grid; otherwise compute NDFD cell elevations. |
+| Nov 8 (S4) | 3. Alerts: show all types (never hide a warning), sorted winter / wind / avalanche / blizzard / extreme cold first; others collapsed under "Other alerts (n)". |
+| Nov 8 (S4) | 4. Powder Finder: default 72 h summit for first-time visitors, then each visitor's last choice (localStorage, try/catch); a shared URL overrides. |
+| Nov 8 (S4) | 5. Powder Finder snow level shows "–" when little precipitation is expected in the window (same rule as the area page: chance of precip < 20 %). |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
@@ -314,6 +322,12 @@ screenshots checked. Suggested session grouping in brackets.
   state/region filters, sort by snow / observed 24 h / snow level, favorites first, Leaflet map
   (shared SNOWFALL palette) loaded after the list. Lighthouse mobile 99 (FCP 1.1 s, LCP 2.1 s,
   TBT 59–86 ms, CLS 0, 243 KB), accessibility 100.
+- ✔ S4 (dev4) A: "Most likely ↔ Chance of" toggle. Chance mode = NBM's own exceedance probabilities
+  (24/48/72 h windows ending 12Z, skier chips 4–24" / to 36" / to 48"), forecast-window select,
+  summit/base, sorted by chance, shared PROB palette (table + map), NWS disabled with a note,
+  ⓘ → about.html. Shows NBM's mean over the same window as "most likely". URL: m, pw, px, pd.
+  Data: points/exceed_summary.json (lazy, ~220 KB). Area pages: "Chance of at least…" chart
+  (24/48/72 h, lines per threshold). Lighthouse mobile 98 (FCP 1.1 s, LCP 2.3 s, TBT 78 ms, CLS 0).
 
 **M5 — NWS official** [Session 3]
 - NDFD base/summit, alerts banner, AFD link; NBM ↔ NWS toggle; about.html
@@ -324,6 +338,16 @@ screenshots checked. Suggested session grouping in brackets.
   obs build) matched by NWS zone/county codes and polygons → banner on area pages (expandable
   text), badge in Powder Finder, red ring + popup list on the obs map. Checked with a recorded
   sample (no winter alert touched a ski area on 7 Nov).
+- ✔ Part 2 done (S4): `pipeline/afd.py` obs source (latest AFD for the 28 WFOs covering ski areas
+  and SNOTEL points; 56 api.weather.gov calls, ~4 s, 184 KB) → area pages "Forecaster discussion"
+  (issue time, weather.gov link, collapsible text loaded on open, paragraphs mentioning the area's
+  name/region highlighted). about.html (methods, sources, attribution, disclaimer) in the nav; ⓘ
+  tooltips link to it.
+- ✔ S4 C: ridge-top (free-air) summit wind from HRRR (0–48 h) / RRFS (to 84 h), sampled during the
+  model runs (no extra downloads beyond the u/v/HGT level messages), on area pages (meteogram +
+  "next 24 h" note) and as Powder Finder's "Ridge" column; about.html explains why NBM 10 m wind runs
+  lower on exposed summits. Live check 00Z 8 Nov: Timberline ridge 57–79 mph SW vs NBM summit wind
+  ~37 / gust 53 mph. Lighthouse: finder 96–98, area page 85 → 90 (charts drawn one per task).
 
 **M6 — Interactive model layers** [Session 3]
 - 3857 value PNGs + client colorizer + hover readout for HRRR/RRFS surface

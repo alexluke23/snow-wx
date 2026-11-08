@@ -25,6 +25,7 @@ import numpy as np
 from ..common import REPO_ROOT, utcnow, write_json
 from . import derive as d
 from .config import FIELD_INFO, QPF_WINDOWS, expand_fhours, field_domains, field_fhours
+from . import ridge as rw
 from .fetch import (Grid, candidate_cycles, cycle_complete, decode, download_frame,
                     latest_cycle, needed_vars, var_catalog)
 
@@ -230,8 +231,15 @@ def run_model(cfg: dict, model: str, out: Path, *, fhours: list[int] | None = No
     work = cache / f"frames_{cid}"
     work.mkdir(parents=True, exist_ok=True)
 
-    catalog = var_catalog(mcfg["levels"])
-    names = needed_vars(mcfg, use_fields)
+    ridge_levels = (mcfg.get("ridge") or {}).get("levels") or []
+    catalog = var_catalog(mcfg["levels"], ridge_levels)
+    names = sorted(set(needed_vars(mcfg, use_fields)) | (set(rw.ridge_vars(mcfg)) if ridge_levels else set()))
+    sampler = None
+    if ridge_levels:
+        try:
+            sampler = rw.Sampler(mcfg, rw.load_summits())
+        except (OSError, ValueError, KeyError) as exc:
+            log.warning("%s: ridge wind disabled: %s", model, exc)
     state = RunState()
     grid: Grid | None = None
     grid_path = work / "grid.npz"
@@ -261,6 +269,11 @@ def run_model(cfg: dict, model: str, out: Path, *, fhours: list[int] | None = No
                 if not keep_grib:
                     for p in paths:
                         p.unlink(missing_ok=True)
+                if sampler is not None:
+                    try:
+                        sampler.add(f, raw, grid)
+                    except Exception as exc:  # noqa: BLE001 - never lose the maps over it
+                        log.warning("%s f%03d ridge wind: %s", model, f, exc)
                 arrays = derive_frame(raw, grid, mcfg, use_fields, f, state)
             except Exception as exc:
                 # Later accumulations continue from the last good frame (state.prev_f).
@@ -301,6 +314,8 @@ def run_model(cfg: dict, model: str, out: Path, *, fhours: list[int] | None = No
     index["seconds"] = round(time.time() - t_start, 1)
     index["failed_frames"] = failed_frames
     write_json(model_dir / "index.json", index)
+    if sampler is not None and sampler.hours:
+        write_json(model_dir / "ridge.json", sampler.document(model, mcfg["label"], cycle))
     for old in model_dir.iterdir():   # keep only this cycle
         if old.is_dir() and old.name != cid:
             shutil.rmtree(old, ignore_errors=True)

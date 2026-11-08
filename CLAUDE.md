@@ -119,7 +119,12 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
   percentiles only to f048/f054 but carry qmd (QPF percentiles; day blocks vary by cycle:
   18Z f072 has only 2-3 day). Selection is rule-based (`inventory.classify/select`): only
   windows ending at the file's own hour count (later files repeat earlier windows with
-  other values). The points job prefers the newest complete 01/07/13/19Z cycle. Missing
+  other values). Cycle order (S4): newest complete 01/07/13/19Z → previous full-suite
+  (≤ 12 h old) → 00/06/12/18Z. Full-suite f264 lands ~1.7 h after init (points cron
+  55 2,8,14,20); qmd lands ~7.5 h after its cycle, so liquid (QPF) percentiles come from the
+  newest synoptic cycle with complete qmd (`liquid_source`, usually 7 h older; labelled
+  `liquid_cycle`). Exceedance probabilities: NBM's own fields (`exceed` per point,
+  `exceed_summary.json`); consistent with the percentiles (docs/nbm_prob_consistency_*.md). Missing
   messages are missing data (`required_keys` counted; fail > 20 %; summary.json `quality`).
   Percentiles match the GSL NBM 1-D viewer exactly at the nearest cell (KMLP, KSMP; see
   docs/nbm_inventory.md); its exceedance probabilities are not reproducible.
@@ -185,6 +190,18 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       build/data/alerts/index.json (+ details.json). Matching needs each point's NWS forecast
       zone + county: ski areas `nws.<pt>.zone/county`, SNOTEL `nws.zone/county`
       (`python -m pipeline catalog --snotel` fetches /points). Most winter alerts have no polygon.
-- [ ] AFD + ridge-top wind (S3 part C).
+- [x] S4 (dev4): NBM full-suite cycle order + liquid_source, own exceedance probabilities
+      (`exceed` per point incl. window `mean`; `exceed_summary.json`), decisions 2-5, A Powder
+      Finder "Chance of" view (PROB palette in colors.js) + area-page exceedance chart.
+- [x] S4 B: AFD = obs SOURCE `afd` (`pipeline/afd.py` -> build/data/afd/<WFO>.json + index.json; WFOs
+      from catalog `nws.*.wfo`); area-page section; `web/about.html` (methods: keep it in sync
+      when methods change).
+- [x] S4 C ridge-top wind: `pipeline/models/ridge.py`. Model runs with `ridge: {levels: [...]}` in
+      config/models.yml (HRRR 850/700/500, RRFS 850-600 every 50 mb) sample u/v/HGT at every frame
+      at each ski-area summit (nearest column, linear in height, levels below model terrain skipped,
+      Lambert grid winds rotated with the cone constant) -> `<model>/ridge.json` (inside the model tar);
+      `build` merges HRRR (to 48 h) then RRFS (to 84 h) -> build/data/ridge.json (~60 KB). Area
+      meteogram trace + note; Powder Finder "Ridge" column (max in the window; lazy-loaded).
+- [ ] M6 zoomable model layers (S4 D) - not started.
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

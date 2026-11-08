@@ -32,3 +32,16 @@ def test_match_by_zone_county_and_polygon():
     assert index["count"] == 2                                   # status "Test" ignored
     k = index["areas"]["alta"][0]["id"]
     assert "12 to 24 inches" in details[k]["description"] and index["alerts"][k]["ends"].startswith("2026-11-09")
+
+
+def test_relevant_alerts_first_others_kept():
+    flood = {"type": "Feature", "geometry": None, "properties": {
+        "id": "urn:oid:9", "status": "Actual", "event": "Flood Warning", "geocode": {"UGC": ["UTZ111"]}}}
+    wind = {"type": "Feature", "geometry": None, "properties": {
+        "id": "urn:oid:8", "status": "Actual", "event": "Wind Advisory", "geocode": {"UGC": ["UTZ111"]}}}
+    areas = [{"id": "alta", "codes": {"UTZ111"}, "lonlat": [(-111.64, 40.59)]}]
+    index, _ = A.build([flood, wind, ZONE_ALERT], areas, [])
+    refs = index["areas"]["alta"]
+    # winter/wind first (warnings before advisories), the flood warning is kept but last
+    assert [r["event"] for r in refs] == ["Winter Storm Warning", "Wind Advisory", "Flood Warning"]
+    assert [r["relevant"] for r in refs] == [True, True, False]

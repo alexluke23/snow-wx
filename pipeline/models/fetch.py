@@ -28,8 +28,10 @@ class Var:
     keys: tuple    # ecCodes (key, value) pairs identifying the decoded message
 
 
-def var_catalog(levels: Iterable[int]) -> dict[str, Var]:
-    """Canonical variables. NCEP models (HRRR, RRFS, GFS) share these names."""
+def var_catalog(levels: Iterable[int], wind_levels: Iterable[int] = ()) -> dict[str, Var]:
+    """Canonical variables. NCEP models (HRRR, RRFS, GFS) share these names.
+    `wind_levels`: extra levels with u/v/height (ridge-top wind sampling)."""
+    levels = sorted(set(levels) | set(wind_levels))
     v: dict[str, Var] = {}
 
     def iso(short, p):
@@ -40,7 +42,7 @@ def var_catalog(levels: Iterable[int]) -> dict[str, Var]:
         v[f"dpt{p}"] = Var(f"dpt{p}", "upper", rf":DPT:{p} mb:", iso("dpt", p))
         v[f"rh{p}"] = Var(f"rh{p}", "upper", rf":RH:{p} mb:", iso("r", p))
         v[f"gh{p}"] = Var(f"gh{p}", "upper", rf":HGT:{p} mb:", iso("gh", p))
-    for p in (500, 700):
+    for p in sorted({500, 700} | set(wind_levels)):
         v[f"u{p}"] = Var(f"u{p}", "upper", rf":UGRD:{p} mb:", iso("u", p))
         v[f"v{p}"] = Var(f"v{p}", "upper", rf":VGRD:{p} mb:", iso("v", p))
     v["absv500"] = Var("absv500", "upper", r":ABSV:500 mb:", iso("absv", 500))
