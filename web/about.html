@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snow-Wx · About and methods</title>
+  <meta name="description" content="How Snow-Wx builds its ski-area forecasts: NBM deterministic and probabilistic snowfall, snow level, elevation adjustment, NWS forecasts, ridge-top wind, data sources and attribution.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="about-page">
+  <header>
+    <h1>Snow-Wx <span>Western US</span></h1>
+    <nav class="site-nav">
+      <a href="index.html">Obs map</a>
+      <a href="finder.html">Powder Finder</a>
+      <a href="models.html">Model maps</a>
+      <a href="about.html" class="active" aria-current="page">About</a>
+    </nav>
+  </header>
+
+  <main class="about">
+    <h2>About and methods</h2>
+    <p class="lead">Snow-Wx collects open weather, snowpack and avalanche data for the mountains of the western
+      US in one place. It is built by a meteorologist and is updated automatically every hour. Every number comes
+      from a public source, listed below. It is not an official forecast: check the
+      <a href="https://www.weather.gov/" target="_blank" rel="noopener">National Weather Service</a> and your local
+      <a href="https://avalanche.org/" target="_blank" rel="noopener">avalanche center</a> before heading out.</p>
+
+    <nav class="toc" aria-label="On this page">
+      <a href="#nbm">NBM forecasts</a> · <a href="#probabilities">Ranges and chances</a> ·
+      <a href="#snow-level">Snow level</a> · <a href="#elevation">Elevation</a> · <a href="#nws">NWS forecast</a> ·
+      <a href="#ridge-wind">Ridge-top wind</a> · <a href="#afd">Forecaster discussion</a> ·
+      <a href="#sources">Data sources</a> · <a href="#disclaimer">Disclaimer</a>
+    </nav>
+
+    <section id="nbm">
+      <h3>NBM forecasts: "most likely" and probabilistic</h3>
+      <p>The ski-area and SNOTEL forecasts come from NOAA's <b>National Blend of Models (NBM)</b>, a 2.5-km grid
+        that blends dozens of weather models and ensembles and corrects them against observations. NBM produces two
+        separate kinds of guidance:</p>
+      <ul>
+        <li><b>Deterministic</b> fields — one best estimate per hour. We call these "most likely". The bars on the
+          area pages and the Powder Finder amounts are these values, added up over 12-hour day and night periods, so
+          the bars add up to the totals.</li>
+        <li><b>Probabilistic</b> fields — percentiles (for example "10% chance of less than 2 inches, 90% chance of
+          less than 9 inches") and exceedance probabilities ("40% chance of at least 6 inches"), built from the
+          ensemble members.</li>
+      </ul>
+      <p>NOAA calibrates the two separately, so they can disagree. The most-likely amount is not the median and can
+        even fall outside the 10–90% range. This is expected; we show both as published rather than forcing one to
+        fit the other. When they differ a lot, the forecast is uncertain.</p>
+    </section>
+
+    <section id="probabilities">
+      <h3>Snowfall ranges and chances</h3>
+      <p><b>Ranges (whiskers and "NBM 10–90%")</b> are NBM's own snowfall percentiles. The 01, 07, 13 and 19 UTC
+        NBM runs carry 24-, 48- and 72-hour snowfall percentiles out to about 11 days; we use those runs whenever
+        they are available. A range for a period is built from the 10th and 90th percentiles of the windows that
+        cover it. Adding windows rank by rank (10th + 10th, 90th + 90th) makes the range slightly too wide, so
+        treat it as an honest outer envelope.</p>
+      <p>If only an older 00/06/12/18 UTC run is available, ranges after 48 hours are not in NBM's data. We then
+        show a <b>"derived range (fallback)"</b>: the 25th–75th percentiles of liquid precipitation × NBM's snow
+        ratio × the chance of snow at that elevation. It is clearly labelled and narrower than the NBM range.</p>
+      <p><b>Liquid ranges</b> come from NBM's precipitation percentiles, which are published about 7½ hours after
+        each run. They therefore usually come from an older run than the snowfall, and the page says which.</p>
+      <p><b>"Chance of at least …"</b> (Powder Finder and area-page chart) uses NBM's own exceedance probabilities
+        for 24-, 48- and 72-hour windows ending at 12 UTC (about 4–5 AM in the West), at the thresholds NBM provides
+        (up to 24" in 24 h, 36" in 48 h, 48" in 72 h). We checked them against NBM's percentiles for the same
+        windows across the western US: they agree within about 1–4 percentage points on average. The chances are
+        for the 2.5-km grid cell and are not adjusted to the summit or base elevation. They are NBM-only, because
+        the NWS forecast has no snowfall probabilities.</p>
+    </section>
+
+    <section id="snow-level">
+      <h3>Snow level and chance of snow</h3>
+      <p>The snow level is the elevation where precipitation changes from rain to snow. NBM forecasts it with
+        percentiles. From the 10th, 50th and 90th percentiles we estimate the chance that the snow level is below
+        the summit or base (after 48 hours, a ±800 ft ramp around the most-likely snow level is used). Snowfall at
+        the point is NBM's snowfall × that chance, so a base below the snow level gets less snow than the summit.
+        The snow-level chart is drawn solid where precipitation is possible (at least 20% chance) and dotted where it
+        is unlikely; Powder Finder shows "–" for the snow level when little precipitation is expected.</p>
+    </section>
+
+    <section id="elevation">
+      <h3>Elevation adjustment</h3>
+      <p>A 2.5-km grid cell has one elevation, usually between a ski area's base and summit. We take the NBM cell
+        that contains each point and move the temperature to the point's elevation with a standard lapse rate of
+        6.5 °C per km (3.6 °F per 1000 ft; at most 4000 ft). Summit and base elevations come from the lowest and
+        highest lift terminals (OpenSkiMap), checked against USGS 3DEP terrain. Wind and snowfall amounts are not
+        lapse-adjusted; snowfall is scaled by the chance of snow as described above.</p>
+    </section>
+
+    <section id="nws">
+      <h3>NWS official forecast</h3>
+      <p>The "NWS official" toggle shows the National Digital Forecast Database (NDFD): the forecast written by
+        NWS forecasters, on the same 2.5-km grid as NBM. It is shown <b>raw, as issued</b>, for the grid cell — not
+        adjusted to the summit or base — because it already includes the forecasters' rain/snow decisions.
+        Snowfall, precipitation and snow level are available to 72 hours.</p>
+    </section>
+
+    <section id="ridge-wind">
+      <h3>Ridge-top wind</h3>
+      <p>NBM's wind is a 10-metre wind for a 2.5-km grid cell, and that cell's elevation is usually well below an
+        exposed summit or ridge. Winds near the ground are slowed by friction (trees, terrain, valleys), and winds
+        increase with height in most storms, so NBM 10-m wind typically underestimates what you feel on an exposed
+        ridge, often by a factor of two or more in strong flow.</p>
+      <p>The "ridge wind" shown on area pages and in Powder Finder is the free-air wind at the summit's height:
+        taken from the HRRR (0–48 h) and RRFS (to 84 h) models' pressure-level winds and interpolated to the
+        pressure at the summit elevation. This is what a well-exposed ridge experiences; sheltered terrain and the
+        lee side of ridges will see less, and gusts can be higher.</p>
+    </section>
+
+    <section id="afd">
+      <h3>Forecaster discussion</h3>
+      <p>Area pages include the latest Area Forecast Discussion from the NWS office that forecasts for that area:
+        the forecasters' own explanation of the weather pattern and their confidence. Paragraphs that mention the
+        area or its region are highlighted.</p>
+    </section>
+
+    <section id="sources">
+      <h3>Data sources and attribution</h3>
+      <ul>
+        <li><b>Forecasts:</b> NOAA/NWS National Blend of Models (NBM) and National Digital Forecast Database (NDFD),
+          via the NOAA Open Data Dissemination program on AWS; NWS alerts and Area Forecast Discussions via
+          api.weather.gov.</li>
+        <li><b>Model maps:</b> NOAA HRRR, RRFS and GFS (NOAA Open Data Dissemination on AWS).</li>
+        <li><b>Snowpack:</b> USDA NRCS SNOTEL (Air and Water Database); NOAA/NWS NOHRSC National Snowfall Analysis
+          and SNODAS.</li>
+        <li><b>Weather stations:</b> airport (ASOS) observations via the Iowa Environmental Mesonet.</li>
+        <li><b>Avalanche danger:</b> avalanche.org and the US avalanche centers. Ratings are shown exactly as
+          issued, greyed out when expired, and always link to the center's full forecast — read it before going
+          into avalanche terrain.</li>
+        <li><b>Ski areas:</b> © OpenStreetMap contributors and OpenSkiMap (ODbL); elevations from USGS 3DEP.</li>
+        <li><b>Base maps:</b> USGS The National Map (shaded relief, topo, imagery); OpenTopoMap (© OpenStreetMap contributors, SRTM; CC-BY-SA).</li>
+      </ul>
+    </section>
+
+    <section id="disclaimer">
+      <h3>Disclaimer</h3>
+      <p>Snow-Wx is an independent project and is not affiliated with NOAA, the National Weather Service, USDA,
+        avalanche.org or any ski area. Data are shown as received and may be late, missing or wrong. Forecasts are
+        uncertain, especially in the mountains. Do not use this site as your only source for decisions about travel
+        or avalanche terrain.</p>
+    </section>
+  </main>
+  <footer>Forecasts: NOAA/NWS. Snowpack: USDA NRCS, NOAA/NWS NOHRSC. Ski areas © OpenStreetMap contributors,
+    OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center.</footer>
+</body>
+</html>

@@ -92,7 +92,7 @@
       const t = P.totals[name];
       if (!t) return "";
       const c = colorFor(SNOWFALL, t.snow_in) || "#f4f6f8";
-      const note = outside(t) ? ` <abbr class="info" title="${esc(SEPARATE)}">ⓘ</abbr>` : "";
+      const note = outside(t) ? ` <a class="info" href="about.html#nbm" title="${esc(SEPARATE)}" aria-label="Why the ranges can disagree">ⓘ</a>` : "";
       return `<div class="tile${t.extended ? " ext" : ""}"><span class="label">${label}</span>
         <span class="swatch" style="background:${c}"></span><strong>${inches(t.snow_in)}<small> in</small></strong>
         <span class="rng">${t.snow_hi === null || t.snow_hi === undefined ? "NWS: no range" : `${rangeName(t)}: ${range(t.snow_lo, t.snow_hi)}${note}`}</span>
@@ -242,6 +242,39 @@
       annotations: [{ xref: "paper", yref: "paper", x: 0, y: 0.115, xanchor: "left", yanchor: "bottom", showarrow: false,
         text: "Sky cover (white = clear, grey = cloudy)", font: { size: 10.5, color: "#5b6878" } }],
     }), PLOT_CFG);
+  }
+
+  // ---------------------------------------------------------------- forecaster discussion (AFD)
+  const AFD_STOP = new Set(["northern", "southern", "eastern", "western", "central", "northwest", "southwest", "inland",
+    "california", "oregon", "washington", "idaho", "montana", "wyoming", "utah", "colorado", "nevada", "arizona", "mexico",
+    "lake", "mount", "mountain", "mountains", "resort", "area", "valley", "basin", "peak", "lodge", "ridge", "creek",
+    "high", "county", "summit", "snow", "bowl", "village", "park", "station", "pass", "ranch", "range", "front"]);
+  const afdTerms = (a) => [...new Set(`${a.region || ""} ${a.name || ""}`.replace(/[^A-Za-z ]/g, " ").split(/\s+/)
+    .filter((w) => w.length >= 4 && !AFD_STOP.has(w.toLowerCase())))];
+  async function afdSection(el, a, wfo, tz) {
+    if (!wfo) { el.hidden = true; return; }
+    let idx;
+    try { idx = await getJSON("data/afd/index.json"); } catch { el.hidden = true; return; }
+    const o = idx.offices?.[wfo];
+    if (!o) { el.hidden = true; return; }
+    const link = `https://forecast.weather.gov/product.php?site=NWS&issuedby=${encodeURIComponent(wfo)}&product=AFD&format=txt&version=1`;
+    el.innerHTML = `<h3>Forecaster discussion</h3>
+      <details class="afd"><summary>Area Forecast Discussion, NWS ${esc(o.office)} · issued
+        ${localFmt(o.issued, tz, { weekday: "short", hour: "numeric", minute: "2-digit", timeZoneName: "short" })} (${ago(o.issued)})</summary>
+        <div class="afd-body"><p class="hint">Loading…</p></div></details>
+      <p class="note"><a href="${link}" target="_blank" rel="noopener">Read it on weather.gov →</a> Written by NWS forecasters for the
+        whole office area; paragraphs that mention ${esc(afdTerms(a).join(", ") || "this area")} are highlighted.</p>`;
+    el.querySelector("details").addEventListener("toggle", async (e) => {
+      const body = el.querySelector(".afd-body");
+      if (!e.target.open || body.dataset.done) return;
+      try {
+        const d = await getJSON(`data/afd/${encodeURIComponent(wfo)}.json`);
+        const terms = afdTerms(a), re = terms.length ? new RegExp(`\\b(${terms.join("|")})\\b`, "i") : null;
+        const paras = d.text.split(/\n\s*\n/).map((x) => x.trim()).filter((x) => x && x !== "&&");
+        body.innerHTML = paras.map((x) => `<p class="${re && re.test(x) ? "hit" : ""}">${esc(x.replace(/\n/g, " "))}</p>`).join("");
+        body.dataset.done = "1";
+      } catch (err) { body.innerHTML = `<p class="hint">Could not load the discussion (${esc(err.message)}).</p>`; }
+    });
   }
 
   async function recentObs(el, a) {
@@ -419,6 +452,7 @@
       <section><h3>Hour by hour</h3><div class="chart" id="met-chart"><p class="hint">Loading chart…</p></div>
         <p class="note" id="met-note"></p></section>`
       : `<p class="hint">No point forecast is available for this site yet.</p>`}
+      <section id="afd"></section>
       <section><h3>Recent observations</h3><div id="nohrsc-obs"></div><div id="obs"></div></section>
       ${isStation ? "" : `<section><h3>Avalanche danger</h3>${avalanche(a.avalanche, avyR.status === "fulfilled" ? avyR.value : null)}</section>`}
       <section><h3>More</h3>
@@ -497,6 +531,7 @@
     }
     if (!isStation) nohrscObs($("nohrsc-obs"), a, tz);
     recentObs($("obs"), a);
+    afdSection($("afd"), a, a.nws?.wfo || a.nws?.summit?.wfo || a.nws?.base?.wfo, tz);
   }
 
   window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); });

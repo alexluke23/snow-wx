@@ -193,6 +193,9 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
 - [x] S4 (dev4): NBM full-suite cycle order + liquid_source, own exceedance probabilities
       (`exceed` per point incl. window `mean`; `exceed_summary.json`), decisions 2-5, A Powder
       Finder "Chance of" view (PROB palette in colors.js) + area-page exceedance chart.
-- [ ] AFD + ridge-top wind (S3 part C).
+- [x] S4 B: AFD = obs SOURCE `afd` (`pipeline/afd.py` -> build/data/afd/<WFO>.json + index.json; WFOs
+      from catalog `nws.*.wfo`); area-page section; `web/about.html` (methods: keep it in sync
+      when methods change).
+- [ ] Ridge-top wind (S4 C).
 - [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
       IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.

@@ -123,7 +123,7 @@
       name: (x, y) => x.a.name.localeCompare(y.a.name),
     }[st.sort];
     list.sort((x, y) => (fav.has(y.a.id) - fav.has(x.a.id)) || by(x, y) || x.a.name.localeCompare(y.a.name));
-    $("snow-head").innerHTML = prob ? `% chance ≥ ${st.px}" <abbr class="info" title="${esc(SEPARATE)}">ⓘ</abbr>`
+    $("snow-head").innerHTML = prob ? `% chance ≥ ${st.px}" <a class="info" href="about.html#probabilities" title="${esc(SEPARATE)}" aria-label="How the chances work">ⓘ</a>`
       : `${WINDOWS.find(([v]) => v === st.w)[1]} snow`;
     $("rows").innerHTML = list.length ? list.map((r) => {
       const c = prob ? colorFor(PROB, r.prob) || "#f4f6f8" : colorFor(SNOWFALL, r.snow) || "#f4f6f8";

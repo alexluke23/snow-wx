@@ -338,6 +338,11 @@ screenshots checked. Suggested session grouping in brackets.
   obs build) matched by NWS zone/county codes and polygons → banner on area pages (expandable
   text), badge in Powder Finder, red ring + popup list on the obs map. Checked with a recorded
   sample (no winter alert touched a ski area on 7 Nov).
+- ✔ Part 2 done (S4): `pipeline/afd.py` obs source (latest AFD for the 28 WFOs covering ski areas
+  and SNOTEL points; 56 api.weather.gov calls, ~4 s, 184 KB) → area pages "Forecaster discussion"
+  (issue time, weather.gov link, collapsible text loaded on open, paragraphs mentioning the area's
+  name/region highlighted). about.html (methods, sources, attribution, disclaimer) in the nav; ⓘ
+  tooltips link to it.
 
 **M6 — Interactive model layers** [Session 3]
 - 3857 value PNGs + client colorizer + hover readout for HRRR/RRFS surface
