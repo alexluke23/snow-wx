@@ -398,7 +398,7 @@ rename, day-10 temp/wind panels, Sno-Park research).
 6. ✔ (S8) **Obs map mobile performance pass** — Lighthouse mobile (gzip, like Pages) 81 → 87: tiles and all data start at once (no wait for meta.json), compact data/map_points.json (ski areas + Sno-Parks) instead of full catalogs, Leaflet self-hosted (web/vendor, BSD-2), preconnect to USGS tiles, Plotly fetched on first interaction. Original text:: stations and overlays render
    before basemap tiles finish; preconnect to tile hosts; smaller first
    payload. Target Lighthouse mobile performance ≥ 85 (currently 47–71).
-7. **Snow forecast overlays on the obs map**: NBM expected snowfall
+7. ✔ (S9) **Snow forecast overlays on the obs map** — pipeline/nbm/layers.py at the end of the points job: 9 layers (expected 24 h / 72 h / 7 d; P(≥4/6/12") 24 h and 72 h), first windows ending 12Z, full-suite cycles only; ~0.3 MB total (7 d 210 KB, others 6–28 KB), ~9 s extra in the points job (local). Picker groups Observed / Forecast with window + NBM run; hover values; obs map Lighthouse (gzip) 86. Original text:: NBM expected snowfall
    (24/72 h) and chance of ≥ 4/6/12" as zoomable layers with hover values
    (NOHRSC layer system). This is the consumer replacement for most
    model-map use.

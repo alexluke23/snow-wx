@@ -353,7 +353,26 @@ def check_snoparks(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks}
+def check_forecast_overlays(b: Browser, base: str, log):
+    """Track 2 item 7: NBM forecast layers in a "Forecast" group, view-sized, with hover values."""
+    b.open(f"{base}/index.html#v=depth_24h&map=7/46.0/-121.0", wait=7)
+    groups = b.eval("[...document.querySelectorAll('#overlay-select optgroup')].map(g => g.label + ':' + g.children.length)")
+    log(f"  overlay groups: {groups}")
+    need(any(g.startswith("Forecast:") and int(g.split(":")[1]) >= 6 for g in groups), f"no Forecast group: {groups}")
+    for lid in ("nbm72", "nbmp24_4"):
+        b.eval(f"(() => {{ const s = document.querySelector('#overlay-select'); s.value = '{lid}'; s.dispatchEvent(new Event('change')); return 1; }})()")
+        time.sleep(3)
+        st = b.eval("""(() => { const m = window.snowwx.map; m.fire('mousemove', {latlng: L.latLng(46.85, -121.76)});
+          const o = window.snowwx.overlays.layer(), sz = m.getSize();
+          return {size: o ? o.elementSize() : null, view: [sz.x, sz.y], read: document.querySelector('#overlay-readout').textContent,
+                  meta: (document.querySelector('.overlay-meta .hint') || {}).textContent}; })()""")
+        log(f"  {lid}: {st}")
+        need(st["size"] and st["size"][0] <= st["view"][0] + 2, f"{lid}: overlay not drawn view-sized ({st})")
+        need(any(ch.isdigit() for ch in st["read"]) and "run" in (st["meta"] or ""), f"{lid}: no value / no run info ({st})")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays}
 
 
 def main(argv=None) -> int:
