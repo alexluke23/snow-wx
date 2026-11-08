@@ -112,6 +112,9 @@ percentiles, snow level method, verification).
 | Nov 8 | **Add Sno-Parks / winter recreation points** (snowmobile, snowshoe, XC ski, sledding) as a new point type alongside ski areas and SNOTEL (§5.6, milestone M4.5). |
 | Nov 8 | Keep local disk use small: auto-prune `data_cache` (> 2 days) at the start of local runs; report project disk use in summaries. |
 | Nov 8 (S5) | Approval amendments: Sno-Park NBM cell elevation = full 3DEP cell average (as SNOTEL); push dev5 right after the archive so it can be merged early; area-page charts below the fold render lazily (Lighthouse performance ≥ 90); Sno-Park sources public-domain and key-free first (USFS EDW, state lists, OSM gap-fill) — Recreation.gov RIDB only after asking, key as an Actions secret. |
+| Nov 8 (S5) | Archive PR #6 merged; the `verification` release has the nbm/ndfd/snotel 2026-11 files (M9-prep ✅). |
+| Nov 8 (S5) | 2. Area page "Hour by hour" keeps hourly detail to ~3.5 days. Next session: extend the temperature and wind panels to day 10 with NBM's 3/6-hourly values, lightly shaded and labelled "extended (6-hourly)". Snow stays as day/night bars beyond 3.5 days. |
+| Nov 8 (S5) | 3. Sno-Parks (M4.5), next session: research sources and licences first (USFS EDW, state Sno-Park lists, OSM gap-fill; public-domain and key-free preferred), write docs/sources_recreation.md, and get owner approval before building. |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
@@ -485,6 +488,7 @@ screenshots checked. Suggested session grouping in brackets.
 **M9-prep — Forecast archive** [Session 5, small, time-sensitive]
 - All daily leads (Decisions log, Nov 8). ✅ when: first monthly file appears in
   the `verification` release and docs/verification.md documents the format.
+- ✅ Done (Nov 8): PR #6 merged; nbm/ndfd/snotel-202611.csv.gz are on the `verification` release.
 - ✔ Code done (S5): `pipeline/archive.py` + `python -m pipeline archive`, run by update-site.yml after
   every build (continue-on-error). Monthly `nbm|ndfd|snotel-YYYYMM.csv.gz` + `state.json` on the
   `verification` prerelease; NBM points now carry per-window cell percentiles and the cell mean.
