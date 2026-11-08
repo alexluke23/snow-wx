@@ -558,13 +558,15 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
         files[a["id"]] = doc
         per = doc["points"]["summit"]["periods"]
         def brief(k):
-            """[mean, lo, hi, max chance of precip %] per window, from the point's periods."""
+            """[mean, lo, hi, max chance of precip %, lowest snow level while precip is likely]
+            per window (Powder Finder), from the point's 12-h periods."""
             pts = doc["points"][k]
             out = {}
             for n, x in pts["totals"].items():
+                start = x.get("from") or init.strftime("%Y-%m-%dT%H:%MZ")
                 end = (init + timedelta(hours={"24h": 24, "72h": 72, "7d": 168, "10d": 240}[n])).strftime("%Y-%m-%dT%H:%MZ")
-                pops = [p["pop"] for p in pts["periods"] if p.get("pop") is not None and p["end"] <= max(end, x.get("from") or end)]
-                out[n] = [x["snow_in"], x["snow_lo"], x["snow_hi"], round(100 * max(pops)) if pops else None]
+                pop, sl = P.window_wet(pts["periods"], start, end)
+                out[n] = [x["snow_in"], x["snow_lo"], x["snow_hi"], pop, sl]
             return out
         summary.append({
             "id": a["id"], "name": a["name"], "state": a["state"], "region": a["region"],
@@ -657,8 +659,15 @@ def exceed_summary(files: dict, cat: dict) -> dict:
         ex = {k: doc["points"][k]["exceed"] for k in ("summit", "base")}
         if windows is None:
             windows = {L: {kk: vv for kk, vv in w.items() if kk in ("start", "end", "thr")} for L, w in ex["summit"].items()}
-        areas[a["id"]] = {k: {**{L: w["p"] for L, w in e.items()}, "mean": {L: w.get("mean") for L, w in e.items()}}
-                          for k, e in ex.items()}
+        rec = {}
+        for k, e in ex.items():
+            per = doc["points"][k]["periods"]
+            wet = {L: [P.window_wet(per, a0, b0) for a0, b0 in zip(w["start"], w["end"])] for L, w in e.items()}
+            rec[k] = {**{L: w["p"] for L, w in e.items()}, "mean": {L: w.get("mean") for L, w in e.items()},
+                      # per window: highest chance of precip (%) and lowest snow level while it is likely
+                      "pop": {L: [x[0] for x in v] for L, v in wet.items()},
+                      "sl": {L: [x[1] for x in v] for L, v in wet.items()}}
+        areas[a["id"]] = rec
     return {"windows": windows or {}, "areas": areas}
 
 

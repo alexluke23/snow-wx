@@ -67,17 +67,22 @@
     const nwsBy = new Map((nws?.areas || []).map((r) => [r.id, r]));
     rows = (nbm?.areas || []).map((a) => {
       const src = st.m === "amount" && st.src === "nws" ? nwsBy.get(a.id) : a;
-      const t = src?.[st.e]?.[st.w] || null;               // [mean, lo, hi, pop]
+      const t = src?.[st.e]?.[st.w] || null;               // [mean, lo, hi, pop %, lowest wet snow level]
       const o = obs?.areas?.[a.id]?.[st.e]?.sf24 ?? null;
-      const sl = src?.snowlvl_min_72h_ft ?? null;
+      // snow level and chance of precip for the window on screen (B3): the amount window,
+      // or in "Chance of" mode the selected probability window
+      let pop = t && t.length > 3 ? t[3] : null;
+      let sl = t && t.length > 4 ? t[4] : (src?.snowlvl_min_72h_ft ?? null);   // older files: 72 h
       let prob = null, pmean = null;
       if (st.m === "prob" && exceed) {
         const w = pwin(), k = w ? w.thr.indexOf(st.px) : -1;
-        const tbl = exceed.areas?.[a.id]?.[st.e]?.[st.pw];
+        const ea = exceed.areas?.[a.id]?.[st.e];
+        const tbl = ea?.[st.pw];
         prob = k >= 0 && tbl && tbl[st.pd] ? tbl[st.pd][k] : null;
-        pmean = exceed.areas?.[a.id]?.[st.e]?.mean?.[st.pw]?.[st.pd] ?? null;
+        pmean = ea?.mean?.[st.pw]?.[st.pd] ?? null;
+        if (ea?.pop) { pop = ea.pop[st.pw]?.[st.pd] ?? null; sl = ea.sl?.[st.pw]?.[st.pd] ?? null; }
       }
-      return { a, snow: t ? t[0] : null, lo: t ? t[1] : null, hi: t ? t[2] : null, pop: t && t.length > 3 ? t[3] : null,
+      return { a, snow: t ? t[0] : null, lo: t ? t[1] : null, hi: t ? t[2] : null, pop,
                obs: o, sl, slVsBase: sl === null ? null : sl - a.elev.base, gust: src?.gust_max_72h_mph ?? null,
                prob, pmean, alerts: alerts[a.id] || [] };
     });
@@ -129,8 +134,12 @@
       const c = prob ? colorFor(PROB, r.prob) || "#f4f6f8" : colorFor(SNOWFALL, r.snow) || "#f4f6f8";
       const main = prob ? `<b>${r.prob === null ? "–" : `${r.prob}%`}</b>${r.pmean === null ? "" : `<small>most likely ${fmt(r.pmean)}"</small>`}`
         : `<b>${fmt(r.snow)}"</b>${r.hi === null || r.hi === undefined ? "" : `<small>${fmt(r.lo)}–${fmt(r.hi)}</small>`}`;
-      const dry = r.pop !== null && r.pop < 20;
-      const slTxt = r.sl === null || dry ? `<span class="hint" title="${dry ? "little precipitation expected" : ""}">–</span>`
+      // precipitation likely in the window: chance of precip >= 20 %, or (Chance of mode)
+      // the selected snowfall chance itself >= 20 %
+      const wet = (r.pop !== null && r.pop >= 20) || (r.prob !== null && r.prob >= 20);
+      const dry = !wet && (r.pop !== null || r.prob !== null);
+      const slTxt = r.sl === null || dry
+        ? `<span class="hint" title="${dry ? "little precipitation expected in this window" : "no snow level while precipitation is likely"}">–</span>`
         : r.slVsBase <= 0 ? `<span class="tobase">to base</span>` : `+${kft(r.slVsBase)}`;
       const badge = r.alerts.length ? `<span class="alert-badge ${esc(r.alerts[0].level)}" title="${esc(r.alerts.map((x) => x.event).join(", "))}">${esc(r.alerts[0].short || "Alert")}</span>` : "";
       return `<div class="frow" role="listitem">
@@ -141,19 +150,19 @@
         <span class="num snow"><i class="sw" style="background:${c}"></i>${main}</span>
         <span class="details">
           <span class="num" data-label="Obs 24 h">${r.obs === null ? "–" : `${fmt(r.obs)}"`}</span>
-          <span class="num" data-label="Snow level" title="${r.sl === null ? "" : `lowest snow level in 72 h: ${Math.round(r.sl).toLocaleString()} ft`}">${slTxt}</span>
+          <span class="num" data-label="Snow level" title="${r.sl === null || dry ? "" : `lowest snow level while precipitation is likely in this window: ${Math.round(r.sl).toLocaleString()} ft`}">${slTxt}</span>
           <span class="num" data-label="Gust">${r.gust === null ? "–" : `${Math.round(r.gust)}`}<small> mph</small></span>
-          ${(() => { const m = ridgeMax(r.a.id); return `<span class="num" data-label="Ridge">${m ? `${m[0]}<small> mph ${COMPASS[Math.round(m[1] / 22.5) % 16]}</small>` : "–<small> mph</small>"}</span>`; })()}
+          ${ridgeCell(r.a.id)}
         </span>
       </div>`;
     }).join("") : `<p class="hint">No ski areas match these filters.</p>`;
     $("legend-note").textContent = prob
       ? `Chance of at least ${st.px}" of snow in ${st.pw.replace("h", " h")} (${dayLabel(st.pd).replace("Next: ", "")}) at the ${st.e}, from NBM's ` +
-        `probabilistic guidance for the 2.5 km grid cell. ${SEPARATE} Small number: NBM's most-likely ${st.w.replace("h", " h").replace("d", " d")} amount.`
+        `probabilistic guidance for the 2.5 km grid cell. ${SEPARATE} Small number: NBM's most-likely amount in the same window. ` +
+        `Snow level: lowest while precipitation is likely in that window. ${ridgeNote()}`
       : `Most likely snowfall at the ${st.e} (${st.src === "nws" ? "NWS forecast, 2.5 km grid cell" : "NBM"})` +
-        `${st.src === "nws" ? "" : "; small numbers: NBM 10–90%"}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest in the next 72 h vs the base ` +
-        `("–" when the chance of precipitation is under 20 %). Gust: highest summit gust in 72 h (NBM). Ridge: highest ridge-top wind at summit height in the window ` +
-        `(HRRR, then RRFS; to 84 h). ★ favorites list first.`;
+        `${st.src === "nws" ? "" : "; small numbers: NBM 10–90%"}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest while precipitation is likely in the window, vs the base ` +
+        `("–" when the chance of precipitation is under 20 %). Gust: highest summit gust in 72 h (NBM). ${ridgeNote()} ★ favorites list first.`;
     $("rows").querySelectorAll(".star").forEach((b) => b.addEventListener("click", () => {
       const s = favs(); s.has(b.dataset.id) ? s.delete(b.dataset.id) : s.add(b.dataset.id); saveFavs(s); render();
     }));
@@ -162,12 +171,18 @@
 
   function update() { buildRows(); render(); }
 
-  // ridge-top wind (HRRR then RRFS, to 84 h): highest in the chosen window, loaded after first paint
-  let ridge = null;
+  // ridge-top wind (HRRR then RRFS, to 84 h): highest in the chosen window, loaded after
+  // first paint. ridge: undefined = loading, false = not published yet, else ridge.json.
+  let ridge;
   const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+  const shortTime = (ms) => new Date(ms).toLocaleString([], { weekday: "short", hour: "numeric" });
+  const ridgeEnd = () => new Date(ridge.valid[ridge.valid.length - 1]).getTime();
   function ridgeMax(id) {
-    const r = ridge?.areas?.[id];
-    if (!r) return null;
+    // -> {mph, dir, partial, end} | {none: "beyond" | "missing"} | null (still loading)
+    if (ridge === undefined) return null;
+    if (!ridge || !ridge.valid?.length) return { none: "missing" };
+    const r = ridge.areas?.[id];
+    if (!r) return { none: "missing" };
     let a, b;
     if (st.m === "prob") {
       const w = pwin();
@@ -176,15 +191,31 @@
     } else {
       a = new Date(nbm.issued).getTime(); b = a + { "24h": 24, "72h": 72, "7d": 168, "10d": 240 }[st.w] * 3.6e6;
     }
-    let best = null, covered = false;
+    const last = ridgeEnd();
+    let best = null;
     ridge.valid.forEach((t, i) => {
       const x = new Date(t).getTime();
-      if (x > a && x <= b) {
-        covered = true;
-        if (r.mph[i] !== null && (!best || r.mph[i] > best[0])) best = [r.mph[i], r.dir[i]];
-      }
+      if (x > a && x <= b && r.mph[i] !== null && (!best || r.mph[i] > best.mph)) best = { mph: r.mph[i], dir: r.dir[i] };
     });
-    return covered ? best : null;
+    if (!best) return { none: a >= last ? "beyond" : "missing" };
+    return { ...best, partial: last < b, end: last };
+  }
+  function ridgeCell(id) {
+    const m = ridgeMax(id);
+    if (!m) return `<span class="num" data-label="Ridge">–<small> mph</small></span>`;
+    if (m.none) {
+      const why = m.none === "beyond" ? `beyond the HRRR/RRFS range (data to ${shortTime(ridgeEnd())})` : "not available yet";
+      return `<span class="num" data-label="Ridge" title="Ridge-top wind ${esc(why)}"><span class="hint">n/a</span></span>`;
+    }
+    const dir = COMPASS[Math.round(m.dir / 22.5) % 16];
+    return m.partial
+      ? `<span class="num" data-label="Ridge" title="At least this: the model data end ${esc(shortTime(m.end))}, before the window does">≥${m.mph}<small> mph ${dir}</small></span>`
+      : `<span class="num" data-label="Ridge">${m.mph}<small> mph ${dir}</small></span>`;
+  }
+  function ridgeNote() {
+    if (ridge === false || (ridge && !ridge.valid?.length)) return "Ridge: ridge-top wind is not available yet (it comes with the next model run).";
+    const end = ridge?.valid?.length ? ` (data to ${shortTime(ridgeEnd())})` : "";
+    return `Ridge: highest ridge-top wind at summit height in the window, HRRR then RRFS${end}; "≥" = the window runs past the model data, n/a = beyond it.`;
   }
 
   async function ensureExceed() {
@@ -252,7 +283,7 @@
     $("fresh").textContent = `NBM ${when(nbm.issued)} run${nws ? ` · NWS issued ${when(nws.issued)}` : ""}${obs?.snowfall_end ? ` · observed to ${when(obs.snowfall_end)}` : ""}`;
     if (st.m === "prob") await ensureExceed();
     update();
-    getJSON("data/ridge.json").then((x) => { ridge = x; render(); }).catch(() => {});
+    getJSON("data/ridge.json").then((x) => { ridge = x; render(); }).catch(() => { ridge = false; render(); });
     (window.requestIdleCallback || ((f) => setTimeout(f, 300)))(initMap, { timeout: 1500 });
   }
   load();

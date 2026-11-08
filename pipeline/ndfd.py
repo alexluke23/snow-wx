@@ -279,8 +279,16 @@ def point_doc(data: dict, k: int, elev_ft: float | None, tz) -> tuple[list[str],
 def summary_row(aid: str, doc: dict) -> dict:
     """Powder Finder row: [snow, lo, hi] per window (NWS has no range) + 72-h extremes."""
     row = {"id": aid}
+    issued = doc.get("issued")
     for k, pt in doc["points"].items():
-        row[k] = {n: [t["snow_in"], None, None] for n, t in pt["totals"].items()}
+        row[k] = {}
+        for n, t in pt["totals"].items():
+            pop = sl = None
+            if issued:
+                end = (datetime.strptime(issued, "%Y-%m-%dT%H:%MZ") + timedelta(hours={"24h": 24, "72h": 72}.get(n, 72))
+                       ).strftime("%Y-%m-%dT%H:%MZ")
+                pop, sl = P.window_wet(pt["periods"], issued, end)
+            row[k][n] = [t["snow_in"], None, None, pop, sl]      # same layout as the NBM summary
     first = doc["points"].get("summit") or next(iter(doc["points"].values()))
     per = first["periods"][:6]
     row["snowlvl_min_72h_ft"] = min([p["snowlvl_min_ft"] for p in per if p["snowlvl_min_ft"] is not None], default=None)

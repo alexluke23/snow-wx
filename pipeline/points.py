@@ -153,3 +153,17 @@ def window_sum(series: dict[int, float | None], start_h: int, end_h: int, step: 
             return None
         total, n = total + v, n + 1
     return total if n else None
+
+
+WET_POP = 0.2          # "precipitation likely" = chance of precip >= 20 % (area page + Powder Finder)
+
+
+def window_wet(periods: list[dict], start: str, end: str, pop_min: float = WET_POP) -> tuple[int | None, float | None]:
+    """(highest chance of precip in %, lowest snow level while precip is likely, ft) over the
+    12-h periods overlapping [start, end] (ISO strings). The snow level only counts periods
+    whose chance of precip is >= pop_min, so a dry window gives None (Powder Finder "–")."""
+    inside = [p for p in periods if p.get("end", "") > start and p.get("start", "") < end]
+    pops = [p["pop"] for p in inside if p.get("pop") is not None]
+    wet = [p["snowlvl_min_ft"] for p in inside
+           if p.get("snowlvl_min_ft") is not None and p.get("pop") is not None and p["pop"] >= pop_min]
+    return (round(100 * max(pops)) if pops else None), (min(wet) if wet else None)
