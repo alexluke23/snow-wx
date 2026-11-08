@@ -331,10 +331,11 @@
         ...(smooth ? [{ x: xs, y: ts.SNWD, mode: "lines", line: { color: SnowCharts.OI.blue, width: 1 }, opacity: 0.35,
           hovertemplate: "raw %{y:.0f} in<extra></extra>" }] : []),
         { x: xs, y: dep, mode: "lines", line: { color: SnowCharts.OI.blue, width: 2.4 }, hovertemplate: "depth %{y:.0f} in<extra></extra>" },
-      ], "Snow depth (in)", { yaxis: { rangemode: "tozero" },
+      ], "Snow depth (in)", { yaxis: { range: SnowCharts.extent([dep, ts.SNWD], { zero: true, min: 4, pad: 0.1 }) },
         annotations: [C.endLabel(xs, dep, smooth ? "median" : "Depth", SnowCharts.OI.blue)] });
       panel("ch-swe", 200, [{ x: xs, y: ts.WTEQ, mode: "lines", line: { color: SnowCharts.OI.green, width: 2.2 },
-        hovertemplate: "SWE %{y:.1f} in<extra></extra>" }], "Snow water equivalent (in)", { yaxis: { rangemode: "tozero" } });
+        hovertemplate: "SWE %{y:.1f} in<extra></extra>" }], "Snow water equivalent (in)",
+        { yaxis: { range: SnowCharts.extent([ts.WTEQ], { zero: true, min: 1, pad: 0.1 }) } });
       const r32 = C.refLine(32, "32 °F", { color: "#0b6e85", dash: "dot", where: "left" });
       panel("ch-temp", 200, [{ x: xs, y: ts.TOBS, mode: "lines", line: { color: SnowCharts.OI.vermillion, width: 1.8 },
         hovertemplate: "%{y:.0f} °F<extra></extra>" }], "Temperature (°F)", { shapes: [r32.shape], annotations: [r32.ann] });
