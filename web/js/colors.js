@@ -61,11 +61,13 @@ function colorFor(spec, v) {
   return spec.colors[i];
 }
 
-// Black or white text depending on background brightness.
+// Dark or white text, whichever has the higher WCAG contrast on this background
+// (relative luminance; PLAN.md §6-B: AA contrast for legend and swatch labels).
 function textOn(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#111" : "#fff";
+  const n = parseInt(hex.slice(1, 7), 16);
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return (L + 0.05) / (0.0056 + 0.05) >= 1.05 / (L + 0.05) ? "#111" : "#fff";
 }
 
 function fmtValue(spec, v) {
