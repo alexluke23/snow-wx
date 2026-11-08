@@ -117,6 +117,7 @@ percentiles, snow level method, verification).
 | Nov 8 (S5) | Archive PR #6 merged; the `verification` release has the nbm/ndfd/snotel 2026-11 files (M9-prep ✅). |
 | Nov 8 (S5) | 2. Area page "Hour by hour" keeps hourly detail to ~3.5 days. Next session: extend the temperature and wind panels to day 10 with NBM's 3/6-hourly values, lightly shaded and labelled "extended (6-hourly)". Snow stays as day/night bars beyond 3.5 days. |
 | Nov 8 (S5) | 3. Sno-Parks (M4.5), next session: research sources and licences first (USFS EDW, state Sno-Park lists, OSM gap-fill; public-domain and key-free preferred), write docs/sources_recreation.md, and get owner approval before building. |
+| Nov 8 (S6) | Rename "most likely" to **"Expected"** site-wide (next session): area tiles, day/night bars, Powder Finder (amount and chance modes), about.html; with an ⓘ tooltip: NBM's average amount, which typically has about a 1-in-3 chance of being reached (S6 fix 8 analysis). |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;

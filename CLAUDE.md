@@ -226,7 +226,10 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       build/ first. Notes: Page.navigate with only a hash change does not reload (open() goes via about:blank);
       blocked URLs need cache off + an unvisited view. Overlays draw on a view-sized canvas (overlays.js ViewOverlay),
       never an L.ImageOverlay of the whole West (GPU limit -> grey map). Document pages: body.doc-page.
-- [ ] S6 first: area page "Hour by hour" — extend temperature + wind panels to day 10 with NBM 3/6-hourly values,
+- [ ] Next session first: rename "most likely" -> "Expected" site-wide (area tiles, day/night bars + hovers,
+      Powder Finder amount + chance modes, legend notes, headline, about.html) with an ⓘ tooltip: "NBM's average
+      amount; it typically has about a 1-in-3 chance of being reached" (link about.html#nbm). Owner decision S6.
+- [ ] Then: area page "Hour by hour" — extend temperature + wind panels to day 10 with NBM 3/6-hourly values,
       lightly shaded and labelled "extended (6-hourly)"; hourly detail stays ~3.5 days; snow stays as
       day/night bars beyond 3.5 days (owner decision S5-2).
 - [ ] M4.5 Sno-Parks (S6): research sources + licences first (USFS EDW, state Sno-Park lists, OSM gap-fill;
