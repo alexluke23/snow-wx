@@ -200,12 +200,31 @@
     return firstExt >= 0;
   }
 
+  /** Chance of precipitation (0-1) at every forecast time, through the whole forecast (fix 4):
+   *  the hourly 6-h PoP; where that is missing, the 12-h period's chance of precip; where both
+   *  are missing (extended range), NBM's chance of >= 0.1" of snow in the 24-h window. */
+  function precipChance(fc, key) {
+    const P = fc.points[key], s = P.series, per = P.periods || [];
+    const ex = P.exceed?.["24h"], k01 = ex ? ex.thr.indexOf(0.1) : -1;
+    return fc.times.map((iso, i) => {
+      let p = s.pop?.[i];
+      if (p === null || p === undefined) p = per.find((q) => q.start < iso && iso <= q.end)?.pop ?? null;
+      if ((p === null || p === undefined) && k01 >= 0) {
+        const j = ex.end.findIndex((e, n) => ex.start[n] < iso && iso <= e);
+        if (j >= 0 && ex.p[j][k01] !== null) p = ex.p[j][k01] / 100;
+      }
+      return p;
+    });
+  }
+  const WET = 0.2;     // "precipitation likely": same rule as Powder Finder and the pipeline
+
   function snowLevelChart(el, fc, keys, tz) {
     const s = fc.points[keys[0]].series, t = fc.times;
     const xs = t.map((x) => C.wall(x, tz));
     let nb = 0;                                  // the 10-90 % band: as long as NBM has the percentiles
     while (nb < t.length && s.snowlvl_p10[nb] !== null && s.snowlvl_p90[nb] !== null) nb++;
-    const wet = s.snowlvl_ft.map((v, i) => ((s.pop[i] ?? 0) >= 0.2 ? v : null));
+    const chance = precipChance(fc, keys[0]);
+    const wet = s.snowlvl_ft.map((v, i) => ((chance[i] ?? 0) >= WET ? v : null));
     const lines = keys.map((k) => [POINT_LABEL[k], fc.points[k].elev_ft, k === "summit" || k === "point" ? C.INK : "#7a4e12",
       k === "base" ? "dash" : "solid"]);
     const elevs = keys.map((k) => fc.points[k].elev_ft);
@@ -246,7 +265,7 @@
       : vals.length ? `Little precipitation expected; snow level ${ft(Math.min(...vals))} to ${ft(Math.max(...vals))}.` : "No snow-level forecast.");
     C.tableToggle(el, "Snow level (ft MSL), NBM", ["Time", "Snow level (ft)", "10th pct", "90th pct", "Chance of precip"],
       t.map((x, i) => [localDT(x, tz), plain(s.snowlvl_ft[i]), plain(s.snowlvl_p10[i]), plain(s.snowlvl_p90[i]),
-        s.pop[i] === null || s.pop[i] === undefined ? "–" : `${Math.round(s.pop[i] * 100)}%`]));
+        chance[i] === null || chance[i] === undefined ? "–" : `${Math.round(chance[i] * 100)}%`]));
   }
 
   // ridge-top (free-air) summit wind from HRRR then RRFS (pipeline/models/ridge.py)
