@@ -276,7 +276,32 @@ def check_search(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search}
+def _draw_all(b: Browser):
+    """Scroll every chart into view so the lazy charts draw."""
+    b.eval("""(async () => { for (const el of document.querySelectorAll('.chart, .heat-box')) {
+        el.scrollIntoView(); await new Promise(r => setTimeout(r, 700)); } return 1; })()""")
+    time.sleep(1.5)
+
+
+def check_charts(b: Browser, base: str, log):
+    for area in ("alta-ski-area", "timberline-lodge-ski-area"):
+        b.open(f"{base}/area.html#{area}", wait=5)
+        _draw_all(b)
+        st = b.eval("""(async () => {
+          const d = await (await fetch('data/points/%s.json')).json();
+          const per = d.points.summit.periods, wetPeriods = per.filter(p => (p.pop ?? 0) >= 0.2).length;
+          const sl = document.getElementById('sl-chart');
+          const wetLine = sl && sl.data ? sl.data[3].y.filter(v => v !== null).length : -1;
+          const sum = (sl.previousElementSibling || {}).textContent || '';
+          return {wetPeriods, wetLine, sum}; })()""" % area)
+        log(f"  charts {area}: snow level wet periods={st['wetPeriods']} wet line points={st['wetLine']} | {st['sum'][:90]}")
+        if st["wetPeriods"]:
+            need(st["wetLine"] > 0, f"{area}: {st['wetPeriods']} wet periods but the snow-level line is dry everywhere")
+            need("Little precipitation" not in st["sum"], f"{area}: summary says little precipitation: {st['sum']}")
+        need(not b.errors, f"{area}: JS errors {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts}
 
 
 def main(argv=None) -> int:
