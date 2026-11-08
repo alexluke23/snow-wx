@@ -234,7 +234,10 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
 - [x] (done S7) area page "Hour by hour" — extend temperature + wind panels to day 10 with NBM 3/6-hourly values,
       lightly shaded and labelled "extended (6-hourly)"; hourly detail stays ~3.5 days; snow stays as
       day/night bars beyond 3.5 days (owner decision S5-2).
-- [ ] M4.5 Sno-Parks (S6): research sources + licences first (USFS EDW, state Sno-Park lists, OSM gap-fill;
+- [ ] NEXT: build M4.5 Sno-Parks per PLAN.md §5.6 with the APPROVED sources (S7): USFS EDW backbone
+      (EDW_RecInfraRecreationSites_02 layer 0: SNOWPARK, SNOWPLAY AREA, SKI AREA NORDIC, winter TRAILHEADs) + OSM
+      gap-fill (ODbL, dedupe ~400 m); state lists = manual cross-check only. See docs/sources_recreation.md.
+- [x] (S7) M4.5 Sno-Parks research: sources + licences first (USFS EDW, state Sno-Park lists, OSM gap-fill;
       public-domain, key-free preferred), write docs/sources_recreation.md, ask the owner to approve BEFORE
       building (owner decision S5-3). RIDB only if asked (key = Actions secret). NBM cell elev = full 3DEP mean.
 - [ ] M6 zoomable model layers + HRRR prs file: deferred to S6 (baseline numbers in PLAN.md §2).
