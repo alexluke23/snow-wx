@@ -283,6 +283,25 @@ def _draw_all(b: Browser):
     time.sleep(1.5)
 
 
+def check_panel(b: Browser, base: str, log):
+    """S10 1b: on the obs map, the SNOTEL panel's lazily drawn charts never overlap Data status."""
+    for w, h in ((1280, 800), (375, 740)):
+        b.open(f"{base}/index.html#v=depth_24h&map=9/45.33/-121.7&s=651:OR:SNTL", width=w, height=h, wait=9)
+        st = b.eval("""(() => { const a = document.getElementById('station').getBoundingClientRect(),
+            c = document.getElementById('status').closest('section') || document.getElementById('status');
+            const z = c.getBoundingClientRect(); return {stationBottom: Math.round(a.bottom), statusTop: Math.round(z.top),
+            charts: document.querySelectorAll('#chart .js-plotly-plot').length}; })()""")
+        log(f"  panel {w}px: {st}")
+        need(st["charts"] == 3 and st["statusTop"] >= st["stationBottom"] - 1, f"panel overlap at {w}px: {st}")
+    # S10 1a: no ridge-top wind on the forecast page
+    b.open(f"{base}/area.html#timberline-lodge-ski-area", wait=5)
+    _draw_all(b)
+    names = b.eval("(document.getElementById('w-chart').data || []).map(t => t.name)")
+    log(f"  wind chart traces: {names}")
+    need(names and not any("Ridge" in (n or "") for n in names) and not b.eval("!!document.getElementById('ridge-note')"),
+         f"ridge-top wind still on the forecast page: {names}")
+
+
 def check_charts(b: Browser, base: str, log):
     for area in ("alta-ski-area", "timberline-lodge-ski-area"):
         b.open(f"{base}/area.html#{area}", wait=5)
@@ -421,7 +440,7 @@ def check_mine(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine}
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel}
 
 
 def main(argv=None) -> int:

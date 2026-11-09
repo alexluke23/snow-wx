@@ -62,8 +62,8 @@ const SnowCharts = (() => {
     const days = [];
     for (let d = d0; d <= d1; d = addDays(d, 1)) days.push(d);
     const inRange = days.filter((d) => `${d} 12:00` >= w0 && `${d} 12:00` <= w1);
-    // every day while a day gets >= 28 px (two-line labels below 56 px), else every other day; never rotated
-    const step = widthPx && inRange.length && widthPx / inRange.length < 28 ? 2 : 1;
+    // label every Nth day so each label gets >= ~34 px (two-line labels below 56 px); never rotated
+    const step = widthPx && inRange.length ? Math.max(1, Math.ceil(34 / (widthPx / inRange.length))) : 1;
     const ticks = inRange.filter((d, i) => i % step === 0);
     const two = !!widthPx && widthPx / inRange.length * step < 56;
     const shapes = [];

@@ -108,7 +108,7 @@
   const C = SnowCharts;
   const PT_STYLE = { summit: { color: C.OI.blue, dash: "solid" }, base: { color: C.OI.vermillion, dash: "dash" },
     point: { color: C.OI.blue, dash: "solid" } };
-  const HOURS_DETAIL = 84;            // "Hour by hour" covers the ridge-wind range (HRRR 48 h, RRFS 84 h)
+  const HOURS_DETAIL = 84;            // "Hour by hour" detail (then 6-hourly to day 10)
   const tzName = (tz) => new Date().toLocaleTimeString("en-US", { timeZone: tz, timeZoneName: "short" }).split(" ").pop();
   const localDT = (iso, tz) => localFmt(iso, tz, { weekday: "short", hour: "numeric" });   // "Mon 5 PM"
   const f1 = (v) => (v === null || v === undefined ? null : Math.round(v * 10) / 10);
@@ -278,23 +278,8 @@
         chance[i] === null || chance[i] === undefined ? "–" : `${Math.round(chance[i] * 100)}%`]));
   }
 
-  // ridge-top (free-air) summit wind from HRRR then RRFS (pipeline/models/ridge.py)
-  let ridgeP = null;
-  const loadRidge = () => (ridgeP ||= getJSON("data/ridge.json").catch(() => null));
   const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
   const compass = (d) => (d === null || d === undefined ? "" : COMPASS[Math.round(d / 22.5) % 16]);
-  function ridgeSummary(ridge, id, hours = 24) {
-    const r = ridge?.areas?.[id];
-    if (!r) return null;
-    const now = Date.now(), end = now + hours * 3.6e6;
-    let best = null;
-    ridge.valid.forEach((t, i) => {
-      const x = new Date(t).getTime();
-      if (x >= now - 1.8e6 && x <= end && r.mph[i] !== null && (!best || r.mph[i] > best.mph))
-        best = { mph: r.mph[i], dir: r.dir[i], model: ridge.models[ridge.src[i]]?.label };
-    });
-    return best;
-  }
 
   /** Index range of fc.times within the "hour by hour" window, plus its wall-clock bounds. */
   /** "Hour by hour" time frame: detail (hourly/3-hourly) to HOURS_DETAIL, then NBM's 6-hourly values to the
@@ -344,14 +329,14 @@
         P[keys[0]].series.sky[i] === null ? "–" : `${P[keys[0]].series.sky[i]}%`]));
   }
 
-  function windChart(el, fc, pt, keys, ridge, id, tz) {
+  function windChart(el, fc, pt, keys, tz) {
     const D = detailWindow(fc, tz), P = fc.points;
     const wk = keys.includes("summit") ? "summit" : pt;
     const s = P[wk].series;
     const xs = fc.times.map((x) => C.wall(x, tz));
     const ax = C.timeAxis(D.w0, D.wEnd, el.clientWidth - C.MARGIN.l - 70);
     const ext = extendedShade(D);
-    const col = C.OI.blue, rc = C.OI.green;
+    const col = C.OI.blue;
     const traces = [
       { x: xs, y: s.wind_mph, name: "Wind", mode: "lines", line: { color: col, width: 2.2 },
         hovertemplate: `${POINT_LABEL[wk]} wind %{y} mph<extra></extra>` },
@@ -362,37 +347,6 @@
     const ends = [{ xs, ys: s.wind_mph, text: "Wind", color: col }, { xs, ys: s.gust_mph, text: "Gusts", color: col }];
     const allY = [s.gust_mph, s.wind_mph];
     const shapes = [...ax.shapes, ext.shape];
-    const r = ridge?.areas?.[id];
-    let ridgeTxt = "";
-    if (r) {
-      // HRRR first, then RRFS (ridge.json "src"): two segments of one series with a labelled handoff
-      const rx = ridge.valid.map((x) => C.wall(x, tz));
-      const seg = (n) => ridge.valid.map((x, i) => (ridge.src[i] === n || ridge.src[i + 1] === n ? r.mph[i] : null));
-      const names = ridge.models.map((m) => m.label);
-      names.forEach((nm, n) => traces.push({ x: rx, y: seg(n), mode: "lines", connectgaps: false, name: `Ridge-top (${nm})`,
-        line: { color: rc, width: 2.4, dash: n === 0 ? "solid" : "dash" },
-        customdata: r.dir.map((d) => compass(d)), hovertemplate: `ridge-top %{y} mph %{customdata} (${nm})<extra></extra>` }));
-      const k = ridge.src.findIndex((x) => x === 1);
-      if (k > 0 && rx[k] < D.w1) {
-        shapes.push({ type: "line", xref: "x", yref: "paper", x0: rx[k - 1], x1: rx[k - 1], y0: 0, y1: 1, line: { color: rc, width: 1, dash: "dot" } });
-        annotations.push(C.markLabel(rx[k - 1], `${names[0]} → ${names[1]}`, "#006b4f"));
-      }
-      const lastI = r.mph.map((v, i) => (v !== null ? i : -1)).reduce((a, b) => Math.max(a, b), -1);
-      allY.push(r.mph.filter((v, i) => rx[i] <= D.wEnd));
-      if (lastI >= 0) {
-        const inRange = rx.map((x, i) => (x <= D.wEnd && i <= lastI ? i : -1)).filter((i) => i >= 0);
-        ends.push({ xs: inRange.map((i) => rx[i]), ys: inRange.map((i) => r.mph[i]), text: "Ridge-top", color: "#006b4f" });
-        const endMs = new Date(ridge.valid[lastI]).getTime();
-        if (endMs < D.t1 - 3 * 3.6e6) ridgeTxt = ` Ridge-top wind (${names.join(" then ")}) ends ${localDT(ridge.valid[lastI], tz)}.`;
-      }
-      let best = null;
-      ridge.valid.forEach((x, i) => { if (r.mph[i] !== null && (!best || r.mph[i] > best.v)) best = { v: r.mph[i], i }; });
-      const day1 = ridgeSummary(ridge, id, 24);
-      if (best) {
-        ridgeTxt = ` Ridge-top wind up to ${best.v} mph from the ${compass(r.dir[best.i])} (${localDT(ridge.valid[best.i], tz)}, ${names[ridge.src[best.i]]})` +
-          (day1 && day1.mph < best.v ? `; next 24 h up to ${day1.mph} mph from the ${compass(day1.dir)} (${day1.model})` : "") + `.${ridgeTxt}`;
-      }
-    }
     const lay = C.layout(220, { margin: { r: 70, b: ax.b }, shapes, xaxis: ax.axis });
     const yr = C.extent(allY, { zero: true, min: 10 });
     lay.yaxis = C.yaxis({ range: yr });
@@ -401,13 +355,9 @@
     const mx = (a, i0 = 0, i1 = D.n) => Math.max(0, ...a.slice(i0, i1).filter((v) => v !== null));
     const lateG = D.N > D.n ? mx(s.gust_mph, D.n, D.N) : null;
     C.summary(el, `${POINT_LABEL[wk]} wind up to ${mx(s.wind_mph)} mph, gusts to ${mx(s.gust_mph)} mph in the next ${Math.round(HOURS_DETAIL / 24 * 2) / 2} days` +
-      `${lateG !== null ? ` (later, 6-hourly: gusts to ${lateG} mph)` : ""} (NBM, 10 m).${ridgeTxt}`);
-    const rows = fc.times.map((x, i) => {
-      const j = r ? ridge.valid.indexOf(x) : -1;
-      return [localDT(x, tz), plain(s.wind_mph[i]), plain(s.gust_mph[i]),
-        j >= 0 && r.mph[j] !== null ? `${r.mph[j]} ${compass(r.dir[j])} (${ridge.models[ridge.src[j]]?.label})` : "–"];
-    });
-    C.tableToggle(el, "Wind (mph)", ["Time", "Wind", "Gusts", "Ridge-top"], rows);
+      `${lateG !== null ? ` (later, 6-hourly: gusts to ${lateG} mph)` : ""} (NBM, 10 m wind).`);
+    const rows = fc.times.map((x, i) => [localDT(x, tz), plain(s.wind_mph[i]), plain(s.gust_mph[i])]);
+    C.tableToggle(el, "Wind (mph)", ["Time", "Wind", "Gusts"], rows);
   }
 
   function snowRateChart(el, fc, pt, tz) {
@@ -708,7 +658,7 @@
       <section><h3>Snow level vs the ${isStation ? "station" : isRec ? "trailhead and high terrain" : "mountain"}</h3>
         <div class="chart" id="sl-chart" style="height:260px"><p class="hint">Loading chart…</p></div>
         <p class="note" id="sl-note"></p></section>
-      <section><h3>Hour by hour <span class="h3sub" id="hbh-sub"></span></h3><p class="note" id="ridge-note"></p>
+      <section><h3>Hour by hour <span class="h3sub" id="hbh-sub"></span></h3>
         <div class="chart" id="t-chart" style="height:220px"><p class="hint">Loading chart…</p></div>
         <div class="chart" id="w-chart" style="height:220px"><p class="hint">Loading chart…</p></div>
         <div class="chart" id="p-chart" style="height:220px"><p class="hint">Loading chart…</p></div>
@@ -783,25 +733,20 @@
         $("sl-note").textContent = `Below the line precipitation falls as rain. The line is solid where precipitation is likely (≥ 20% chance) and dotted where it is not; the orange band is NBM's 10–90% range${src === "nws" ? "" : " (as far as NBM provides it, about 10 days)"}. Times ${tzName(tz)}.`;
         $("met-note").textContent = src === "nws"
           ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), as issued — not adjusted to this elevation. Snow in 6-hour amounts, shown as an hourly rate. Days 4–10: see the day/night bars above.`
-          : "Temperatures adjusted from the 2.5-km NBM grid to each elevation (6.5 °C/km). Snow: hourly to 36 h, then 6-hour amounts, both shown as a rate (in per hour) so they compare. Ridge-top wind: HRRR, then RRFS. After 3½ days (shaded) temperature and wind are NBM's 6-hourly values; snow after that: see the day/night bars above.";
+          : "Temperatures adjusted from the 2.5-km NBM grid to each elevation (6.5 °C/km). Snow: hourly to 36 h, then 6-hour amounts, both shown as a rate (in per hour) so they compare. After 3½ days (shaded) temperature and wind are NBM's 6-hourly values; snow after that: see the day/night bars above.";
       };
       // Each chart draws when it comes near the viewport (SnowCharts.lazy), one per task, so
       // Plotly only loads once a chart is about to be seen.
       const drawCharts = () => {
         const d = doc(), keys = keysOf(d);
-        const withPlotly = (f) => () => Promise.all([loadPlotly(), isStation ? null : loadRidge()]).then(([, ridge]) => f(ridge));
+        const withPlotly = (f) => () => loadPlotly().then(() => f());
         // explanation only: the numbers live in the wind panel's summary (one source, fix 5)
-        if (!isStation) loadRidge().then((ridge) => {
-          $("ridge-note").innerHTML = ridge?.areas?.[a.id] ? `The green <b>ridge-top wind</b> is the free-air wind at summit height
-            (${esc(ridge.models.map((m) => m.label).join(", then "))}), what exposed ridges feel; NBM's 10 m wind runs lower on exposed
-            summits. <a href="about.html#ridge-wind">Why →</a>` : "";
-        });
         C.summary($("period-chart"), periodSummary(d, pt));     // text first (LCP), chart when near view
         C.lazy($("period-chart"), withPlotly(() => periodChart($("period-chart"), d, pt, tz)));
         if (!$("ex-sec").hidden) C.lazy($("ex-chart"), () => exceedTable($("ex-chart"), d, pt, tz));
         C.lazy($("sl-chart"), withPlotly(() => snowLevelChart($("sl-chart"), d, keys, tz)));
         C.lazy($("t-chart"), withPlotly(() => tempChart($("t-chart"), d, keys, tz)));
-        C.lazy($("w-chart"), withPlotly((ridge) => windChart($("w-chart"), d, pt, keys, ridge, a.id, tz)));
+        C.lazy($("w-chart"), withPlotly(() => windChart($("w-chart"), d, pt, keys, tz)));
         C.lazy($("p-chart"), withPlotly(() => snowRateChart($("p-chart"), d, pt, tz)));
         return Promise.resolve();
       };
