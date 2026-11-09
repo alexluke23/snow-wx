@@ -56,6 +56,13 @@ percentiles, snow level method, verification).
   (3 m 21 s with it), GFS 66–68 s. HRRR `wrfprs` has 25-mb levels 1000–50 mb; per forecast hour,
   the 21 levels 1000–500 mb cost TMP 12.3 MB, RH 16.6 MB (DPT 22.6 MB), HGT 15.3 MB,
   UGRD+VGRD 25.7 MB (byte ranges from the idx).
+- **Session 11 (dev11, Nov 9):** snow charts rebuilt on NBM's native percentile windows. Finding: the old day/night
+  ranges added two 6-h percentile windows per 12-h period (NBM has no 12-h snowfall percentiles). Now "Snowfall by
+  day" (12Z-12Z) = native 24-h p25-p75 range bars coloured by p50; NWS view = NDFD daily amounts; Accumulated snow =
+  expected running total by day ending at the 10-day horizon. NWS snowfall colour table (NOHRSC National Snowfall
+  Analysis legend) site-wide via colors.js SNOWFALL + snowLegendHtml (model maps excepted). points/ndfd cleanup
+  now deletes only its own files. Lighthouse mobile: area 96-97, Finder 97, obs map 85, mine/about 100; a11y 100.
+  Storm-total tracker (Track 2 item 8) not started (usage).
 - **Session 10 (dev10, Nov 8):** user-testing fixes: no ridge wind on forecast pages, SNOTEL panel layout, snow section
   redesign (range bars, Accumulated snow, Snow ratio + snow type). Basemap spike: 3 candidate designs behind
   `?bm=1|2|3` on the obs map and Powder Finder; owner picked design 3, now live in basemap.js + basemap-ref.js. Found and fixed:
@@ -429,7 +436,7 @@ rename, day-10 temp/wind panels, Sno-Park research).
    (24/72 h) and chance of ≥ 4/6/12" as zoomable layers with hover values
    (NOHRSC layer system). This is the consumer replacement for most
    model-map use.
-8. **Storm-total tracker**: observed snow over a selectable storm window
+8. **Storm-total tracker** (next: S12, after S11 stopped at item 4): observed snow over a selectable storm window
    (NOHRSC snowfall + SNOTEL depth/SWE change), map + per-site totals.
 9. **Obs time slider**: step back through the last 24–72 h of
    observations/NOHRSC analyses.

@@ -238,6 +238,16 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       summit = high terrain; `common.forecast_areas()` = ski areas + Sno-Parks for every point product). Obs map perf
       pass (map_points.json, vendored Leaflet, parallel loads). Lighthouse realistic numbers: serve build/ with gzip
       (scratchpad gzserve.py pattern); the plain http.server has no gzip and understates mobile scores.
+- [x] S11 (dev11, not pushed): snow charts on NATIVE NBM percentile windows only (never add percentiles).
+      points JSON `days` (12Z-12Z; nbm/run.py + ndfd.py): snow_in (sum of 6-h det windows), snow_p25/p50/p75 from the
+      one native window that exactly covers the day (snow24, or snow6 for a 6-h first day; P.native_window), else
+      None (01Z/19Z first day is 11-17 h: no range). area.js periodChart = "Snowfall by day" (p25-p75 bars coloured by
+      p50, "low–high″" labels, muted < 0.5 in, hatched expected when no native window); accumChart = expected running
+      total by day ending at the 10-day total's horizon. 12-h `periods` stay (temps, snow type, mine.js, Finder).
+      colors.js SNOWFALL = NWS snowfall table (NOHRSC legend, 0/T/0.1/1/2/3/4/6/8/12/18/24/30/36/48/60/72/96/120+),
+      snowLegendHtml() + snowPale() shared by area, overlays, Finder. `points --out` / `ndfd --out` = the points
+      folder itself (build/data/points, build/data/ndfd); cleanup now only deletes files listed in its old summary.json.
+      NEXT (S12): Track 2 item 8 storm-total tracker (NOHRSC snowfall + SNOTEL depth/SWE change), NWS colours.
 - [x] S10 (dev10): ridge wind off forecast pages; SNOTEL panel overlap fix; snow redesign (NBM 25/75 snowfall + SNOWLR
       10/90 selected, SELECTION_VERSION 6; periods snow_q1/q3 + snow_type; totals 48h + q1/q3; summary window[5] = main
       snow type; area.js periodChart range bars, accumChart, slrChart + strip). Points fetch ~+60 % (391 s local).
