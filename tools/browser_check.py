@@ -333,6 +333,31 @@ def check_charts(b: Browser, base: str, log):
         if st["wetPeriods"]:
             need(st["wetLine"] > 0, f"{area}: {st['wetPeriods']} wet periods but the snow-level line is dry everywhere")
             need("Little precipitation" not in st["sum"], f"{area}: summary says little precipitation: {st['sum']}")
+        # S11: "Snowfall by day" = one bar per 12Z-12Z day from NBM's native 24-h p25/p75 (never summed),
+        # labelled "low–high", no expected tick, NWS-colour legend under the chart
+        st = b.eval("""(async () => {
+          const d = await (await fetch('data/points/%s.json')).json();
+          const days = d.points.summit.days || [];
+          const el = document.getElementById('period-chart');
+          const tr = el && el.data ? el.data : [];
+          const ticks = tr.filter(t => t.marker && t.marker.symbol === 'line-ew').length;
+          const bars = tr[0] ? tr[0].x.length : 0;
+          const bad = days.filter(x => x.snow_p25 !== null && x.range_window === null).length;
+          const legend = !!el.parentElement.querySelector('.snow-legend');
+          const labels = [...el.querySelectorAll('.annotation-text')].map(a => a.textContent).filter(t => /″/.test(t));
+          return {days: days.length, bars, ticks, bad, legend, labels: labels.slice(0, 11)}; })()""" % area)
+        log(f"  charts {area}: snowfall by day {st}")
+        need(st["days"] >= 8 and st["bars"] == st["days"] and st["ticks"] == 0 and st["legend"] and st["bad"] == 0,
+             f"{area}: daily snowfall chart wrong: {st}")
+        need(len(st["labels"]) == st["days"], f"{area}: every day needs a low–high label: {st['labels']}")
+        nws = b.eval("""(async () => { const btn = document.querySelector('[data-src=nws]'); if (!btn) return null;
+          btn.click(); await new Promise(r => setTimeout(r, 2500));
+          const sec = document.getElementById('period-chart').parentElement;
+          const out = {toggles: sec.querySelectorAll('.chart-table').length, legends: sec.querySelectorAll('.snow-legend').length};
+          document.querySelector('[data-src=nbm]').click(); await new Promise(r => setTimeout(r, 1500));
+          out.back = sec.querySelectorAll('.chart-table').length; return out; })()""")
+        log(f"  charts {area}: NBM -> NWS -> NBM table toggles/legends {nws}")
+        need(nws is None or (nws["toggles"] == 1 and nws["legends"] == 1 and nws["back"] == 1), f"{area}: duplicate toggles/legends: {nws}")
         # fix 6: end labels (right of the plot) never overlap; fix 7: SNOTEL panels start at 0
         st = b.eval("""(() => {
           const overlaps = [];
