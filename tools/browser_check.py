@@ -350,6 +350,17 @@ def check_charts(b: Browser, base: str, log):
         need(st["days"] >= 8 and st["bars"] == st["days"] and st["ticks"] == 0 and st["legend"] and st["bad"] == 0,
              f"{area}: daily snowfall chart wrong: {st}")
         need(len(st["labels"]) == st["days"], f"{area}: every day needs a low–high label: {st['labels']}")
+        # S11 step 4: accumulated = expected running total by day, no probability bars; ends at the 10-day total
+        acc = b.eval("""(async () => {
+          const d = await (await fetch('data/points/%s.json')).json();
+          const el = document.getElementById('acc-chart'); const t = el && el.data ? el.data : [];
+          const T = d.points.summit.totals; const tot = (T['10d'] || T['7d'] || T['72h'] || {}).snow_in;
+          const y = t[0] ? t[0].y : [];
+          return {traces: t.length, shapes: (el.layout.shapes || []).length, last: y[y.length - 1], tot,
+                  mono: y.every((v, i) => i === 0 || v >= y[i - 1] - 0.05)}; })()""" % area)
+        log(f"  charts {area}: accumulated {acc}")
+        need(acc["traces"] == 1 and acc["shapes"] == 0 and acc["mono"] and abs((acc["last"] or 0) - (acc["tot"] or 0)) <= 0.11,
+             f"{area}: accumulated snow chart: {acc}")
         nws = b.eval("""(async () => { const btn = document.querySelector('[data-src=nws]'); if (!btn) return null;
           btn.click(); await new Promise(r => setTimeout(r, 2500));
           const sec = document.getElementById('period-chart').parentElement;
