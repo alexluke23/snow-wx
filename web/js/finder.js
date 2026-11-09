@@ -164,7 +164,6 @@
           <span class="num" data-label="Obs 24 h">${r.obs === null ? "–" : `${fmt(r.obs)}"`}</span>
           <span class="num" data-label="Snow level" title="${r.sl === null || dry ? "" : `lowest snow level while precipitation is likely in this window: ${Math.round(r.sl).toLocaleString()} ft`}">${slTxt}</span>
           <span class="num" data-label="Gust">${r.gust === null ? "–" : `${Math.round(r.gust)}`}<small> mph</small></span>
-          ${ridgeCell(r.a.id)}
           ${st.ty ? `<span class="num" data-label="Snow type" title="${r.stype ? esc(TYPE_LONG[r.stype]) + " — " : ""}heuristic from NBM's snow ratio">${r.stype ? esc(TYPE_SHORT[r.stype]) : "–"}</span>` : ""}
         </span>
       </div>`;
@@ -172,10 +171,10 @@
     $("legend-note").textContent = prob
       ? `Chance of at least ${st.px}" of snow in ${st.pw.replace("h", " h")} (${dayLabel(st.pd).replace("Next: ", "")}) at the ${st.e}, from NBM's ` +
         `probabilistic guidance for the 2.5 km grid cell. ${SEPARATE} Small number: NBM's expected amount in the same window (about a 1-in-3 chance of reaching it). ` +
-        `Snow level: lowest while precipitation is likely in that window. ${ridgeNote()}`
+        `Snow level: lowest while precipitation is likely in that window.`
       : `Expected snowfall at the ${st.e} (${st.src === "nws" ? "NWS forecast, 2.5 km grid cell" : "NBM"})` +
         `${st.src === "nws" ? "" : "; small numbers: NBM 10–90%"}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest while precipitation is likely in the window, vs the base ` +
-        `("–" when the chance of precipitation is under 20 %). Gust: highest summit gust in 72 h (NBM). ${ridgeNote()} ★ favorites list first.`;
+        `("–" when the chance of precipitation is under 20 %). Gust: highest summit gust in 72 h (NBM). ★ favorites list first.`;
     $("rows").querySelectorAll(".star").forEach((b) => b.addEventListener("click", () => {
       const s = favs(); s.has(b.dataset.id) ? s.delete(b.dataset.id) : s.add(b.dataset.id); saveFavs(s); render();
     }));
@@ -183,53 +182,6 @@
   }
 
   function update() { buildRows(); render(); }
-
-  // ridge-top wind (HRRR then RRFS, to 84 h): highest in the chosen window, loaded after
-  // first paint. ridge: undefined = loading, false = not published yet, else ridge.json.
-  let ridge;
-  const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
-  const shortTime = (ms) => new Date(ms).toLocaleString([], { weekday: "short", hour: "numeric" });
-  const ridgeEnd = () => new Date(ridge.valid[ridge.valid.length - 1]).getTime();
-  function ridgeMax(id) {
-    // -> {mph, dir, partial, end} | {none: "beyond" | "missing"} | null (still loading)
-    if (ridge === undefined) return null;
-    if (!ridge || !ridge.valid?.length) return { none: "missing" };
-    const r = ridge.areas?.[id];
-    if (!r) return { none: "missing" };
-    let a, b;
-    if (st.m === "prob") {
-      const w = pwin();
-      if (!w?.start[st.pd]) return null;
-      a = new Date(w.start[st.pd]).getTime(); b = new Date(w.end[st.pd]).getTime();
-    } else {
-      a = new Date(nbm.issued).getTime(); b = a + { "24h": 24, "72h": 72, "7d": 168, "10d": 240 }[st.w] * 3.6e6;
-    }
-    const last = ridgeEnd();
-    let best = null;
-    ridge.valid.forEach((t, i) => {
-      const x = new Date(t).getTime();
-      if (x > a && x <= b && r.mph[i] !== null && (!best || r.mph[i] > best.mph)) best = { mph: r.mph[i], dir: r.dir[i] };
-    });
-    if (!best) return { none: a >= last ? "beyond" : "missing" };
-    return { ...best, partial: last < b, end: last };
-  }
-  function ridgeCell(id) {
-    const m = ridgeMax(id);
-    if (!m) return `<span class="num" data-label="Ridge">–<small> mph</small></span>`;
-    if (m.none) {
-      const why = m.none === "beyond" ? `beyond the HRRR/RRFS range (data to ${shortTime(ridgeEnd())})` : "not available yet";
-      return `<span class="num" data-label="Ridge" title="Ridge-top wind ${esc(why)}"><span class="hint">n/a</span></span>`;
-    }
-    const dir = COMPASS[Math.round(m.dir / 22.5) % 16];
-    return m.partial
-      ? `<span class="num" data-label="Ridge" title="At least this: the model data end ${esc(shortTime(m.end))}, before the window does">≥${m.mph}<small> mph ${dir}</small></span>`
-      : `<span class="num" data-label="Ridge">${m.mph}<small> mph ${dir}</small></span>`;
-  }
-  function ridgeNote() {
-    if (ridge === false || (ridge && !ridge.valid?.length)) return "Ridge: ridge-top wind is not available yet (it comes with the next model run).";
-    const end = ridge?.valid?.length ? ` (data to ${shortTime(ridgeEnd())})` : "";
-    return `Ridge: highest ridge-top wind at summit height in the window, HRRR then RRFS${end}; "≥" = the window runs past the model data, n/a = beyond it.`;
-  }
 
   async function ensureExceed() {
     if (exceed) return;
@@ -305,7 +257,6 @@
     $("fresh").textContent = `NBM ${when(nbm.issued)} run${nws ? ` · NWS issued ${when(nws.issued)}` : ""}${obs?.snowfall_end ? ` · observed to ${when(obs.snowfall_end)}` : ""}`;
     if (st.m === "prob") await ensureExceed();
     update();
-    getJSON("data/ridge.json").then((x) => { ridge = x; render(); }).catch(() => { ridge = false; render(); });
     (window.requestIdleCallback || ((f) => setTimeout(f, 300)))(initMap, { timeout: 1500 });
   }
   load();
