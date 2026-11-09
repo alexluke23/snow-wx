@@ -53,20 +53,8 @@ function snowTileLayer(url, opts) {
 }
 
 // eslint-disable-next-line no-unused-vars
-function snowBasemaps(map, { initial = "Shaded relief (USGS)", maxZoom = 17, onSwitch } = {}) {
-  // Design spike (S10 step 3): ?bm=1|2|3 shows a candidate design instead (js/basemap-proto.js).
-  const proto = new URLSearchParams(location.search).get("bm");
-  if (["1", "2", "3"].includes(proto)) {
-    window.snowwx = window.snowwx || {};
-    window.snowwx.map = window.snowwx.map || map;
-    const s = document.createElement("script");
-    s.src = "js/basemap-proto.js";
-    s.onload = () => snowBasemapProto(map, proto);      // eslint-disable-line no-undef
-    document.head.appendChild(s);
-    const api = { layers: {}, use() {}, current: () => `proto ${proto}` };
-    window.snowwx.basemap = api;
-    return api;
-  }
+function snowBasemaps(map, { initial = "Shaded relief (USGS)", maxZoom = 17, onSwitch, deferReference = false } = {}) {
+  window.snowwx = window.snowwx || {};
   const USGS = "https://basemap.nationalmap.gov/arcgis/rest/services";
   const NM = '<a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">USGS</a>';
   const DEFS = [
@@ -134,11 +122,67 @@ function snowBasemaps(map, { initial = "Shaded relief (USGS)", maxZoom = 17, onS
     layers[name].bringToBack();
   }
 
+  // Reference layer (roads, towns, state lines, peaks; js/basemap-ref.js, owner pick S10) in its own
+  // pane above the base tiles and below overlays/markers. The group exists right away so the layer
+  // control can list it; the MapLibre layer is loaded into it after the first paint. It goes with the
+  // shaded relief only: Topo and Imagery carry their own labels, so it is hidden there (and comes
+  // back with the relief unless the visitor turned it off).
+  map.createPane("reference");
+  map.getPane("reference").style.zIndex = 250;
+  map.getPane("reference").style.pointerEvents = "none";
+  const REF = "Roads, towns & peaks";
+  const reference = L.layerGroup();
+  const refState = (window.snowwx.reference = { state: "pending", group: reference });
+  let refWanted = true, auto = false;
+  const refFits = (name) => name === "Shaded relief (USGS)";
+  map.on("overlayadd overlayremove", (e) => { if (e.layer === reference && !auto) refWanted = e.type === "overlayadd"; });
+  const syncRef = () => {
+    auto = true;
+    if (refWanted && refFits(current)) reference.addTo(map); else map.removeLayer(reference);
+    auto = false;
+  };
+  let refStarted = false;
+  function loadReference() {
+    if (refStarted) return;
+    refStarted = true;
+    const s = document.createElement("script");
+    s.src = "js/basemap-ref.js"; s.async = true;
+    s.onload = () => snowReferenceLayer("reference")          // eslint-disable-line no-undef
+      .then((gl) => {
+        reference.addLayer(gl);
+        refState.state = "ready"; refState.layer = gl;
+        gl.getMaplibreMap?.().once("idle", () => { refState.state = "idle"; });
+      })
+      .catch((err) => { refState.state = "failed"; console.debug("basemap: reference layer unavailable", err); });
+    s.onerror = () => { refState.state = "failed"; };
+    document.head.appendChild(s);
+  }
+  // MapLibre (~210 KB gz; parsing it is one 100-500 ms main-thread task on a throttled phone) stays off
+  // the critical path, like the Plotly prefetch in app.js: the page's own data and markers come first
+  // (the page calls api.loadReference() once they are drawn, or window load when deferReference is
+  // off); then the reference starts on the first interaction (pointer, wheel, touch, key, map move)
+  // or after REF_DELAY_MS, whichever comes first. Desktop pointers trigger it almost at once.
+  const REF_DELAY_MS = 10000;
+  function scheduleReference() {
+    const evs = ["pointerdown", "pointermove", "wheel", "touchstart", "keydown"];
+    const go = () => { evs.forEach((t) => window.removeEventListener(t, go, true)); loadReference(); };
+    evs.forEach((t) => window.addEventListener(t, go, { capture: true, passive: true, once: true }));
+    map.once("movestart zoomstart", go);
+    setTimeout(go, REF_DELAY_MS);
+  }
+  if (!deferReference) {
+    if (document.readyState === "complete") scheduleReference(); else window.addEventListener("load", scheduleReference, { once: true });
+  } else {
+    setTimeout(scheduleReference, 15000);       // safety net if the page never calls loadReference()
+  }
+
   map.on("baselayerchange", (e) => {           // the user picked one in the layer control
     current = e.name in layers ? e.name : current;
     if (current) stats[current].recent = [];
+    syncRef();
   });
   use(initial in layers ? initial : DEFS[0].name);
+  syncRef();
   // re-measure when the map box changes size (layout shifts, sticky panels, browser zoom):
   // otherwise Leaflet keeps loading tiles for the old size and the rest stays grey
   if ("ResizeObserver" in window) {
@@ -146,7 +190,16 @@ function snowBasemaps(map, { initial = "Shaded relief (USGS)", maxZoom = 17, onS
     new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => map.invalidateSize({ pan: false })); })
       .observe(map.getContainer());
   }
-  const api = { layers, use, current: () => current };
+  // compact credits on phones (CSS: 2 lines); the first tap expands them, links work once open
+  const attr = map.attributionControl?.getContainer();
+  if (attr) {
+    attr.classList.add("compact");
+    attr.setAttribute("title", "Map credits (tap to show all)");
+    attr.addEventListener("click", (e) => {
+      if (!attr.classList.contains("open") && window.matchMedia("(max-width: 600px)").matches) { attr.classList.add("open"); e.preventDefault(); }
+    }, true);
+  }
+  const api = { layers, overlays: { [REF]: reference }, use, current: () => current, loadReference: scheduleReference };
   window.snowwx.basemap = api;            // test handle (tools/browser_check.py)
   return api;
 }

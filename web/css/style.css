@@ -443,5 +443,9 @@ body.mine-page > main { min-height: 100vh; min-height: 100dvh; }
   .finder-list.with-type .frow, .finder-list.with-type .frow.fhead { grid-template-columns: 40px minmax(140px, 1fr) 104px 64px 82px 66px 84px 56px; }
 }
 .mcard .stype { background: #e8f0fa; color: #10243c; border: 1px solid #8aa6c8; border-radius: 4px; padding: 0 6px; font-weight: 600; }
-/* basemap spike: faded USGS Topo over relief */
-.topo-faded { filter: grayscale(0.85) contrast(0.9) brightness(1.05); }
+
+/* small screens: the map credits take two lines; tap to read them all (OSM allows expandable credits on mobile) */
+@media (max-width: 600px) {
+  .leaflet-control-attribution.compact { max-height: 2.7em; overflow: hidden; cursor: pointer; font-size: 10px; line-height: 1.35; }
+  .leaflet-control-attribution.compact.open { max-height: none; }
+}

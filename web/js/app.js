@@ -45,7 +45,7 @@
   window.snowwx = { map, ready: false };   // debugging / benchmark handle
 
   // base maps with overzoom and automatic fallback (basemap.js, PLAN.md §6-C)
-  const baseLayers = snowBasemaps(map).layers;
+  const basemaps = snowBasemaps(map, { deferReference: true }), baseLayers = basemaps.layers;
 
   const avyLayer = L.geoJSON(null, { style: avyStyle, onEachFeature: avyPopup });
   // NOHRSC / SNODAS raster overlays (overlays.js), one at a time; o= in the URL hash.
@@ -68,6 +68,7 @@
   spLayer.addTo(map);
 
   L.control.layers(baseLayers, {
+    ...basemaps.overlays,                       // roads, towns & peaks over the relief (basemap-ref.js)
     "Ski areas": skiLayer,
     "Sno-Parks": spLayer,
     "Avalanche danger": avyLayer,
@@ -652,6 +653,7 @@
     openFromHash(initialHash, false);
     writeHash();
     window.snowwx.ready = true;
+    basemaps.loadReference();                   // roads/towns layer after the markers (basemap.js)
     // Warm the chart library once the map is idle, so the first station click is quick
     // without Plotly blocking the initial load.
     // Only after the first interaction (or 15 s): an idle-time prefetch competed with the base-map
