@@ -107,6 +107,27 @@ def plausibility(base_totals: dict, summit_totals: dict, key="10d", ratio=1.25, 
     return out
 
 
+SNOW_TYPE = {"wet_max": 8.0, "average_max": 12.0, "dry_max": 18.0, "wind_gust_mph": 30.0, "min_snow_in": 0.5}
+SNOW_TYPE_LABEL = {"wet": "Wet/heavy", "average": "Average", "dry": "Dry/light", "very_dry": "Very dry/blower"}
+
+
+def configure_snow_type(cfg: dict | None) -> None:
+    """Thresholds from config/settings.yml `snow_type` (owner S10)."""
+    SNOW_TYPE.update({k: float(v) for k, v in ((cfg or {}).get("snow_type") or {}).items()})
+
+
+def snow_type(slr, gust_mph_during_snow=None, snow_in=None) -> dict | None:
+    """Heuristic snow type from NBM's snow-to-liquid ratio (owner S10): Wet/heavy < 8:1,
+    Average 8-12, Dry/light 12-18, Very dry/blower >= 18, plus "wind-affected" when summit gusts
+    during snowfall reach the threshold. None when little snow falls."""
+    t = SNOW_TYPE
+    if slr is None or not snow_in or snow_in < t["min_snow_in"]:
+        return None
+    k = "wet" if slr < t["wet_max"] else "average" if slr < t["average_max"] else "dry" if slr < t["dry_max"] else "very_dry"
+    return {"type": k, "label": SNOW_TYPE_LABEL[k],
+            "wind": bool(gust_mph_during_snow is not None and gust_mph_during_snow >= t["wind_gust_mph"])}
+
+
 def powder_quality(slr, gust_mph_during_snow=None, snow_in=None):
     """Simple documented heuristic (PLAN.md §5.2). None when there is no snow."""
     if not snow_in or snow_in < 0.5 or slr is None:
@@ -167,3 +188,13 @@ def window_wet(periods: list[dict], start: str, end: str, pop_min: float = WET_P
     wet = [p["snowlvl_min_ft"] for p in inside
            if p.get("snowlvl_min_ft") is not None and p.get("pop") is not None and p["pop"] >= pop_min]
     return (round(100 * max(pops)) if pops else None), (min(wet) if wet else None)
+
+
+def window_snow_type(periods: list[dict], start: str, end: str) -> str | None:
+    """Main snow type over a window: the type of the periods with the most snow (owner S10)."""
+    acc: dict[str, float] = {}
+    for p in periods:
+        t = p.get("snow_type")
+        if t and p.get("end", "") > start and p.get("start", "") < end:
+            acc[t["type"]] = acc.get(t["type"], 0.0) + (p.get("snow_in") or 0.0)
+    return max(acc, key=acc.get) if acc else None

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Snow-Wx · About and methods</title>
-  <meta name="description" content="How Snow-Wx builds its ski-area forecasts: NBM deterministic and probabilistic snowfall, snow level, elevation adjustment, NWS forecasts, ridge-top wind, data sources and attribution.">
+  <meta name="description" content="How Snow-Wx builds its ski-area forecasts: NBM deterministic and probabilistic snowfall, snow level, elevation adjustment, NWS forecasts, data sources and attribution.">
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -40,9 +40,9 @@
       <a href="https://avalanche.org/" target="_blank" rel="noopener">avalanche center</a> before heading out.</p>
 
     <nav class="toc" aria-label="On this page">
-      <a href="#nbm">NBM forecasts</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#forecast-map">Forecast map</a> ·
+      <a href="#nbm">NBM forecasts</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#forecast-map">Forecast map</a> · <a href="#snow-type">Snow type</a> ·
       <a href="#snow-level">Snow level</a> · <a href="#elevation">Elevation</a> · <a href="#nws">NWS forecast</a> ·
-      <a href="#ridge-wind">Ridge-top wind</a> · <a href="#snoparks">Sno-Parks</a> · <a href="#afd">Forecaster discussion</a> ·
+<a href="#snoparks">Sno-Parks</a> · <a href="#afd">Forecaster discussion</a> ·
       <a href="#sources">Data sources</a> · <a href="#disclaimer">Disclaimer</a>
     </nav>
 
@@ -72,7 +72,7 @@
 
     <section id="probabilities">
       <h3>Snowfall ranges and chances</h3>
-      <p><b>Ranges (whiskers and "NBM 10–90%")</b> are NBM's own snowfall percentiles. The 01, 07, 13 and 19 UTC
+      <p><b>Ranges (range bars: dark = likely, 25–75%; light = 10–90%)</b> are NBM's own snowfall percentiles. The 01, 07, 13 and 19 UTC
         NBM runs carry 24-, 48- and 72-hour snowfall percentiles out to about 11 days; we use those runs whenever
         they are available. A range for a period is built from the 10th and 90th percentiles of the windows that
         cover it. Adding windows rank by rank (10th + 10th, 90th + 90th) makes the range slightly too wide, so
@@ -88,6 +88,22 @@
         windows across the western US: they agree within about 1–4 percentage points on average. The chances are
         for the 2.5-km grid cell and are not adjusted to the summit or base elevation. They are NBM-only, because
         the NWS forecast has no snowfall probabilities.</p>
+    </section>
+
+    <section id="snow-type">
+      <h3>Snow ratio and snow type (a heuristic)</h3>
+      <p>The <b>snow ratio</b> is NBM's forecast snow-to-liquid ratio: how many inches of snow one inch of water makes.
+        Area pages chart it over time with NBM's 10–90% range where NBM provides one, drawn solid only where precipitation is
+        likely. From the ratio of each 12-hour period with at least half an inch of snow we give a simple <b>snow type</b>:</p>
+      <ul>
+        <li><b>Wet/heavy</b>: below 8:1 — dense, sticky snow.</li>
+        <li><b>Average</b>: 8–12:1.</li>
+        <li><b>Dry/light</b>: 12–18:1.</li>
+        <li><b>Very dry/blower</b>: 18:1 and up.</li>
+      </ul>
+      <p><b>Wind-affected</b> (≋) is added when NBM's summit gusts reach 30 mph while it snows. This is a rule of thumb from a
+        forecast, not a measurement: real snow quality also depends on crystal type, settling, sun and the snow already on the
+        ground. The thresholds live in the site's configuration and may be tuned once we can verify them.</p>
     </section>
 
     <section id="forecast-map">
@@ -137,21 +153,6 @@
         Snowfall, precipitation and snow level are available to 72 hours.</p>
     </section>
 
-    <section id="ridge-wind">
-      <h3>Ridge-top wind</h3>
-      <p>NBM's wind is a 10-metre wind for a 2.5-km grid cell, and that cell's elevation is usually well below an
-        exposed summit or ridge. Winds near the ground are slowed by friction (trees, terrain, valleys), and winds
-        increase with height in most storms, so NBM 10-m wind typically underestimates what you feel on an exposed
-        ridge, often by a factor of two or more in strong flow.</p>
-      <p>The "ridge wind" shown on area pages and in Powder Finder is the free-air wind at the summit's height:
-        taken from the HRRR (0–48 h) and RRFS (to 84 h) models' pressure-level winds and interpolated to the
-        pressure at the summit elevation. This is what a well-exposed ridge experiences; sheltered terrain and the
-        lee side of ridges will see less, and gusts can be higher.</p>
-      <p>Details: we use the model grid column nearest the summit and interpolate the wind in height between the
-        pressure levels around the summit (RRFS every 50 mb; HRRR only 850, 700 and 500 mb, so between those its
-        values are interpolated over 1.5–2.5 km of height). Levels that lie below the model's own terrain are skipped.
-        HRRR is used to 48 hours, then RRFS to 84 hours.</p>
-    </section>
 
     <section id="afd">
       <h3>Forecaster discussion</h3>
@@ -178,7 +179,7 @@
           gaps filled from © OpenStreetMap contributors (ODbL; our derived list is shared under the ODbL); elevations from
           USGS 3DEP. State Sno-Park programs (Washington, Oregon, California, Idaho) were used only to check names, not
           copied. Activities and permits are shown only as the source states them; otherwise we link to the official program or managing agency. Always check with the land manager.</li>
-        <li><b>Base maps:</b> USGS The National Map (shaded relief, topo, imagery); OpenTopoMap (© OpenStreetMap contributors, SRTM; CC-BY-SA).</li>
+        <li><b>Base maps:</b> USGS The National Map (shaded relief, topo, imagery; public domain). Roads, towns, state lines and peaks over the relief: <a href="https://openfreemap.org">OpenFreeMap</a> vector tiles © <a href="https://www.openmaptiles.org/">OpenMapTiles</a>, data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL), drawn with MapLibre GL JS (BSD-3-Clause).</li>
       </ul>
     </section>
 

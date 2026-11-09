@@ -108,7 +108,7 @@
   const C = SnowCharts;
   const PT_STYLE = { summit: { color: C.OI.blue, dash: "solid" }, base: { color: C.OI.vermillion, dash: "dash" },
     point: { color: C.OI.blue, dash: "solid" } };
-  const HOURS_DETAIL = 84;            // "Hour by hour" covers the ridge-wind range (HRRR 48 h, RRFS 84 h)
+  const HOURS_DETAIL = 84;            // "Hour by hour" detail (then 6-hourly to day 10)
   const tzName = (tz) => new Date().toLocaleTimeString("en-US", { timeZone: tz, timeZoneName: "short" }).split(" ").pop();
   const localDT = (iso, tz) => localFmt(iso, tz, { weekday: "short", hour: "numeric" });   // "Mon 5 PM"
   const f1 = (v) => (v === null || v === undefined ? null : Math.round(v * 10) / 10);
@@ -154,57 +154,161 @@
       : `Little or no snow in any day or night period of the next ${Math.round(per.length / 2)} days.`;
   }
 
+  // Plain-language range text (owner S10): "expected 2 in, likely 1–3, could reach 8"
+  function rangeWords(t) {
+    const has = (v) => v !== null && v !== undefined;
+    if (!has(t?.snow_in)) return "no forecast";
+    if ((t.snow_hi ?? t.snow_in) < 0.5) return "little or no snow expected";
+    let s = `expected ${inches(t.snow_in)} in`;
+    if (has(t.snow_q1) && has(t.snow_q3)) s += `, likely ${range(t.snow_q1, t.snow_q3).replace(" in", "")}`;
+    if (has(t.snow_hi) && t.snow_hi >= 0.5) s += `, could reach ${Math.round(t.snow_hi)}`;
+    return `${s} in`;
+  }
+  const RANGE_LIGHT = "#cfe0f3", RANGE_MID = "#7fa9d6", EXP_TICK = "#0b2a55";
+
   function periodChart(el, fc, pt, tz) {
     const per = fc.points[pt].periods;
     const x = per.map((p, i) => i);
     const y = per.map((p) => p.snow_in ?? 0);
-    // whiskers are their own trace (lo..hi), independent of the bar: NBM's deterministic
-    // value may legitimately sit outside its probabilistic range (owner S3)
-    const hasR = per.map((p) => p.snow_lo !== null && p.snow_lo !== undefined && p.snow_hi !== null && p.snow_hi !== undefined);
-    const mid = per.map((p, i) => (hasR[i] ? (p.snow_lo + p.snow_hi) / 2 : null));
-    const half = per.map((p, i) => (hasR[i] ? (p.snow_hi - p.snow_lo) / 2 : 0));
-    const colors = per.map((p, i) => colorFor(SNOWFALL, y[i]) || "#e9edf2");
+    const has = (v) => v !== null && v !== undefined;
+    // two-tone range bars (owner S10): 10-90 % light, 25-75 % ("likely") darker, expected = bold tick.
+    // The range is NBM's probabilistic guidance, the tick NBM's deterministic amount: calibrated
+    // separately, so a tick may sit outside its bar (owner S3).
+    const lo = per.map((p) => (has(p.snow_lo) && has(p.snow_hi) ? p.snow_lo : null));
+    const hi = per.map((p) => (has(p.snow_lo) && has(p.snow_hi) ? p.snow_hi : null));
+    const q1 = per.map((p) => (has(p.snow_q1) && has(p.snow_q3) ? p.snow_q1 : null));
+    const q3 = per.map((p) => (has(p.snow_q1) && has(p.snow_q3) ? p.snow_q3 : null));
     const ticks = per.map((p, i) => [i, p]).filter(([, p]) => p.is_day);
     const hover = per.map((p) =>
-      `<b>${esc(p.label)}</b> (${esc(p.local)})<br>Expected ${p.snow_in ?? "–"} in` +
-      (p.snow_hi !== null && p.snow_hi !== undefined ? ` · ${rangeName(p)}: ${range(p.snow_lo, p.snow_hi)}` : "") +
+      `<b>${esc(p.label)}</b> (${esc(p.local)})<br>${esc(rangeWords(p))}` +
       (outside(p) ? `<br><i>${SEPARATE.replace("so the", "<br>so the")}</i>` : "") +
-      `<br>Liquid ${p.qpf_in ?? "–"} in${p.pop !== null && p.pop !== undefined ? ` · chance of precip ${Math.round(p.pop * 100)}%` : ""}` +
-      (p.type ? `<br>${TYPE_LABEL[p.type] || p.type}${p.p_snow !== null ? `, P(snow) ${Math.round(p.p_snow * 100)}%` : ""}` : "") +
-      (p.powder ? `<br>${esc(p.powder)}` : "") +
+      `<br>Liquid ${p.qpf_in ?? "–"} in${has(p.pop) ? ` · chance of precip ${Math.round(p.pop * 100)}%` : ""}` +
+      (p.type ? `<br>${TYPE_LABEL[p.type] || p.type}` : "") +
+      (p.snow_type ? `<br>Snow type: ${esc(p.snow_type.label)}${p.snow_type.wind ? ", wind-affected" : ""}` : "") +
       (p.snowlvl_min_ft ? `<br>Snow level down to ${ft(p.snowlvl_min_ft)}` : "") +
-      (p.extended ? "<br><i>Extended outlook (hatched)</i>" : ""));
+      (p.extended ? "<br><i>Extended outlook (hatched): derived range</i>" : ""));
     const firstExt = per.findIndex((p) => p.extended);
     const shapes = firstExt >= 0 ? [{ type: "rect", xref: "x", yref: "paper", x0: firstExt - 0.5, x1: per.length - 0.5,
       y0: 0, y1: 1, fillcolor: "rgba(120,130,150,0.07)", line: { width: 0 }, layer: "below" }] : [];
-    // value labels sit above the bar or its whisker, whichever is higher: never on a whisker
-    const labels = per.map((p, i) => (y[i] >= 0.5 ? { x: i, y: Math.max(y[i], hasR[i] ? p.snow_hi : 0), yanchor: "bottom",
-      yshift: 2, text: inches(y[i]), showarrow: false, font: C.font(12, C.INK) } : null)).filter(Boolean);
+    const labels = per.map((p, i) => (y[i] >= 0.5 ? { x: i, y: Math.max(y[i], hi[i] ?? 0), yanchor: "bottom",
+      yshift: 3, text: inches(y[i]), showarrow: false, font: C.font(12, C.INK) } : null)).filter(Boolean);
     const annotations = [C.axisTitle("Snow (in)"), ...labels,
       ...(firstExt >= 0 ? [{ xref: "x", yref: "paper", x: firstExt - 0.4, y: 1, xanchor: "left", yanchor: "bottom", yshift: 4,
         text: "Extended outlook (hatched)", showarrow: false, font: C.font(12, C.MUTED) }] : [])];
-    const top = Math.max(1, ...per.map((p, i) => Math.max(y[i], hasR[i] ? p.snow_hi : 0)));
+    const top = Math.max(1, ...per.map((p, i) => Math.max(y[i], hi[i] ?? 0)));
     const two = C.narrow(el.clientWidth - C.MARGIN.l - C.MARGIN.r, ticks.length);
-    C.plot(el, [{
-      type: "bar", x, y, marker: {
-        color: colors, line: { color: "#5f6f84", width: 0.8 },
-        opacity: per.map((p) => (p.is_day ? 1 : 0.6)),
-        pattern: { shape: per.map((p) => (p.extended ? "/" : "")), fgcolor: "rgba(30,40,60,0.55)", size: 6, solidity: 0.25 },
-      },
-      hovertext: hover, hoverinfo: "text",
-    }, {
-      type: "scatter", mode: "markers", x, y: mid, hoverinfo: "skip", marker: { size: 0.1, color: "rgba(0,0,0,0)" },
-      error_y: { type: "data", array: half, color: "#2b3442", thickness: 1, width: 2 },
-    }], C.layout(260, { hovermode: "closest", bargap: 0.22, shapes, annotations, margin: { b: two ? 46 : C.MARGIN.b },
+    const op = per.map((p) => (p.is_day ? 1 : 0.7));
+    C.plot(el, [
+      { type: "bar", x, base: lo, y: hi.map((h, i) => (h === null ? null : h - lo[i])), width: 0.66, hoverinfo: "skip",
+        marker: { color: RANGE_LIGHT, opacity: op, line: { color: "#8aa6c8", width: 0.8 },
+          pattern: { shape: per.map((p) => (p.extended ? "/" : "")), fgcolor: "rgba(30,40,60,0.5)", size: 6, solidity: 0.25 } } },
+      { type: "bar", x, base: q1, y: q3.map((h, i) => (h === null ? null : h - q1[i])), width: 0.66, hoverinfo: "skip",
+        marker: { color: RANGE_MID, opacity: op, line: { width: 0 } } },
+      { type: "scatter", mode: "markers", x, y, hovertext: hover, hoverinfo: "text",
+        marker: { symbol: "line-ew", size: 22, line: { width: 4, color: EXP_TICK }, color: EXP_TICK } },
+    ], C.layout(260, { hovermode: "closest", barmode: "overlay", bargap: 0.2, shapes, annotations, margin: { b: two ? 46 : C.MARGIN.b },
       yaxis: C.yaxis({ rangemode: "tozero", range: [0, top * 1.18] }),
-      xaxis: { fixedrange: true, tickfont: C.font(C.tick()), tickvals: ticks.map(([i]) => i), tickangle: 0, ticks: "",
+      xaxis: { fixedrange: true, tickfont: C.font(C.tick()), tickvals: ticks.map(([i]) => i), tickangle: 0, ticks: "", range: [-0.6, per.length - 0.4],
                ticktext: ticks.map(([, p]) => C.dayName(C.wall(p.start, tz).slice(0, 10), two)) } }));
     C.summary(el, periodSummary(fc, pt));
     C.tableToggle(el, `Snowfall by day and night (${POINT_LABEL[pt].toLowerCase()})`,
-      ["Period", "Local time", "Expected (in)", "Range (in)", "Liquid (in)", "Chance of precip"],
-      per.map((p) => [p.label, p.local, plain(p.snow_in), p.snow_hi === null || p.snow_hi === undefined ? "–" : range(p.snow_lo, p.snow_hi),
-        plain(p.qpf_in), p.pop === null || p.pop === undefined ? "–" : `${Math.round(p.pop * 100)}%`]));
+      ["Period", "Local time", "Expected (in)", "Likely (25–75%)", "Range (10–90%)", "Snow type", "Chance of precip"],
+      per.map((p) => [p.label, p.local, plain(p.snow_in), has(p.snow_q1) ? range(p.snow_q1, p.snow_q3) : "–",
+        has(p.snow_hi) ? range(p.snow_lo, p.snow_hi) : "–", p.snow_type ? `${p.snow_type.label}${p.snow_type.wind ? " (wind)" : ""}` : "–",
+        has(p.pop) ? `${Math.round(p.pop * 100)}%` : "–"]));
     return firstExt >= 0;
+  }
+
+  /** Accumulated snow (owner S10): cumulative expected snowfall over the forecast, with uncertainty
+   *  only where it is defensible: NBM's own 24/48/72-h ranges and our 7/10-day totals as
+   *  checkpoint range bars. Period percentiles are never summed into a running band. */
+  function accumChart(el, fc, pt, tz) {
+    const P = fc.points[pt], pr = P.precip, T = P.totals || {};
+    const has = (v) => v !== null && v !== undefined;
+    // the running total of the day/night periods (the bars above), so it agrees with the totals
+    const per = P.periods || [];
+    const t0 = new Date(per.length ? per[0].start : pr.end[0]).getTime();
+    let run = 0;
+    const xs = [C.wall(t0, tz)], ys = [0];
+    per.forEach((p) => { run += p.snow_in ?? 0; xs.push(C.wall(p.end, tz)); ys.push(Math.round(run * 10) / 10); });
+    const ax = C.timeAxis(xs[0], xs[xs.length - 1], el.clientWidth - C.MARGIN.l - 56);
+    const shapes = [...ax.shapes], annotations = [C.axisTitle("Accumulated snow (in)")];
+    const cps = [["24h", 24, "24 h"], ["48h", 48, "48 h"], ["72h", 72, "72 h"], ["7d", 168, "7 d"], ["10d", 240, "10 d"]]
+      .filter(([k]) => T[k] && has(T[k].snow_in));
+    const half = 4 * 3.6e6;
+    let top = Math.max(1, run);
+    const cpx = [], cpy = [], cpText = [];
+    for (const [k, L, lab] of cps) {
+      const t = T[k], from = new Date(t.from || pr.end[0]).getTime(), xm = from + L * 3.6e6;
+      const x0 = C.wall(xm - half, tz), x1 = C.wall(xm + half, tz);
+      if (has(t.snow_lo) && has(t.snow_hi)) {
+        shapes.push({ type: "rect", xref: "x", yref: "y", x0, x1, y0: t.snow_lo, y1: t.snow_hi, fillcolor: RANGE_LIGHT, line: { color: "#8aa6c8", width: 0.8 } });
+        top = Math.max(top, t.snow_hi);
+      }
+      if (has(t.snow_q1) && has(t.snow_q3)) shapes.push({ type: "rect", xref: "x", yref: "y", x0, x1, y0: t.snow_q1, y1: t.snow_q3, fillcolor: RANGE_MID, line: { width: 0 } });
+      cpx.push(C.wall(xm, tz)); cpy.push(t.snow_in);
+      cpText.push(`<b>Next ${lab}</b>: ${esc(rangeWords(t))}${k === "7d" || k === "10d" ? "<br><i>Range built from NBM windows added rank by rank (slightly too wide)</i>" : ""}`);
+      if (!(k === "48h" && C.small())) {       // phones: 24 h and 72 h are too close for a third label
+        annotations.push({ x: C.wall(xm, tz), y: Math.max(t.snow_in, t.snow_hi ?? 0), xref: "x", yref: "y", yanchor: "bottom", yshift: 2,
+          text: lab, showarrow: false, font: C.font(12, C.MUTED) });
+      }
+    }
+    C.plot(el, [
+      { x: xs, y: ys, mode: "lines", line: { color: EXP_TICK, width: 2.4 }, name: "Expected",
+        hovertemplate: "%{y:.1f} in expected by then<extra></extra>" },
+      { x: cpx, y: cpy, mode: "markers", marker: { symbol: "line-ew", size: 18, line: { width: 4, color: EXP_TICK } },
+        hovertext: cpText, hoverinfo: "text" },
+    ], C.layout(240, { margin: { r: 56, b: ax.b }, shapes, annotations, xaxis: ax.axis, hovermode: "closest",
+      yaxis: C.yaxis({ range: [0, top * 1.15] }) }));
+    const t72 = T["72h"], t10 = T["10d"] || T["7d"];
+    C.summary(el, run < 0.5 ? `Little or no snow expected over the next ${Math.round(per.length / 2)} days.`
+      : `${t72 ? `Next 72 h: ${rangeWords(t72)}. ` : ""}${t10 ? `${T["10d"] ? "10 days" : "7 days"}: ${rangeWords(t10)}.` : ""}`);
+    C.tableToggle(el, "Accumulated snow checkpoints", ["Window", "Expected (in)", "Likely (25–75%)", "Range (10–90%)"],
+      cps.map(([k, , lab]) => [`Next ${lab}`, plain(T[k].snow_in), has(T[k].snow_q1) ? range(T[k].snow_q1, T[k].snow_q3) : "–",
+        has(T[k].snow_hi) ? range(T[k].snow_lo, T[k].snow_hi) : "–"]));
+  }
+
+  /** Snow ratio (owner S10): NBM snow-to-liquid ratio with its 10-90 % band, solid where
+   *  precipitation is likely and grey otherwise; then a snow-type strip per period. */
+  const SNOW_TYPE_COLOR = { wet: "#5b7fa6", average: "#8fb3d9", dry: "#cfe3f6", very_dry: "#ffffff" };
+  function slrChart(el, fc, pt, tz) {
+    const P = fc.points[pt], s = P.series, xs = fc.times.map((x) => C.wall(x, tz));
+    const chance = precipChance(fc, pt);
+    const wet = s.slr.map((v, i) => ((chance[i] ?? 0) >= WET && v ? v : null));
+    let nb = 0;
+    while (nb < xs.length && s.slr_p10?.[nb] !== null && s.slr_p10?.[nb] !== undefined) nb++;
+    const ax = C.timeAxis(xs[0], xs[xs.length - 1], el.clientWidth - C.MARGIN.l - 70);
+    const shapes = [...ax.shapes], annotations = [C.axisTitle("Snow ratio (inches of snow per inch of water)")];
+    for (const [v, lab] of [[8, "8:1"], [12, "12:1"], [18, "18:1"]]) {
+      const r = C.refLine(v, lab, { color: "#6b7686", dash: "dot", width: 1 });
+      shapes.push(r.shape); annotations.push(r.ann);
+    }
+    const traces = [];
+    if (nb > 1) {
+      traces.push({ x: xs.slice(0, nb), y: s.slr_p90.slice(0, nb), mode: "lines", line: { width: 0 }, hoverinfo: "skip" },
+        { x: xs.slice(0, nb), y: s.slr_p10.slice(0, nb), mode: "lines", line: { width: 0 }, fill: "tonexty",
+          fillcolor: "rgba(0,114,178,0.14)", hoverinfo: "skip" });
+    }
+    traces.push({ x: xs, y: s.slr.map((v) => v || null), mode: "lines", line: { color: "#aab3bf", width: 1.4, dash: "dot" },
+      hovertemplate: "ratio %{y:.0f}:1<extra></extra>", connectgaps: false },
+    { x: xs, y: wet, mode: "lines", line: { color: C.OI.blue, width: 2.6 }, hoverinfo: "skip", connectgaps: false });
+    C.plot(el, traces, C.layout(220, { margin: { r: 44, b: ax.b }, shapes, annotations, xaxis: ax.axis,
+      yaxis: C.yaxis({ range: [0, Math.max(24, ...s.slr.filter((v) => v).map((v) => v + 2))] }) }));
+    const per = P.periods.filter((p) => p.snow_type);
+    C.summary(el, per.length
+      ? `Snowy periods: ${per.slice(0, 4).map((p) => `${p.label} ${p.snow_type.label.toLowerCase()}${p.snow_type.wind ? " (wind-affected)" : ""}`).join("; ")}${per.length > 4 ? "; …" : ""}.`
+      : "No snowy periods expected, so no snow type.");
+    const strip = document.getElementById("snow-type-strip");
+    if (strip) {
+      strip.innerHTML = P.periods.map((p) => {
+        const t = p.snow_type;
+        return `<li class="st-cell${p.is_day ? "" : " night"}" title="${esc(p.label)} (${esc(p.local)})${t ? `: ${esc(t.label)}${t.wind ? ", wind-affected" : ""}` : ": little or no snow"}">
+          <span class="st-day">${esc(p.label.replace(" day", "").replace(" night", " ☾"))}</span>
+          ${t ? `<span class="st-chip" style="background:${SNOW_TYPE_COLOR[t.type]}">${esc(t.label.split("/")[0])}${t.wind ? ` <b title="wind-affected">≋</b>` : ""}</span>` : `<span class="st-none">–</span>`}</li>`;
+      }).join("");
+    }
+    C.tableToggle(el, "Snow ratio and snow type by period", ["Period", "Snow ratio", "Snow type", "Expected snow (in)"],
+      P.periods.map((p) => [p.label, p.slr ? `${Math.round(p.slr)}:1` : "–", p.snow_type ? `${p.snow_type.label}${p.snow_type.wind ? ", wind-affected" : ""}` : "–", plain(p.snow_in)]));
   }
 
   /** Chance of precipitation (0-1) at every forecast time, through the whole forecast (fix 4):
@@ -278,23 +382,8 @@
         chance[i] === null || chance[i] === undefined ? "–" : `${Math.round(chance[i] * 100)}%`]));
   }
 
-  // ridge-top (free-air) summit wind from HRRR then RRFS (pipeline/models/ridge.py)
-  let ridgeP = null;
-  const loadRidge = () => (ridgeP ||= getJSON("data/ridge.json").catch(() => null));
   const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
   const compass = (d) => (d === null || d === undefined ? "" : COMPASS[Math.round(d / 22.5) % 16]);
-  function ridgeSummary(ridge, id, hours = 24) {
-    const r = ridge?.areas?.[id];
-    if (!r) return null;
-    const now = Date.now(), end = now + hours * 3.6e6;
-    let best = null;
-    ridge.valid.forEach((t, i) => {
-      const x = new Date(t).getTime();
-      if (x >= now - 1.8e6 && x <= end && r.mph[i] !== null && (!best || r.mph[i] > best.mph))
-        best = { mph: r.mph[i], dir: r.dir[i], model: ridge.models[ridge.src[i]]?.label };
-    });
-    return best;
-  }
 
   /** Index range of fc.times within the "hour by hour" window, plus its wall-clock bounds. */
   /** "Hour by hour" time frame: detail (hourly/3-hourly) to HOURS_DETAIL, then NBM's 6-hourly values to the
@@ -344,14 +433,14 @@
         P[keys[0]].series.sky[i] === null ? "–" : `${P[keys[0]].series.sky[i]}%`]));
   }
 
-  function windChart(el, fc, pt, keys, ridge, id, tz) {
+  function windChart(el, fc, pt, keys, tz) {
     const D = detailWindow(fc, tz), P = fc.points;
     const wk = keys.includes("summit") ? "summit" : pt;
     const s = P[wk].series;
     const xs = fc.times.map((x) => C.wall(x, tz));
     const ax = C.timeAxis(D.w0, D.wEnd, el.clientWidth - C.MARGIN.l - 70);
     const ext = extendedShade(D);
-    const col = C.OI.blue, rc = C.OI.green;
+    const col = C.OI.blue;
     const traces = [
       { x: xs, y: s.wind_mph, name: "Wind", mode: "lines", line: { color: col, width: 2.2 },
         hovertemplate: `${POINT_LABEL[wk]} wind %{y} mph<extra></extra>` },
@@ -362,37 +451,6 @@
     const ends = [{ xs, ys: s.wind_mph, text: "Wind", color: col }, { xs, ys: s.gust_mph, text: "Gusts", color: col }];
     const allY = [s.gust_mph, s.wind_mph];
     const shapes = [...ax.shapes, ext.shape];
-    const r = ridge?.areas?.[id];
-    let ridgeTxt = "";
-    if (r) {
-      // HRRR first, then RRFS (ridge.json "src"): two segments of one series with a labelled handoff
-      const rx = ridge.valid.map((x) => C.wall(x, tz));
-      const seg = (n) => ridge.valid.map((x, i) => (ridge.src[i] === n || ridge.src[i + 1] === n ? r.mph[i] : null));
-      const names = ridge.models.map((m) => m.label);
-      names.forEach((nm, n) => traces.push({ x: rx, y: seg(n), mode: "lines", connectgaps: false, name: `Ridge-top (${nm})`,
-        line: { color: rc, width: 2.4, dash: n === 0 ? "solid" : "dash" },
-        customdata: r.dir.map((d) => compass(d)), hovertemplate: `ridge-top %{y} mph %{customdata} (${nm})<extra></extra>` }));
-      const k = ridge.src.findIndex((x) => x === 1);
-      if (k > 0 && rx[k] < D.w1) {
-        shapes.push({ type: "line", xref: "x", yref: "paper", x0: rx[k - 1], x1: rx[k - 1], y0: 0, y1: 1, line: { color: rc, width: 1, dash: "dot" } });
-        annotations.push(C.markLabel(rx[k - 1], `${names[0]} → ${names[1]}`, "#006b4f"));
-      }
-      const lastI = r.mph.map((v, i) => (v !== null ? i : -1)).reduce((a, b) => Math.max(a, b), -1);
-      allY.push(r.mph.filter((v, i) => rx[i] <= D.wEnd));
-      if (lastI >= 0) {
-        const inRange = rx.map((x, i) => (x <= D.wEnd && i <= lastI ? i : -1)).filter((i) => i >= 0);
-        ends.push({ xs: inRange.map((i) => rx[i]), ys: inRange.map((i) => r.mph[i]), text: "Ridge-top", color: "#006b4f" });
-        const endMs = new Date(ridge.valid[lastI]).getTime();
-        if (endMs < D.t1 - 3 * 3.6e6) ridgeTxt = ` Ridge-top wind (${names.join(" then ")}) ends ${localDT(ridge.valid[lastI], tz)}.`;
-      }
-      let best = null;
-      ridge.valid.forEach((x, i) => { if (r.mph[i] !== null && (!best || r.mph[i] > best.v)) best = { v: r.mph[i], i }; });
-      const day1 = ridgeSummary(ridge, id, 24);
-      if (best) {
-        ridgeTxt = ` Ridge-top wind up to ${best.v} mph from the ${compass(r.dir[best.i])} (${localDT(ridge.valid[best.i], tz)}, ${names[ridge.src[best.i]]})` +
-          (day1 && day1.mph < best.v ? `; next 24 h up to ${day1.mph} mph from the ${compass(day1.dir)} (${day1.model})` : "") + `.${ridgeTxt}`;
-      }
-    }
     const lay = C.layout(220, { margin: { r: 70, b: ax.b }, shapes, xaxis: ax.axis });
     const yr = C.extent(allY, { zero: true, min: 10 });
     lay.yaxis = C.yaxis({ range: yr });
@@ -401,13 +459,9 @@
     const mx = (a, i0 = 0, i1 = D.n) => Math.max(0, ...a.slice(i0, i1).filter((v) => v !== null));
     const lateG = D.N > D.n ? mx(s.gust_mph, D.n, D.N) : null;
     C.summary(el, `${POINT_LABEL[wk]} wind up to ${mx(s.wind_mph)} mph, gusts to ${mx(s.gust_mph)} mph in the next ${Math.round(HOURS_DETAIL / 24 * 2) / 2} days` +
-      `${lateG !== null ? ` (later, 6-hourly: gusts to ${lateG} mph)` : ""} (NBM, 10 m).${ridgeTxt}`);
-    const rows = fc.times.map((x, i) => {
-      const j = r ? ridge.valid.indexOf(x) : -1;
-      return [localDT(x, tz), plain(s.wind_mph[i]), plain(s.gust_mph[i]),
-        j >= 0 && r.mph[j] !== null ? `${r.mph[j]} ${compass(r.dir[j])} (${ridge.models[ridge.src[j]]?.label})` : "–"];
-    });
-    C.tableToggle(el, "Wind (mph)", ["Time", "Wind", "Gusts", "Ridge-top"], rows);
+      `${lateG !== null ? ` (later, 6-hourly: gusts to ${lateG} mph)` : ""} (NBM, 10 m wind).`);
+    const rows = fc.times.map((x, i) => [localDT(x, tz), plain(s.wind_mph[i]), plain(s.gust_mph[i])]);
+    C.tableToggle(el, "Wind (mph)", ["Time", "Wind", "Gusts"], rows);
   }
 
   function snowRateChart(el, fc, pt, tz) {
@@ -701,6 +755,15 @@
       <section><h3>Snowfall by day and night</h3>
         <div class="chart" id="period-chart" style="height:260px"><p class="hint">Loading chart…</p></div>
         <p class="note" id="period-note"></p></section>
+      <section><h3>Accumulated snow</h3>
+        <div class="chart" id="acc-chart" style="height:240px"><p class="hint">Loading chart…</p></div>
+        <p class="note">The line is the expected snow piling up over time. Bars at 24 h, 48 h and 72 h are NBM's own ranges for
+          those windows (dark = likely, 25–75%; light = 10–90%); the 7- and 10-day bars add NBM windows together and run a little wide.</p></section>
+      <section><h3>Snow ratio and snow type <a class="info" href="about.html#snow-type" title="A simple heuristic from NBM's snow-to-liquid ratio: Wet/heavy below 8:1, Average 8–12, Dry/light 12–18, Very dry/blower 18 and up; wind-affected when summit gusts are high while it snows. Not a measurement." aria-label="How the snow type works">ⓘ</a></h3>
+        <div class="chart" id="slr-chart" style="height:220px"><p class="hint">Loading chart…</p></div>
+        <ul class="snow-type-strip" id="snow-type-strip" aria-label="Snow type by period"></ul>
+        <p class="note">Snow type is a heuristic from NBM's forecast snow ratio (wet/heavy &lt; 8:1, average 8–12, dry/light 12–18,
+          very dry/blower ≥ 18); ≋ = wind-affected (summit gusts ≥ 30 mph while snowing). The line is solid where precipitation is likely.</p></section>
       <section id="ex-sec"><h3>Chance of at least…</h3>
         <div class="seg" role="group" aria-label="Window" id="ex-win"><button type="button" class="on" data-w="24h" aria-pressed="true">24 h</button><button type="button" data-w="48h" aria-pressed="false">48 h</button><button type="button" data-w="72h" aria-pressed="false">72 h</button></div>
         <div id="ex-chart" class="heat-box"><p class="hint">Loading…</p></div>
@@ -708,7 +771,7 @@
       <section><h3>Snow level vs the ${isStation ? "station" : isRec ? "trailhead and high terrain" : "mountain"}</h3>
         <div class="chart" id="sl-chart" style="height:260px"><p class="hint">Loading chart…</p></div>
         <p class="note" id="sl-note"></p></section>
-      <section><h3>Hour by hour <span class="h3sub" id="hbh-sub"></span></h3><p class="note" id="ridge-note"></p>
+      <section><h3>Hour by hour <span class="h3sub" id="hbh-sub"></span></h3>
         <div class="chart" id="t-chart" style="height:220px"><p class="hint">Loading chart…</p></div>
         <div class="chart" id="w-chart" style="height:220px"><p class="hint">Loading chart…</p></div>
         <div class="chart" id="p-chart" style="height:220px"><p class="hint">Loading chart…</p></div>
@@ -776,32 +839,29 @@
         const dayLocal = d.points[pt].periods.find((p) => p.is_day)?.local || "about 5 AM–5 PM";
         $("period-note").textContent = src === "nws"
           ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), shown as issued: snowfall to 72 h already includes the forecasters' rain/snow decisions. Days are 12Z–00Z (${dayLocal}).`
-          : `Bars: expected snowfall (NBM's deterministic forecast, an average of possible outcomes; they add up to the totals). Whiskers: NBM's own snowfall percentiles (10–90%). Only when the newest NBM run lacks them does a "derived range (fallback)" appear (25–75% of precipitation × snow ratio × chance of snow). NBM calibrates these separately, so a bar can sit outside its whisker. Days are 12Z–00Z (${dayLocal}); night bars are lighter and unlabelled.${d.points[pt].periods.some((p) => p.extended) ? " Hatched bars = extended outlook (derived range)." : ""}`;
+          : `Bold ticks: expected snowfall (NBM's deterministic forecast, an average of possible outcomes; they add up to the totals). Bars: NBM's own snowfall range — dark = likely (25–75%), light = 10–90%. Only when the newest NBM run lacks them does a "derived range (fallback)" appear (25–75% of precipitation × snow ratio × chance of snow). NBM calibrates these separately, so a tick can sit outside its bar. Days are 12Z–00Z (${dayLocal}); night bars are lighter and unlabelled.${d.points[pt].periods.some((p) => p.extended) ? " Hatched bars = extended outlook (derived range)." : ""}`;
         $("ex-sec").hidden = src === "nws" || !d.points[pt].exceed || !Object.keys(d.points[pt].exceed).length;
         $("ex-note").innerHTML = `NBM's own chance of at least each amount for the 2.5 km grid cell around the ${POINT_LABEL[pt].toLowerCase()}, in ${exWin.replace("h", " h")} windows from about 5 AM (12Z); columns are labelled with the day the window starts (hover for exact times). Separate from the expected-amount bars, so they can disagree. NBM only. <a href="about.html#probabilities">How they work →</a>`;
         $("hbh-sub").textContent = `hourly ${Math.round(HOURS_DETAIL / 24 * 2) / 2} days, then 6-hourly · times ${tzName(tz)}`;
         $("sl-note").textContent = `Below the line precipitation falls as rain. The line is solid where precipitation is likely (≥ 20% chance) and dotted where it is not; the orange band is NBM's 10–90% range${src === "nws" ? "" : " (as far as NBM provides it, about 10 days)"}. Times ${tzName(tz)}.`;
         $("met-note").textContent = src === "nws"
           ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), as issued — not adjusted to this elevation. Snow in 6-hour amounts, shown as an hourly rate. Days 4–10: see the day/night bars above.`
-          : "Temperatures adjusted from the 2.5-km NBM grid to each elevation (6.5 °C/km). Snow: hourly to 36 h, then 6-hour amounts, both shown as a rate (in per hour) so they compare. Ridge-top wind: HRRR, then RRFS. After 3½ days (shaded) temperature and wind are NBM's 6-hourly values; snow after that: see the day/night bars above.";
+          : "Temperatures adjusted from the 2.5-km NBM grid to each elevation (6.5 °C/km). Snow: hourly to 36 h, then 6-hour amounts, both shown as a rate (in per hour) so they compare. After 3½ days (shaded) temperature and wind are NBM's 6-hourly values; snow after that: see the day/night bars above.";
       };
       // Each chart draws when it comes near the viewport (SnowCharts.lazy), one per task, so
       // Plotly only loads once a chart is about to be seen.
       const drawCharts = () => {
         const d = doc(), keys = keysOf(d);
-        const withPlotly = (f) => () => Promise.all([loadPlotly(), isStation ? null : loadRidge()]).then(([, ridge]) => f(ridge));
+        const withPlotly = (f) => () => loadPlotly().then(() => f());
         // explanation only: the numbers live in the wind panel's summary (one source, fix 5)
-        if (!isStation) loadRidge().then((ridge) => {
-          $("ridge-note").innerHTML = ridge?.areas?.[a.id] ? `The green <b>ridge-top wind</b> is the free-air wind at summit height
-            (${esc(ridge.models.map((m) => m.label).join(", then "))}), what exposed ridges feel; NBM's 10 m wind runs lower on exposed
-            summits. <a href="about.html#ridge-wind">Why →</a>` : "";
-        });
         C.summary($("period-chart"), periodSummary(d, pt));     // text first (LCP), chart when near view
         C.lazy($("period-chart"), withPlotly(() => periodChart($("period-chart"), d, pt, tz)));
+        if ($("acc-chart")) C.lazy($("acc-chart"), withPlotly(() => accumChart($("acc-chart"), d, pt, tz)));
+        if ($("slr-chart")) C.lazy($("slr-chart"), withPlotly(() => slrChart($("slr-chart"), d, pt, tz)));
         if (!$("ex-sec").hidden) C.lazy($("ex-chart"), () => exceedTable($("ex-chart"), d, pt, tz));
         C.lazy($("sl-chart"), withPlotly(() => snowLevelChart($("sl-chart"), d, keys, tz)));
         C.lazy($("t-chart"), withPlotly(() => tempChart($("t-chart"), d, keys, tz)));
-        C.lazy($("w-chart"), withPlotly((ridge) => windChart($("w-chart"), d, pt, keys, ridge, a.id, tz)));
+        C.lazy($("w-chart"), withPlotly(() => windChart($("w-chart"), d, pt, keys, tz)));
         C.lazy($("p-chart"), withPlotly(() => snowRateChart($("p-chart"), d, pt, tz)));
         return Promise.resolve();
       };
