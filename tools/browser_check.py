@@ -159,7 +159,7 @@ def check_basemap(b: Browser, base: str, log):
     need(start["loaded"] > 0, f"no base tiles at start: {start}")
     for cycle in range(2):
         for step, js in (("overlay on", "(() => { const s = document.querySelector('#overlay-select'); s.value = 'depth'; s.dispatchEvent(new Event('change')); return 1; })()"),
-                         ("zoom 14", "window.snowwx.map.setZoom(14)"), ("zoom 8", "window.snowwx.map.setZoom(8)"),
+                         ("zoom 14", "window.snowwx.map.setZoom(14)"), ("zoom 9", "window.snowwx.map.setZoom(9)"),
                          ("overlay off", "(() => { const s = document.querySelector('#overlay-select'); s.value = ''; s.dispatchEvent(new Event('change')); return 1; })()"),
                          ("zoom 6", "window.snowwx.map.setZoom(6)")):
             b.eval(js)
@@ -171,6 +171,22 @@ def check_basemap(b: Browser, base: str, log):
             if st["overlay"]:
                 need(st["overlay"][0] <= st["view"][0] + 2 and st["overlay"][1] <= st["view"][1] + 2,
                      f"{step}: overlay element {st['overlay']} larger than the view {st['view']}")
+    # reference layer (roads, towns, peaks; basemap-ref.js): loads after first paint, draws on a GL canvas,
+    # credits OpenFreeMap/OSM, hides on Topo and comes back with the relief (owner pick S10)
+    for _ in range(20):
+        ref = b.eval("JSON.stringify({s: window.snowwx.reference.state, gl: !!document.querySelector('.leaflet-reference-pane canvas'),"
+                     " attr: document.querySelector('.leaflet-control-attribution').textContent.includes('OpenFreeMap')})")
+        ref = json.loads(ref)
+        if ref["s"] in ("idle", "failed"):
+            break
+        time.sleep(1)
+    log(f"  reference layer: {ref}")
+    need(ref["s"] == "idle" and ref["gl"] and ref["attr"], f"reference layer not drawn: {ref}")
+    sw = json.loads(b.eval("JSON.stringify((() => { const m = window.snowwx.map, g = window.snowwx.reference.group,"
+                           " i = () => document.querySelectorAll('.leaflet-control-layers-base input');"
+                           " i()[1].click(); const topo = m.hasLayer(g); i()[0].click(); return {topo, relief: m.hasLayer(g)}; })())"))
+    log(f"  reference with Topo/relief: {sw}")
+    need(not sw["topo"] and sw["relief"], f"reference layer should hide on Topo and return on the relief: {sw}")
     need(not b.errors, f"JS errors: {b.errors}")
 
 

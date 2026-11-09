@@ -58,11 +58,12 @@ percentiles, snow level method, verification).
   UGRD+VGRD 25.7 MB (byte ranges from the idx).
 - **Session 10 (dev10, Nov 8):** user-testing fixes: no ridge wind on forecast pages, SNOTEL panel layout, snow section
   redesign (range bars, Accumulated snow, Snow ratio + snow type). Basemap spike: 3 candidate designs behind
-  `?bm=1|2|3` (js/basemap-proto.js) on the obs map and Powder Finder, waiting for the owner's pick. Found and fixed:
+  `?bm=1|2|3` on the obs map and Powder Finder; owner picked design 3, now live in basemap.js + basemap-ref.js. Found and fixed:
   the USGS shaded-relief cache has no z9 tiles and gaps at z10-11 (Mt Hood), which tripped the Topo fallback; tiles
   now fill holes from the nearest ancestor tile (basemap.js `snowTileLayer`). OpenTopoMap removed. Markers have
   halos/outlines on both maps. Lighthouse mobile obs map (gzip, prototype loads MapLibre eagerly from unpkg):
-  current 89, design 1 83, design 2 87, design 3 85; Finder 97 vs 92 with design 3.
+  current 89, design 1 83, design 2 87, design 3 85; Finder 97 vs 92 with design 3. Final (MapLibre vendored, loaded
+  on first interaction or 10 s after the markers): obs map 87/88/88, Finder 93/97 (3 and 2 runs; accessibility 100).
 - **Session 9 (dev9, Nov 8):** snow forecast overlays on the obs map (Track 2 item 7), "My mountains" favorites page (Track 1 item 4). Powder quality and M7 not started.
 - **Session 7 (dev7, Nov 8):** "Expected" rename done; hour-by-hour temperature/wind to day 10 (6-hourly,
   shaded); Sno-Park source research written up (docs/sources_recreation.md), awaiting approval.
@@ -145,6 +146,7 @@ percentiles, snow level method, verification).
 | Nov 8 (S10) | User testing: no HRRR/RRFS ridge-top wind on the forecast page (pipeline data kept). |
 | Nov 8 (S10) | User testing: basemaps need geographic reference (roads, cities, state lines) without clutter; USGS Topo washes out markers; remove OpenTopoMap. Basemap design spike, owner picks. |
 | Nov 8 (S10) | M7 (precipitation by model) on hold. |
+| Nov 8 (S10) | Basemap: owner picked design 3 — USGS shaded relief + a minimal OpenStreetMap reference layer (OpenFreeMap vector tiles drawn by MapLibre GL: faint roads, dashed state lines, haloed towns, peaks with elevations). USGS Topo and Imagery stay as optional base layers; the reference layer hides on them. |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
@@ -622,8 +624,8 @@ bias correction (MOS-lite) [later]
 | ECMWF open data | CC BY 4.0 — "© ECMWF" on images and pages |
 | OpenSkiMap / OpenStreetMap | ODbL — attribution; derived catalog shared under ODbL |
 | USGS basemaps/3DEP | Public domain |
-| OpenFreeMap (OSM vector tiles; candidate S10 basemap) | No key, no limits, commercial use OK; attribution "OpenFreeMap © OpenMapTiles Data © OpenStreetMap contributors" (ODbL) |
-| MapLibre GL JS (candidate S10) | BSD-3-Clause |
+| OpenFreeMap (OSM vector tiles; S10 basemap reference layer) | No key, no limits, commercial use OK; attribution "OpenFreeMap © OpenMapTiles Data © OpenStreetMap contributors" (ODbL) |
+| MapLibre GL JS 4.7.1 + maplibre-gl-leaflet 0.0.22 (vendored) | BSD-3-Clause / ISC |
 | MADIS | Only category 3 "full distribution" on public pages |
 | Synoptic | Not used |
 
