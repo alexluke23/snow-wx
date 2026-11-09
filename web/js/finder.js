@@ -261,11 +261,15 @@
     const prob = st.m === "prob";
     for (const r of [...list].reverse()) {
       const c = prob ? colorFor(PROB, r.prob) || "#f4f6f8" : colorFor(SNOWFALL, r.snow) || "#f4f6f8";
+      if (!isRec(r.a)) {                        // white halo under each dot so it stands off the base map (S10)
+        L.circleMarker([r.a.lat, r.a.lon], { radius: (r.a.major ? 7 : 5) + 1.5, stroke: true, color: "#fff", opacity: 0.85, weight: 3,
+          fill: false, interactive: false }).addTo(layer);
+      }
       const txt = prob ? `${r.prob ?? "–"}% chance ≥ ${st.px}"${r.pmean === null ? "" : ` (expected ${fmt(r.pmean)}")`}` : `expected ${fmt(r.snow)}"${r.hi === null || r.hi === undefined ? "" : ` (${fmt(r.lo)}–${fmt(r.hi)}")`}`;
       (isRec(r.a)
         ? L.marker([r.a.lat, r.a.lon], { icon: L.divIcon({ className: "sp-icon", html: `<span style="background:${c}"></span>`, iconSize: [11, 11] }),
             keyboard: false, title: r.a.name })
-        : L.circleMarker([r.a.lat, r.a.lon], { radius: r.a.major ? 7 : 5, color: "#1b2a4a", weight: 1, fillColor: c, fillOpacity: 0.95 }))
+        : L.circleMarker([r.a.lat, r.a.lon], { radius: r.a.major ? 7 : 5, color: "#14202e", weight: 1.4, fillColor: c, fillOpacity: 1 }))
         .bindTooltip(`${esc(r.a.name)}: ${txt}`, { direction: "top" })
         .bindPopup(`<strong>${esc(r.a.name)}</strong><br>${txt}<br><a href="area.html#${encodeURIComponent(r.a.id)}">Forecast →</a>`)
         .addTo(layer);

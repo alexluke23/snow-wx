@@ -389,7 +389,8 @@ body.area-page > main { min-height: 100vh; min-height: 100dvh; }
 /* Powder Finder: Sno-Park markers (square) vs ski areas (circle) */
 .kind-sp { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 5px;
   border-radius: 3px; background: #14202e; color: #fff; font: 700 11px/1 system-ui, sans-serif; font-style: normal; vertical-align: 1px; }
-.sp-icon span { display: block; width: 11px; height: 11px; border: 1px solid #1b2a4a; border-radius: 2px; box-sizing: border-box; }
+.sp-icon span { display: block; width: 11px; height: 11px; border: 1.4px solid #14202e; border-radius: 2px; box-sizing: border-box;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.85); }
 
 /* ---- My mountains (mine.html) ---- */
 .nav-short { display: none; }
@@ -442,3 +443,5 @@ body.mine-page > main { min-height: 100vh; min-height: 100dvh; }
   .finder-list.with-type .frow, .finder-list.with-type .frow.fhead { grid-template-columns: 40px minmax(140px, 1fr) 104px 64px 82px 66px 84px 56px; }
 }
 .mcard .stype { background: #e8f0fa; color: #10243c; border: 1px solid #8aa6c8; border-radius: 4px; padding: 0 6px; font-weight: 600; }
+/* basemap spike: faded USGS Topo over relief */
+.topo-faded { filter: grayscale(0.85) contrast(0.9) brightness(1.05); }
