@@ -3,27 +3,80 @@
 //   tiles are scaled up instead of disappearing (a layer's maxZoom used to blank the map).
 // - Automatic fallback: when the active base map keeps failing (tile errors with few
 //   successes), switch to the next provider and say so in a small note; the layer
-//   control follows. Providers and terms: USGS The National Map (public domain) and
-//   OpenTopoMap (CC-BY-SA, already credited on about.html). No new providers.
+//   control follows. Providers and terms: USGS The National Map (public domain).
+//   OpenTopoMap was removed in S10 (owner decision).
 // - Debug: window.snowwx.tiles holds per-provider counts; console.debug on every switch.
 // Plain script: it only touches Leaflet (global L) when snowBasemaps() is called, so it
 // can load before a lazily loaded Leaflet.
 
 /* global L */
+// Tile layer that fills holes in a tile cache from the nearest ancestor tile (up to 3 levels up),
+// scaled with CSS. USGSShadedReliefOnly has no z9 tiles anywhere and gaps at z10-11 (checked
+// 8 Nov 2026: Mt Hood 404 at z9-11, Alta/Colorado at z9), which used to trip the provider
+// fallback. A tile counts as an error (tileerror -> fallback) only when no ancestor loads either.
+const SNOW_EMPTY_TILE = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+// eslint-disable-next-line no-unused-vars
+function snowTileLayer(url, opts) {
+  const Layer = L.TileLayer.extend({
+    createTile(coords, done) {
+      const tile = L.TileLayer.prototype.createTile.call(this, coords, done);
+      tile._snowCoords = coords;
+      return tile;
+    },
+    _tileOnError(done, tile, e) {
+      const c = tile._snowCoords, k = (tile._snowUp || 0) + 1;
+      if (!c || k > 3 || c.z - k < 0 || tile.src === SNOW_EMPTY_TILE) {
+        L.TileLayer.prototype._tileOnError.call(this, done, tile, e); return;
+      }
+      tile._snowUp = k;
+      const pc = { x: c.x >> k, y: c.y >> k, z: c.z - k }, n = 1 << k;
+      const size = this.getTileSize().x;
+      const src = this.getTileUrl(Object.assign(L.point(pc.x, pc.y), { z: pc.z }));
+      const probe = new Image();
+      probe.onload = () => {
+        tile.style.background = `url("${src}") ${-(c.x - pc.x * n) * size}px ${-(c.y - pc.y * n) * size}px / ${size * n}px ${size * n}px no-repeat`;
+        tile.src = SNOW_EMPTY_TILE;          // fires load -> done(); counted as a tile that loaded
+        this.fire("tileholefill", { coords: c, up: k });
+      };
+      probe.onerror = () => this._tileOnError(done, tile, e);
+      probe.src = src;
+    },
+    getTileUrl(coords) {                   // the ancestor lookup passes z explicitly
+      if (coords.z !== undefined && coords.z !== this._getZoomForUrl()) {
+        const d = { s: this._getSubdomain(coords), x: coords.x, y: coords.y, z: coords.z };
+        return L.Util.template(this._url, L.Util.extend(d, this.options));
+      }
+      return L.TileLayer.prototype.getTileUrl.call(this, coords);
+    },
+  });
+  return new Layer(url, opts);
+}
+
 // eslint-disable-next-line no-unused-vars
 function snowBasemaps(map, { initial = "Shaded relief (USGS)", maxZoom = 17, onSwitch } = {}) {
+  // Design spike (S10 step 3): ?bm=1|2|3 shows a candidate design instead (js/basemap-proto.js).
+  const proto = new URLSearchParams(location.search).get("bm");
+  if (["1", "2", "3"].includes(proto)) {
+    window.snowwx = window.snowwx || {};
+    window.snowwx.map = window.snowwx.map || map;
+    const s = document.createElement("script");
+    s.src = "js/basemap-proto.js";
+    s.onload = () => snowBasemapProto(map, proto);      // eslint-disable-line no-undef
+    document.head.appendChild(s);
+    const api = { layers: {}, use() {}, current: () => `proto ${proto}` };
+    window.snowwx.basemap = api;
+    return api;
+  }
   const USGS = "https://basemap.nationalmap.gov/arcgis/rest/services";
   const NM = '<a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">USGS</a>';
   const DEFS = [
     { name: "Shaded relief (USGS)", url: `${USGS}/USGSShadedReliefOnly/MapServer/tile/{z}/{y}/{x}`, native: 16, attribution: `Relief: ${NM}` },
     { name: "Topo (USGS)", url: `${USGS}/USGSTopo/MapServer/tile/{z}/{y}/{x}`, native: 16, attribution: `Topo: ${NM}` },
     { name: "Imagery + topo (USGS)", url: `${USGS}/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}`, native: 16, attribution: `Imagery: ${NM}` },
-    { name: "OpenTopoMap", url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", native: 17,
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, SRTM | © <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)' },
   ];
   // where to go when a provider fails (never back to one that already failed)
-  const NEXT = { "Shaded relief (USGS)": ["Topo (USGS)", "OpenTopoMap"], "Topo (USGS)": ["OpenTopoMap", "Shaded relief (USGS)"],
-    "Imagery + topo (USGS)": ["Topo (USGS)", "OpenTopoMap"], OpenTopoMap: ["Topo (USGS)", "Shaded relief (USGS)"] };
+  const NEXT = { "Shaded relief (USGS)": ["Topo (USGS)", "Imagery + topo (USGS)"], "Topo (USGS)": ["Shaded relief (USGS)", "Imagery + topo (USGS)"],
+    "Imagery + topo (USGS)": ["Topo (USGS)", "Shaded relief (USGS)"] };
   const ERR_MIN = 6;            // errors before judging a provider ...
   const WINDOW_MS = 20000;      // ... within this many seconds, with fewer successes than errors / 2
 
@@ -37,7 +90,7 @@ function snowBasemaps(map, { initial = "Shaded relief (USGS)", maxZoom = 17, onS
 
   for (const d of DEFS) {
     const s = (stats[d.name] = { ok: 0, err: 0, recent: [] });
-    const layer = L.tileLayer(d.url, { attribution: d.attribution, maxNativeZoom: d.native, maxZoom,
+    const layer = snowTileLayer(d.url, { attribution: d.attribution, maxNativeZoom: d.native, maxZoom,
       subdomains: "abc", crossOrigin: false });
     layer.on("tileload", () => { s.ok++; s.recent.push([Date.now(), 1]); });
     layer.on("tileerror", () => { s.err++; s.recent.push([Date.now(), 0]); judge(d.name); });

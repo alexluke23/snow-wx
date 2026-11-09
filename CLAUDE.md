@@ -241,7 +241,11 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
 - [x] S10 (dev10): ridge wind off forecast pages; SNOTEL panel overlap fix; snow redesign (NBM 25/75 snowfall + SNOWLR
       10/90 selected, SELECTION_VERSION 6; periods snow_q1/q3 + snow_type; totals 48h + q1/q3; summary window[5] = main
       snow type; area.js periodChart range bars, accumChart, slrChart + strip). Points fetch ~+60 % (391 s local).
-      NEXT: basemap design spike -> owner picks (AskUserQuestion), then implement.
+      Basemap spike done: `?bm=1|2|3` loads js/basemap-proto.js (1 relief + faded USGS Topo, 2 relief + USGS carto
+      dynamic /export layers, 3 relief + OpenFreeMap vector reference via MapLibre 4.7.1 + maplibre-gl-leaflet 0.0.22).
+      USGSShadedReliefOnly has NO z9 tiles (and gaps at z10-11): basemap.js `snowTileLayer` fills holes from ancestor
+      tiles. OpenTopoMap removed; marker halos on both maps. NEXT: owner picks a design, then step 4 (vendor + defer
+      MapLibre if design 3; keep USGS Topo + Imagery as optional layers; Lighthouse mobile >= 85).
 - [x] S9 (dev9): NBM forecast overlays (pipeline/nbm/layers.py in the points job -> data/points/layers/; overlays.js
       loads Observed + Forecast indexes) and "My mountains" (mine.html, js/mine.js; favorites in localStorage
       "snowwx.favorites"). Browser checks: forecast, mine. Follow-up (owner S9): landing banner on the obs map

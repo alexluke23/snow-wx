@@ -56,6 +56,13 @@ percentiles, snow level method, verification).
   (3 m 21 s with it), GFS 66–68 s. HRRR `wrfprs` has 25-mb levels 1000–50 mb; per forecast hour,
   the 21 levels 1000–500 mb cost TMP 12.3 MB, RH 16.6 MB (DPT 22.6 MB), HGT 15.3 MB,
   UGRD+VGRD 25.7 MB (byte ranges from the idx).
+- **Session 10 (dev10, Nov 8):** user-testing fixes: no ridge wind on forecast pages, SNOTEL panel layout, snow section
+  redesign (range bars, Accumulated snow, Snow ratio + snow type). Basemap spike: 3 candidate designs behind
+  `?bm=1|2|3` (js/basemap-proto.js) on the obs map and Powder Finder, waiting for the owner's pick. Found and fixed:
+  the USGS shaded-relief cache has no z9 tiles and gaps at z10-11 (Mt Hood), which tripped the Topo fallback; tiles
+  now fill holes from the nearest ancestor tile (basemap.js `snowTileLayer`). OpenTopoMap removed. Markers have
+  halos/outlines on both maps. Lighthouse mobile obs map (gzip, prototype loads MapLibre eagerly from unpkg):
+  current 89, design 1 83, design 2 87, design 3 85; Finder 97 vs 92 with design 3.
 - **Session 9 (dev9, Nov 8):** snow forecast overlays on the obs map (Track 2 item 7), "My mountains" favorites page (Track 1 item 4). Powder quality and M7 not started.
 - **Session 7 (dev7, Nov 8):** "Expected" rename done; hour-by-hour temperature/wind to day 10 (6-hourly,
   shaded); Sno-Park source research written up (docs/sources_recreation.md), awaiting approval.
@@ -615,6 +622,8 @@ bias correction (MOS-lite) [later]
 | ECMWF open data | CC BY 4.0 — "© ECMWF" on images and pages |
 | OpenSkiMap / OpenStreetMap | ODbL — attribution; derived catalog shared under ODbL |
 | USGS basemaps/3DEP | Public domain |
+| OpenFreeMap (OSM vector tiles; candidate S10 basemap) | No key, no limits, commercial use OK; attribution "OpenFreeMap © OpenMapTiles Data © OpenStreetMap contributors" (ODbL) |
+| MapLibre GL JS (candidate S10) | BSD-3-Clause |
 | MADIS | Only category 3 "full distribution" on public pages |
 | Synoptic | Not used |
 
