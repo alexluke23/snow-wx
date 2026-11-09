@@ -157,23 +157,33 @@ function snowBasemaps(map, { initial = "Shaded relief (USGS)", maxZoom = 17, onS
     s.onerror = () => { refState.state = "failed"; };
     document.head.appendChild(s);
   }
-  // MapLibre (~210 KB gz; parsing it is one 100-500 ms main-thread task on a throttled phone) stays off
-  // the critical path, like the Plotly prefetch in app.js: the page's own data and markers come first
-  // (the page calls api.loadReference() once they are drawn, or window load when deferReference is
-  // off); then the reference starts on the first interaction (pointer, wheel, touch, key, map move)
-  // or after REF_DELAY_MS, whichever comes first. Desktop pointers trigger it almost at once.
-  const REF_DELAY_MS = 10000;
+  // MapLibre (~210 KB gz; parsing it is one 100-500 ms main-thread task on a throttled phone) starts
+  // right after the page's own data and markers are drawn (the page calls api.loadReference(); window
+  // load when deferReference is off), once the visible relief tiles have arrived (its downloads would
+  // otherwise slow the relief, the page's largest paint) and the browser is idle, but no later than
+  // REF_CAP_MS. Owner decision S10: orientation matters more than a few Lighthouse points.
+  const REF_CAP_MS = 2000;
+  let refScheduled = false;
   function scheduleReference() {
-    const evs = ["pointerdown", "pointermove", "wheel", "touchstart", "keydown"];
-    const go = () => { evs.forEach((t) => window.removeEventListener(t, go, true)); loadReference(); };
-    evs.forEach((t) => window.addEventListener(t, go, { capture: true, passive: true, once: true }));
-    map.once("movestart zoomstart", go);
-    setTimeout(go, REF_DELAY_MS);
+    if (refScheduled) return;
+    refScheduled = true;
+    const t0 = Date.now();
+    let fired = false;
+    const go = () => {
+      if (fired) return;
+      fired = true;
+      const left = Math.max(0, REF_CAP_MS - (Date.now() - t0));
+      if ("requestIdleCallback" in window && left > 0) requestIdleCallback(loadReference, { timeout: left });
+      else loadReference();
+    };
+    const base = layers[current];
+    if (base && base._loading) base.once("load", go); else go();
+    setTimeout(go, REF_CAP_MS);
   }
   if (!deferReference) {
     if (document.readyState === "complete") scheduleReference(); else window.addEventListener("load", scheduleReference, { once: true });
   } else {
-    setTimeout(scheduleReference, 15000);       // safety net if the page never calls loadReference()
+    setTimeout(scheduleReference, 8000);        // safety net if the page never calls loadReference()
   }
 
   map.on("baselayerchange", (e) => {           // the user picked one in the layer control

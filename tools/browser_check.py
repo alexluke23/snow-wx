@@ -372,11 +372,16 @@ def check_snoparks(b: Browser, base: str, log):
     for t, expect_sp in (("snopark", True), ("ski", False)):
         b.open(f"{base}/finder.html#t={t}&m=amount&w=72h&e=summit", wait=6)
         st = b.eval("""(() => ({ rows: document.querySelectorAll('#rows .frow').length, sp: document.querySelectorAll('#rows .frow .kind-sp').length,
-            elev: [...document.querySelectorAll('#elev button')].map(x => x.textContent.trim()) }))()""")
+            elev: [...document.querySelectorAll('#elev button')].map(x => x.textContent.trim()),
+            ridge: document.querySelectorAll('[data-label="Ridge"]').length + (document.querySelector('.fhead').textContent.includes('Ridge') ? 1 : 0) }))()""")
         log(f"  finder t={t}: {st}")
+        need(st["ridge"] == 0, f"Powder Finder still shows ridge-top wind (owner S10): {st}")
         need(st["rows"] > 0 and ((st["sp"] == st["rows"]) if expect_sp else (st["sp"] == 0)), f"finder t={t}: {st}")
     need(st["elev"] == ["Summit", "Base"], f"finder elevation labels {st['elev']}")
     b.open(f"{base}/index.html", wait=7)
+    ref = b.eval("window.snowwx.reference.state")
+    log(f"  obs map reference layer without interaction: {ref}")
+    need(ref in ("ready", "idle"), f"roads/towns layer did not load on its own: {ref}")
     n = b.eval("(() => { const g = window.snowwx.map && document.querySelector('.leaflet-control-layers'); return [...document.querySelectorAll('.leaflet-control-layers-overlays label')].map(l => l.textContent.trim()).join('|'); })()")
     log(f"  obs map layers: {n}")
     need("Sno-Parks" in n, f"no Sno-Parks layer in the layer control: {n}")

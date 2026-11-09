@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Snow-Wx · About and methods</title>
-  <meta name="description" content="How Snow-Wx builds its ski-area forecasts: NBM deterministic and probabilistic snowfall, snow level, elevation adjustment, NWS forecasts, ridge-top wind, data sources and attribution.">
+  <meta name="description" content="How Snow-Wx builds its ski-area forecasts: NBM deterministic and probabilistic snowfall, snow level, elevation adjustment, NWS forecasts, data sources and attribution.">
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -42,7 +42,7 @@
     <nav class="toc" aria-label="On this page">
       <a href="#nbm">NBM forecasts</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#forecast-map">Forecast map</a> · <a href="#snow-type">Snow type</a> ·
       <a href="#snow-level">Snow level</a> · <a href="#elevation">Elevation</a> · <a href="#nws">NWS forecast</a> ·
-      <a href="#ridge-wind">Ridge-top wind</a> · <a href="#snoparks">Sno-Parks</a> · <a href="#afd">Forecaster discussion</a> ·
+<a href="#snoparks">Sno-Parks</a> · <a href="#afd">Forecaster discussion</a> ·
       <a href="#sources">Data sources</a> · <a href="#disclaimer">Disclaimer</a>
     </nav>
 
@@ -153,21 +153,6 @@
         Snowfall, precipitation and snow level are available to 72 hours.</p>
     </section>
 
-    <section id="ridge-wind">
-      <h3>Ridge-top wind</h3>
-      <p>NBM's wind is a 10-metre wind for a 2.5-km grid cell, and that cell's elevation is usually well below an
-        exposed summit or ridge. Winds near the ground are slowed by friction (trees, terrain, valleys), and winds
-        increase with height in most storms, so NBM 10-m wind typically underestimates what you feel on an exposed
-        ridge, often by a factor of two or more in strong flow.</p>
-      <p>The "ridge wind" shown on area pages and in Powder Finder is the free-air wind at the summit's height:
-        taken from the HRRR (0–48 h) and RRFS (to 84 h) models' pressure-level winds and interpolated to the
-        pressure at the summit elevation. This is what a well-exposed ridge experiences; sheltered terrain and the
-        lee side of ridges will see less, and gusts can be higher.</p>
-      <p>Details: we use the model grid column nearest the summit and interpolate the wind in height between the
-        pressure levels around the summit (RRFS every 50 mb; HRRR only 850, 700 and 500 mb, so between those its
-        values are interpolated over 1.5–2.5 km of height). Levels that lie below the model's own terrain are skipped.
-        HRRR is used to 48 hours, then RRFS to 84 hours.</p>
-    </section>
 
     <section id="afd">
       <h3>Forecaster discussion</h3>
