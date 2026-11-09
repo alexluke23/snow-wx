@@ -93,7 +93,7 @@
       const c = colorFor(SNOWFALL, t.snow_in) || "#f4f6f8";
       const note = outside(t) ? ` <a class="info" href="about.html#nbm" title="${esc(SEPARATE)}" aria-label="Why the ranges can disagree">ⓘ</a>` : "";
       return `<div class="tile${t.extended ? " ext" : ""}"><span class="label">${label}</span>
-        <span class="swatch" style="background:${c}"></span><strong>${inches(t.snow_in)}<small> in</small></strong>
+        <span class="swatch${snowPale(c) ? " pale" : ""}" style="background:${c}"></span><strong>${inches(t.snow_in)}<small> in</small></strong>
         <span class="rng">${t.snow_hi === null || t.snow_hi === undefined ? "NWS: no range" : `${rangeName(t)}: ${range(t.snow_lo, t.snow_hi)}${note}`}</span>
         <span class="rng liquid">${(t.qpf_in ?? 0).toFixed(2)} in liquid</span></div>`;
     };
@@ -179,19 +179,6 @@
     return `Snowiest day: ${big.label} (${big.local}) — ${nws ? `${inches(big.snow_in)} in (NWS)` : hasV(big.snow_p75)
       ? `likely ${dayRange(big).replace("″", "")} in` : `expected ${inches(big.snow_in)} in`}.${totTxt}`;
   }
-  /** NWS snowfall-colour legend: the classes from 0.1 in up to the one holding the largest value shown (at least 12 in). */
-  function snowLegend(maxIn) {
-    const S = SNOWFALL;
-    let last = S.bins.findIndex((b) => b > maxIn);
-    last = Math.max(S.bins.indexOf(18), last < 0 ? S.colors.length - 1 : last);     // at least through the 12-18 in class
-    const items = [];
-    for (let k = 2; k <= last; k++) {
-      const c = S.colors[k];
-      items.push(`<span class="sw${snowPale(c) ? " pale" : ""}" style="background:${c};color:${textOn(c)}">${esc(S.legend[k])}</span>`);
-    }
-    return `<div class="snow-legend" role="img" aria-label="Snowfall colours in inches (NWS colour table)"><span class="lab">in</span>${items.join("")}</div>`;
-  }
-
   function periodChart(el, fc, pt, tz, nws = false) {
     const days = fc.points[pt].days || [];
     if (!days.length) { el.innerHTML = `<p class="hint">No daily snowfall data in this forecast file yet.</p>`; return false; }
@@ -234,7 +221,7 @@
         : [d.label, d.local, ranged[i] ? dayRange(d) : "–", ranged[i] ? plain(d.snow_p50) : "–", plain(d.snow_in),
           hasV(d.pop) ? `${Math.round(d.pop * 100)}%` : "–"])));
     // colour legend directly under the chart (before the table toggle)
-    el.insertAdjacentHTML("afterend", snowLegend(ymax));
+    el.insertAdjacentHTML("afterend", snowLegendHtml(ymax, { minTop: 18, cls: "chart-legend" }));
     return days.some((d, i) => !ranged[i] && !nws);
   }
 

@@ -168,6 +168,7 @@
         </span>
       </div>`;
     }).join("") : `<p class="hint">No ${TYPE_WORD[st.t]} match these filters.</p>`;
+    $("snow-legend-box").innerHTML = prob ? "" : snowLegendHtml(Math.max(0, ...list.map((r) => r.hi ?? r.snow ?? 0)), { minTop: 12 });
     $("legend-note").textContent = prob
       ? `Chance of at least ${st.px}" of snow in ${st.pw.replace("h", " h")} (${dayLabel(st.pd).replace("Next: ", "")}) at the ${st.e}, from NBM's ` +
         `probabilistic guidance for the 2.5 km grid cell. ${SEPARATE} Small number: NBM's expected amount in the same window (about a 1-in-3 chance of reaching it). ` +
