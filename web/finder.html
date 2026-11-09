@@ -53,6 +53,7 @@
         <option value="snow">Most snow</option><option value="obs">Most observed (24 h)</option>
         <option value="sl">Lowest snow level</option><option value="name">Name</option></select></label>
       <label class="chk"><input type="checkbox" id="favonly"> Favorites only</label>
+      <label class="chk"><input type="checkbox" id="stype"> Snow type <a class="info" href="about.html#snow-type" title="Heuristic from NBM's snow-to-liquid ratio" aria-label="How snow type works">ⓘ</a></label>
       <p class="note" id="src-note" hidden>Chances use NBM's probabilistic guidance; the NWS forecast has no snowfall probabilities.
         <a href="about.html#probabilities">How they work →</a></p>
     </div>
@@ -60,7 +61,7 @@
       <section class="finder-list" aria-label="Ski areas">
         <div class="frow fhead" role="row">
           <span></span><span>Ski area</span><span class="num" id="snow-head">Snow</span>
-          <span class="num">Obs 24 h</span><span class="num">Snow level</span><span class="num">Gust</span><span class="num" title="Ridge-top (free-air) wind at summit height, HRRR/RRFS">Ridge</span>
+          <span class="num">Obs 24 h</span><span class="num">Snow level</span><span class="num">Gust</span><span class="num col-type" hidden>Type</span>
         </div>
         <div id="rows" role="list"></div>
         <p class="note" id="legend-note"></p>

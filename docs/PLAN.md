@@ -56,6 +56,17 @@ percentiles, snow level method, verification).
   (3 m 21 s with it), GFS 66–68 s. HRRR `wrfprs` has 25-mb levels 1000–50 mb; per forecast hour,
   the 21 levels 1000–500 mb cost TMP 12.3 MB, RH 16.6 MB (DPT 22.6 MB), HGT 15.3 MB,
   UGRD+VGRD 25.7 MB (byte ranges from the idx).
+- **Session 10 (dev10, Nov 8):** user-testing fixes: no ridge wind on forecast pages, SNOTEL panel layout, snow section
+  redesign (range bars, Accumulated snow, Snow ratio + snow type). Basemap spike: 3 candidate designs behind
+  `?bm=1|2|3` on the obs map and Powder Finder; owner picked design 3, now live in basemap.js + basemap-ref.js. Found and fixed:
+  the USGS shaded-relief cache has no z9 tiles and gaps at z10-11 (Mt Hood), which tripped the Topo fallback; tiles
+  now fill holes from the nearest ancestor tile (basemap.js `snowTileLayer`). OpenTopoMap removed. Markers have
+  halos/outlines on both maps. Lighthouse mobile obs map (gzip, prototype loads MapLibre eagerly from unpkg):
+  current 89, design 1 83, design 2 87, design 3 85; Finder 97 vs 92 with design 3. Final (MapLibre vendored, loaded
+  on first interaction or 10 s after the markers): obs map 87/88/88, Finder 93/97 (3 and 2 runs; accessibility 100).
+  Follow-up (owner): Finder Ridge column removed; roads layer now loads right after the markers once the visible relief
+  tiles are in and the browser is idle (2 s cap; starting it earlier slowed the relief tiles = LCP, obs map 71-76).
+  Lighthouse mobile: obs map 86/87/86 (LCP 3.3-3.6 s), Finder 99/99; accessibility 100. dev10 pushed.
 - **Session 9 (dev9, Nov 8):** snow forecast overlays on the obs map (Track 2 item 7), "My mountains" favorites page (Track 1 item 4). Powder quality and M7 not started.
 - **Session 7 (dev7, Nov 8):** "Expected" rename done; hour-by-hour temperature/wind to day 10 (6-hourly,
   shaded); Sno-Park source research written up (docs/sources_recreation.md), awaiting approval.
@@ -133,6 +144,15 @@ percentiles, snow level method, verification).
 | Nov 8 (S9) | 1. Landing: a visitor with favorites who opens the obs map directly (no link hash, not from another Snow-Wx page) gets a dismissible banner: "Go to My mountains", "Always open My mountains" (localStorage `snowwx.home`, try/catch; turn off on My mountains), dismiss (for the session). Shared links and new visitors land on the map. |
 | Nov 8 (S9) | 2. Forecast overlays carry the note "Grid values (2.5 km); site pages adjust for elevation."; near-zero snowfall (< 0.1 in) and chances < 5 % stay transparent. |
 | Nov 8 (S9) | 3. "Send feedback" link (mailto) in the footer of every page. |
+| Nov 8 (S10) | User testing: whisker plots are hard to read → two-tone range bars + an "Accumulated snow" chart (cumulative expected; uncertainty only from NBM's own 24/48/72 h ranges and our 7/10-day totals; never sum period percentiles). |
+| Nov 8 (S10) | User testing: show forecast snow ratios (NBM SLR, 10–90 % where available) plus a simple snow-type rating (Wet/heavy < 8:1, Average 8–12, Dry/light 12–18, Very dry/blower ≥ 18; "wind-affected" flag), labelled as a heuristic. Replaces the planned powder-quality item. |
+| Nov 8 (S10) | User testing: no HRRR/RRFS ridge-top wind on the forecast page (pipeline data kept). |
+| Nov 8 (S10) | User testing: basemaps need geographic reference (roads, cities, state lines) without clutter; USGS Topo washes out markers; remove OpenTopoMap. Basemap design spike, owner picks. |
+| Nov 8 (S10) | M7 (precipitation by model) on hold. |
+| Nov 8 (S10 follow-up) | Powder Finder "Ridge" column removed too (ridge pipeline data kept; about.html ridge section removed with it). |
+| Nov 8 (S10 follow-up) | Roads/towns layer loads as soon as the markers are drawn and the browser is idle (~2 s cap), not on first touch or after 10 s: orientation matters more than a few Lighthouse points (obs map ~83-85 accepted). |
+| Nov 8 (S10 follow-up) | Relief holes: keep the ancestor-tile filler; owner checks the live site. OpenFreeMap acceptable for now; self-hosted vector tiles = §11 backup item. |
+| Nov 8 (S10) | Basemap: owner picked design 3 — USGS shaded relief + a minimal OpenStreetMap reference layer (OpenFreeMap vector tiles drawn by MapLibre GL: faint roads, dashed state lines, haloed towns, peaks with elevations). USGS Topo and Imagery stay as optional base layers; the reference layer hides on them. |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
@@ -390,7 +410,7 @@ rename, day-10 temp/wind panels, Sno-Park research).
 2. **M7 Precipitation by model at each point** — HRRR, RRFS, GFS (+ NBM)
    cumulative snow/QPF and snow level on one chart, from the existing
    model pipeline. Meteorologist-grade but readable (§6-B).
-3. **Powder quality** indicator (SLR + wind, §5.2 heuristic), clearly
+3. ✔ (S10, replaced by the snow ratio / snow type work) **Powder quality** — now: two-tone range bars, Accumulated snow chart (24/48/72 h NBM ranges + 7/10-day checkpoints), Snow ratio chart with 10–90 % band and per-period snow type (config `snow_type`), My mountains badge, optional Powder Finder Type column. Original text: **Powder quality** indicator (SLR + wind, §5.2 heuristic), clearly
    labeled as a heuristic, on area pages and in the finder.
 4. ✔ (S9) **"My mountains" home view** — mine.html + js/mine.js: one card per favorite (ski areas, Sno-Parks, SNOTEL): expected 24/72 h with NBM 10–90 %, chance of ≥ 6" (first 24/72-h windows), lowest snow level while precip is likely vs the base, alerts, avalanche danger; empty state explains ☆; remove from the card. Nav link "★ My mountains" on every page (short labels on phones). Lighthouse 100. Landing-page question open. Original text:: favorites dashboard (next 24/72 h
    expected + chance of ≥ 6", snow level, alerts) as the landing page for
@@ -610,6 +630,8 @@ bias correction (MOS-lite) [later]
 | ECMWF open data | CC BY 4.0 — "© ECMWF" on images and pages |
 | OpenSkiMap / OpenStreetMap | ODbL — attribution; derived catalog shared under ODbL |
 | USGS basemaps/3DEP | Public domain |
+| OpenFreeMap (OSM vector tiles; S10 basemap reference layer) | No key, no limits, commercial use OK; attribution "OpenFreeMap © OpenMapTiles Data © OpenStreetMap contributors" (ODbL) |
+| MapLibre GL JS 4.7.1 + maplibre-gl-leaflet 0.0.22 (vendored) | BSD-3-Clause / ISC |
 | MADIS | Only category 3 "full distribution" on public pages |
 | Synoptic | Not used |
 
@@ -650,6 +672,10 @@ season of usage analytics and verification results.
   private repo would exceed free Actions minutes at the current schedule
   (estimate the monthly cost before deciding). Public code is legal to
   keep but copyable — owner decision.
+- **Basemap reference tiles backup (owner S10):** self-host a western-US vector tile extract (e.g. a
+  PMTiles file built from OpenStreetMap/OpenMapTiles, served from the static host with HTTP range
+  requests and read by MapLibre's PMTiles protocol) as a backup or replacement for OpenFreeMap.
+  Estimate the file size for the western states at z0-14 and the host's range-request support first.
 - Paid features like alerts need a small backend (accounts, scheduler,
   email/SMS/push) — estimate cost and complexity before committing.
 
@@ -663,7 +689,8 @@ season of usage analytics and verification results.
 | OpenStreetMap / OpenSkiMap / OSM Sno-Parks | ODbL: attribution; derived databases shared under ODbL |
 | USFS EDW | Public domain |
 | **avalanche.org API** | **Verify** commercial-use terms; contact if unclear |
-| **OpenTopoMap tiles** | **Verify**: CC-BY-SA + fair-use policy; heavy commercial traffic may need self-hosted or paid tiles |
+| OpenTopoMap tiles | Removed in S10 (no longer used) |
+| OpenFreeMap vector tiles (roads/towns layer) | OK: no key, no limits, commercial use allowed; credit OpenFreeMap / OpenMapTiles / OSM (ODbL). Single volunteer-run service: see 11.2 backup item |
 | State Sno-Park lists (WA/OR/CA/ID) | Not copied; ask permission if ever needed |
 
 ### 11.4 Legal & trust

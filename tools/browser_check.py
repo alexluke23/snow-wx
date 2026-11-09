@@ -159,7 +159,7 @@ def check_basemap(b: Browser, base: str, log):
     need(start["loaded"] > 0, f"no base tiles at start: {start}")
     for cycle in range(2):
         for step, js in (("overlay on", "(() => { const s = document.querySelector('#overlay-select'); s.value = 'depth'; s.dispatchEvent(new Event('change')); return 1; })()"),
-                         ("zoom 14", "window.snowwx.map.setZoom(14)"), ("zoom 8", "window.snowwx.map.setZoom(8)"),
+                         ("zoom 14", "window.snowwx.map.setZoom(14)"), ("zoom 9", "window.snowwx.map.setZoom(9)"),
                          ("overlay off", "(() => { const s = document.querySelector('#overlay-select'); s.value = ''; s.dispatchEvent(new Event('change')); return 1; })()"),
                          ("zoom 6", "window.snowwx.map.setZoom(6)")):
             b.eval(js)
@@ -171,6 +171,22 @@ def check_basemap(b: Browser, base: str, log):
             if st["overlay"]:
                 need(st["overlay"][0] <= st["view"][0] + 2 and st["overlay"][1] <= st["view"][1] + 2,
                      f"{step}: overlay element {st['overlay']} larger than the view {st['view']}")
+    # reference layer (roads, towns, peaks; basemap-ref.js): loads after first paint, draws on a GL canvas,
+    # credits OpenFreeMap/OSM, hides on Topo and comes back with the relief (owner pick S10)
+    for _ in range(20):
+        ref = b.eval("JSON.stringify({s: window.snowwx.reference.state, gl: !!document.querySelector('.leaflet-reference-pane canvas'),"
+                     " attr: document.querySelector('.leaflet-control-attribution').textContent.includes('OpenFreeMap')})")
+        ref = json.loads(ref)
+        if ref["s"] in ("idle", "failed"):
+            break
+        time.sleep(1)
+    log(f"  reference layer: {ref}")
+    need(ref["s"] == "idle" and ref["gl"] and ref["attr"], f"reference layer not drawn: {ref}")
+    sw = json.loads(b.eval("JSON.stringify((() => { const m = window.snowwx.map, g = window.snowwx.reference.group,"
+                           " i = () => document.querySelectorAll('.leaflet-control-layers-base input');"
+                           " i()[1].click(); const topo = m.hasLayer(g); i()[0].click(); return {topo, relief: m.hasLayer(g)}; })())"))
+    log(f"  reference with Topo/relief: {sw}")
+    need(not sw["topo"] and sw["relief"], f"reference layer should hide on Topo and return on the relief: {sw}")
     need(not b.errors, f"JS errors: {b.errors}")
 
 
@@ -283,6 +299,25 @@ def _draw_all(b: Browser):
     time.sleep(1.5)
 
 
+def check_panel(b: Browser, base: str, log):
+    """S10 1b: on the obs map, the SNOTEL panel's lazily drawn charts never overlap Data status."""
+    for w, h in ((1280, 800), (375, 740)):
+        b.open(f"{base}/index.html#v=depth_24h&map=9/45.33/-121.7&s=651:OR:SNTL", width=w, height=h, wait=9)
+        st = b.eval("""(() => { const a = document.getElementById('station').getBoundingClientRect(),
+            c = document.getElementById('status').closest('section') || document.getElementById('status');
+            const z = c.getBoundingClientRect(); return {stationBottom: Math.round(a.bottom), statusTop: Math.round(z.top),
+            charts: document.querySelectorAll('#chart .js-plotly-plot').length}; })()""")
+        log(f"  panel {w}px: {st}")
+        need(st["charts"] == 3 and st["statusTop"] >= st["stationBottom"] - 1, f"panel overlap at {w}px: {st}")
+    # S10 1a: no ridge-top wind on the forecast page
+    b.open(f"{base}/area.html#timberline-lodge-ski-area", wait=5)
+    _draw_all(b)
+    names = b.eval("(document.getElementById('w-chart').data || []).map(t => t.name)")
+    log(f"  wind chart traces: {names}")
+    need(names and not any("Ridge" in (n or "") for n in names) and not b.eval("!!document.getElementById('ridge-note')"),
+         f"ridge-top wind still on the forecast page: {names}")
+
+
 def check_charts(b: Browser, base: str, log):
     for area in ("alta-ski-area", "timberline-lodge-ski-area"):
         b.open(f"{base}/area.html#{area}", wait=5)
@@ -337,11 +372,16 @@ def check_snoparks(b: Browser, base: str, log):
     for t, expect_sp in (("snopark", True), ("ski", False)):
         b.open(f"{base}/finder.html#t={t}&m=amount&w=72h&e=summit", wait=6)
         st = b.eval("""(() => ({ rows: document.querySelectorAll('#rows .frow').length, sp: document.querySelectorAll('#rows .frow .kind-sp').length,
-            elev: [...document.querySelectorAll('#elev button')].map(x => x.textContent.trim()) }))()""")
+            elev: [...document.querySelectorAll('#elev button')].map(x => x.textContent.trim()),
+            ridge: document.querySelectorAll('[data-label="Ridge"]').length + (document.querySelector('.fhead').textContent.includes('Ridge') ? 1 : 0) }))()""")
         log(f"  finder t={t}: {st}")
+        need(st["ridge"] == 0, f"Powder Finder still shows ridge-top wind (owner S10): {st}")
         need(st["rows"] > 0 and ((st["sp"] == st["rows"]) if expect_sp else (st["sp"] == 0)), f"finder t={t}: {st}")
     need(st["elev"] == ["Summit", "Base"], f"finder elevation labels {st['elev']}")
     b.open(f"{base}/index.html", wait=7)
+    ref = b.eval("window.snowwx.reference.state")
+    log(f"  obs map reference layer without interaction: {ref}")
+    need(ref in ("ready", "idle"), f"roads/towns layer did not load on its own: {ref}")
     n = b.eval("(() => { const g = window.snowwx.map && document.querySelector('.leaflet-control-layers'); return [...document.querySelectorAll('.leaflet-control-layers-overlays label')].map(l => l.textContent.trim()).join('|'); })()")
     log(f"  obs map layers: {n}")
     need("Sno-Parks" in n, f"no Sno-Parks layer in the layer control: {n}")
@@ -421,7 +461,7 @@ def check_mine(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine}
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel}
 
 
 def main(argv=None) -> int:

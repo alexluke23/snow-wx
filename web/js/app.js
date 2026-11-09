@@ -45,7 +45,7 @@
   window.snowwx = { map, ready: false };   // debugging / benchmark handle
 
   // base maps with overzoom and automatic fallback (basemap.js, PLAN.md §6-C)
-  const baseLayers = snowBasemaps(map).layers;
+  const basemaps = snowBasemaps(map, { deferReference: true }), baseLayers = basemaps.layers;
 
   const avyLayer = L.geoJSON(null, { style: avyStyle, onEachFeature: avyPopup });
   // NOHRSC / SNODAS raster overlays (overlays.js), one at a time; o= in the URL hash.
@@ -68,6 +68,7 @@
   spLayer.addTo(map);
 
   L.control.layers(baseLayers, {
+    ...basemaps.overlays,                       // roads, towns & peaks over the relief (basemap-ref.js)
     "Ski areas": skiLayer,
     "Sno-Parks": spLayer,
     "Avalanche danger": avyLayer,
@@ -88,6 +89,7 @@
   const LABEL_FONT = `600 11px ${FONT}`, TEMP_FONT = `700 11px ${FONT}`;
   const measure = document.createElement("canvas").getContext("2d");
   const textWidth = (t, font) => { measure.font = font; return measure.measureText(t).width; };
+  const HALO = "rgba(255,255,255,.85)", OUTLINE = "rgba(20,32,46,.8)";   // marker halo + outline (S10)
   const rrect = (ctx, x, y, w, h, r) => {
     ctx.beginPath();
     if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
@@ -105,17 +107,19 @@
       hit: (full) => (full ? [-w / 2 - 2, -h / 2 - 2, w / 2 + 2, h / 2 + 2] : [-7, -7, 7, 7]),
       draw(ctx, x, y, full) {
         const sel = p.triplet === selected;
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = "rgba(0,0,0,.45)";
         ctx.fillStyle = bg || "#fff";
         if (full) {
-          rrect(ctx, x - w / 2, y - h / 2, w, h, 3); ctx.fill(); ctx.stroke();
+          rrect(ctx, x - w / 2, y - h / 2, w, h, 3);
+          ctx.lineWidth = 4; ctx.strokeStyle = HALO; ctx.stroke();           // halo: lifts the chip off the base map
+          ctx.lineWidth = 1.2; ctx.strokeStyle = OUTLINE; ctx.fill(); ctx.stroke();
           ctx.fillStyle = bg ? textOn(bg) : "#888";
           ctx.font = LABEL_FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.fillText(text, x, y + 0.5);
           if (sel) { ctx.strokeStyle = "#e6007e"; ctx.lineWidth = 2; rrect(ctx, x - w / 2 - 3, y - h / 2 - 3, w + 6, h + 6, 4); ctx.stroke(); }
         } else {
-          ctx.beginPath(); ctx.arc(x, y, 5.5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+          ctx.beginPath(); ctx.arc(x, y, 5.5, 0, 2 * Math.PI);
+          ctx.lineWidth = 4; ctx.strokeStyle = HALO; ctx.stroke();
+          ctx.lineWidth = 1.2; ctx.strokeStyle = OUTLINE; ctx.fill(); ctx.stroke();
           if (sel) { ctx.strokeStyle = "#e6007e"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 8.5, 0, 2 * Math.PI); ctx.stroke(); }
         }
       },
@@ -126,17 +130,22 @@
   // Same geometry as the old SVG barbs: staff 20 px toward the wind direction.
   function drawBarb(ctx, x, y, kt, dir, scale) {
     if (kt === null || kt === undefined) return;
+    barbPass(ctx, x, y, kt, dir, scale, HALO, 4);          // halo first, then the barb
+    barbPass(ctx, x, y, kt, dir, scale, "#14202e", 1.5);
+  }
+  function barbPass(ctx, x, y, kt, dir, scale, color, lw) {
     ctx.save();
     ctx.translate(x, y); ctx.scale(scale, scale);
-    ctx.strokeStyle = ctx.fillStyle = "#14202e"; ctx.lineWidth = 1.5;
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = lw;
     if (kt < 3) { ctx.beginPath(); ctx.arc(0, 0, 4, 0, 2 * Math.PI); ctx.stroke(); ctx.restore(); return; }
     ctx.rotate(((dir || 0) * Math.PI) / 180);
     let s = Math.round(kt / 5) * 5, yy = -20;
     ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -20); ctx.stroke();
-    while (s >= 50) { ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(9, yy + 2.5); ctx.lineTo(0, yy + 5); ctx.closePath(); ctx.fill(); yy += 6; s -= 50; }
+    while (s >= 50) { ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(9, yy + 2.5); ctx.lineTo(0, yy + 5); ctx.closePath(); ctx.fill(); ctx.stroke(); yy += 6; s -= 50; }
     while (s >= 10) { ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(9, yy - 3); ctx.stroke(); yy += 3.5; s -= 10; }
     if (s >= 5) { if (yy === -20) yy += 3.5; ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(4.5, yy - 1.5); ctx.stroke(); }
-    ctx.beginPath(); ctx.arc(0, 0, 2, 0, 2 * Math.PI); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, 2, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
     ctx.restore();
   }
 
@@ -156,7 +165,7 @@
         drawBarb(ctx, x, y, p.wind_kt, p.wind_dir, low ? 0.7 : 1);
         if (full && t && !low) {
           ctx.font = TEMP_FONT; ctx.textAlign = "right"; ctx.textBaseline = "bottom";
-          ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.strokeText(t, x - 4, y - 2);
+          ctx.lineJoin = "round"; ctx.lineWidth = 3.5; ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.strokeText(t, x - 4, y - 2);
           ctx.fillStyle = "#c0262d"; ctx.fillText(t, x - 4, y - 2);
         }
         ctx.globalAlpha = 1;
@@ -176,8 +185,9 @@
         const h = size * 0.85;
         ctx.beginPath(); ctx.moveTo(x, y - h / 2 - 1); ctx.lineTo(x + size / 2, y + h / 2); ctx.lineTo(x - size / 2, y + h / 2); ctx.closePath();
         ctx.fillStyle = selected === `area:${a.id}` ? "#c2185b" : a.major ? "#0b1530" : "#1b2a4a";
-        ctx.lineJoin = "round"; ctx.lineWidth = 1.6; ctx.strokeStyle = "#fff";
-        ctx.fill(); ctx.stroke();
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 4; ctx.strokeStyle = OUTLINE; ctx.stroke();       // dark rim outside the white edge
+        ctx.lineWidth = 1.8; ctx.strokeStyle = "#fff"; ctx.fill(); ctx.stroke();
         if (areaAlerts[a.id]?.length) {          // NWS alert: red ring
           ctx.beginPath(); ctx.arc(x, y + 1, size * 0.85, 0, 2 * Math.PI);
           ctx.strokeStyle = "#b42318"; ctx.lineWidth = 2.2; ctx.stroke();
@@ -200,7 +210,8 @@
         ctx.beginPath();
         if (ctx.roundRect) ctx.roundRect(x - r, y - r, size, size, 2.5); else ctx.rect(x - r, y - r, size, size);
         ctx.fillStyle = selected === `sp:${a.id}` ? "#c2185b" : "#0f5f4a";
-        ctx.lineWidth = 1.4; ctx.strokeStyle = "#fff"; ctx.fill(); ctx.stroke();
+        ctx.lineWidth = 3.8; ctx.strokeStyle = OUTLINE; ctx.stroke();
+        ctx.lineWidth = 1.6; ctx.strokeStyle = "#fff"; ctx.fill(); ctx.stroke();
         if (size >= 10) { ctx.fillStyle = "#fff"; ctx.font = "700 8px system-ui, sans-serif"; ctx.textAlign = "center";
           ctx.textBaseline = "middle"; ctx.fillText("P", x, y + 0.5); }
         if (areaAlerts[a.id]?.length) {
@@ -642,6 +653,7 @@
     openFromHash(initialHash, false);
     writeHash();
     window.snowwx.ready = true;
+    basemaps.loadReference();                   // roads/towns layer after the markers (basemap.js)
     // Warm the chart library once the map is idle, so the first station click is quick
     // without Plotly blocking the initial load.
     // Only after the first interaction (or 15 s): an idle-time prefetch competed with the base-map

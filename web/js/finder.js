@@ -29,7 +29,10 @@
   const pick = (k, def) => q.get(k) ?? saved[k] ?? def;
   const st = { m: pick("m", "amount"), w: pick("w", "72h"), e: pick("e", "summit"), src: pick("src", "nbm"),
                state: pick("st", ""), region: pick("r", ""), sort: pick("sort", "snow"), fav: pick("fav", "0") === "1",
-               pw: pick("pw", "24h"), px: Number(pick("px", "6")), pd: Number(pick("pd", "0")), t: pick("t", "ski") };
+               pw: pick("pw", "24h"), px: Number(pick("px", "6")), pd: Number(pick("pd", "0")), t: pick("t", "ski"),
+               ty: pick("ty", "0") === "1" };
+  const TYPE_SHORT = { wet: "Wet", average: "Avg", dry: "Dry", very_dry: "Blower" };
+  const TYPE_LONG = { wet: "Wet/heavy (< 8:1)", average: "Average (8–12:1)", dry: "Dry/light (12–18:1)", very_dry: "Very dry/blower (≥ 18:1)" };
   // Sno-Parks (kind "snopark") reuse the ski-area fields: summit = high terrain, base = trailhead
   const isRec = (a) => a.kind === "snopark";
   const ELEV_LABEL = { ski: ["Summit", "Base"], snopark: ["High terrain", "Trailhead"], all: ["Summit / high terrain", "Base / trailhead"] };
@@ -41,10 +44,11 @@
     if (st.state) p.set("st", st.state);
     if (st.region) p.set("r", st.region);
     if (st.fav) p.set("fav", "1");
+    if (st.ty) p.set("ty", "1");
     history.replaceState(null, "", `#${p}`);
     try {
       localStorage.setItem(PREF_KEY, JSON.stringify({ m: st.m, w: st.w, e: st.e, src: st.src, st: st.state, r: st.region,
-        sort: st.sort, fav: st.fav ? "1" : "0", pw: st.pw, px: String(st.px), pd: String(st.pd), t: st.t }));
+        sort: st.sort, fav: st.fav ? "1" : "0", pw: st.pw, px: String(st.px), pd: String(st.pd), t: st.t, ty: st.ty ? "1" : "0" }));
     } catch { /* private mode */ }
   };
 
@@ -86,7 +90,7 @@
         pmean = ea?.mean?.[st.pw]?.[st.pd] ?? null;
         if (ea?.pop) { pop = ea.pop[st.pw]?.[st.pd] ?? null; sl = ea.sl?.[st.pw]?.[st.pd] ?? null; }
       }
-      return { a, snow: t ? t[0] : null, lo: t ? t[1] : null, hi: t ? t[2] : null, pop,
+      return { a, snow: t ? t[0] : null, lo: t ? t[1] : null, hi: t ? t[2] : null, pop, stype: t && t.length > 5 ? t[5] : null,
                obs: o, sl, slVsBase: sl === null ? null : sl - a.elev.base, gust: src?.gust_max_72h_mph ?? null,
                prob, pmean, alerts: alerts[a.id] || [] };
     });
@@ -122,6 +126,8 @@
   function render() {
     writeHash();
     renderControls();
+    document.querySelector(".finder-list").classList.toggle("with-type", st.ty);   // optional Snow type column
+    document.querySelector(".fhead .col-type").hidden = !st.ty;
     const fav = favs(), prob = st.m === "prob";
     const list = rows.filter((r) => (st.t === "all" || (st.t === "snopark") === isRec(r.a))
       && (!st.state || r.a.state === st.state) && (!st.region || r.a.region === st.region)
@@ -158,17 +164,17 @@
           <span class="num" data-label="Obs 24 h">${r.obs === null ? "–" : `${fmt(r.obs)}"`}</span>
           <span class="num" data-label="Snow level" title="${r.sl === null || dry ? "" : `lowest snow level while precipitation is likely in this window: ${Math.round(r.sl).toLocaleString()} ft`}">${slTxt}</span>
           <span class="num" data-label="Gust">${r.gust === null ? "–" : `${Math.round(r.gust)}`}<small> mph</small></span>
-          ${ridgeCell(r.a.id)}
+          ${st.ty ? `<span class="num" data-label="Snow type" title="${r.stype ? esc(TYPE_LONG[r.stype]) + " — " : ""}heuristic from NBM's snow ratio">${r.stype ? esc(TYPE_SHORT[r.stype]) : "–"}</span>` : ""}
         </span>
       </div>`;
     }).join("") : `<p class="hint">No ${TYPE_WORD[st.t]} match these filters.</p>`;
     $("legend-note").textContent = prob
       ? `Chance of at least ${st.px}" of snow in ${st.pw.replace("h", " h")} (${dayLabel(st.pd).replace("Next: ", "")}) at the ${st.e}, from NBM's ` +
         `probabilistic guidance for the 2.5 km grid cell. ${SEPARATE} Small number: NBM's expected amount in the same window (about a 1-in-3 chance of reaching it). ` +
-        `Snow level: lowest while precipitation is likely in that window. ${ridgeNote()}`
+        `Snow level: lowest while precipitation is likely in that window.`
       : `Expected snowfall at the ${st.e} (${st.src === "nws" ? "NWS forecast, 2.5 km grid cell" : "NBM"})` +
         `${st.src === "nws" ? "" : "; small numbers: NBM 10–90%"}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest while precipitation is likely in the window, vs the base ` +
-        `("–" when the chance of precipitation is under 20 %). Gust: highest summit gust in 72 h (NBM). ${ridgeNote()} ★ favorites list first.`;
+        `("–" when the chance of precipitation is under 20 %). Gust: highest summit gust in 72 h (NBM). ★ favorites list first.`;
     $("rows").querySelectorAll(".star").forEach((b) => b.addEventListener("click", () => {
       const s = favs(); s.has(b.dataset.id) ? s.delete(b.dataset.id) : s.add(b.dataset.id); saveFavs(s); render();
     }));
@@ -176,53 +182,6 @@
   }
 
   function update() { buildRows(); render(); }
-
-  // ridge-top wind (HRRR then RRFS, to 84 h): highest in the chosen window, loaded after
-  // first paint. ridge: undefined = loading, false = not published yet, else ridge.json.
-  let ridge;
-  const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
-  const shortTime = (ms) => new Date(ms).toLocaleString([], { weekday: "short", hour: "numeric" });
-  const ridgeEnd = () => new Date(ridge.valid[ridge.valid.length - 1]).getTime();
-  function ridgeMax(id) {
-    // -> {mph, dir, partial, end} | {none: "beyond" | "missing"} | null (still loading)
-    if (ridge === undefined) return null;
-    if (!ridge || !ridge.valid?.length) return { none: "missing" };
-    const r = ridge.areas?.[id];
-    if (!r) return { none: "missing" };
-    let a, b;
-    if (st.m === "prob") {
-      const w = pwin();
-      if (!w?.start[st.pd]) return null;
-      a = new Date(w.start[st.pd]).getTime(); b = new Date(w.end[st.pd]).getTime();
-    } else {
-      a = new Date(nbm.issued).getTime(); b = a + { "24h": 24, "72h": 72, "7d": 168, "10d": 240 }[st.w] * 3.6e6;
-    }
-    const last = ridgeEnd();
-    let best = null;
-    ridge.valid.forEach((t, i) => {
-      const x = new Date(t).getTime();
-      if (x > a && x <= b && r.mph[i] !== null && (!best || r.mph[i] > best.mph)) best = { mph: r.mph[i], dir: r.dir[i] };
-    });
-    if (!best) return { none: a >= last ? "beyond" : "missing" };
-    return { ...best, partial: last < b, end: last };
-  }
-  function ridgeCell(id) {
-    const m = ridgeMax(id);
-    if (!m) return `<span class="num" data-label="Ridge">–<small> mph</small></span>`;
-    if (m.none) {
-      const why = m.none === "beyond" ? `beyond the HRRR/RRFS range (data to ${shortTime(ridgeEnd())})` : "not available yet";
-      return `<span class="num" data-label="Ridge" title="Ridge-top wind ${esc(why)}"><span class="hint">n/a</span></span>`;
-    }
-    const dir = COMPASS[Math.round(m.dir / 22.5) % 16];
-    return m.partial
-      ? `<span class="num" data-label="Ridge" title="At least this: the model data end ${esc(shortTime(m.end))}, before the window does">≥${m.mph}<small> mph ${dir}</small></span>`
-      : `<span class="num" data-label="Ridge">${m.mph}<small> mph ${dir}</small></span>`;
-  }
-  function ridgeNote() {
-    if (ridge === false || (ridge && !ridge.valid?.length)) return "Ridge: ridge-top wind is not available yet (it comes with the next model run).";
-    const end = ridge?.valid?.length ? ` (data to ${shortTime(ridgeEnd())})` : "";
-    return `Ridge: highest ridge-top wind at summit height in the window, HRRR then RRFS${end}; "≥" = the window runs past the model data, n/a = beyond it.`;
-  }
 
   async function ensureExceed() {
     if (exceed) return;
@@ -254,11 +213,15 @@
     const prob = st.m === "prob";
     for (const r of [...list].reverse()) {
       const c = prob ? colorFor(PROB, r.prob) || "#f4f6f8" : colorFor(SNOWFALL, r.snow) || "#f4f6f8";
+      if (!isRec(r.a)) {                        // white halo under each dot so it stands off the base map (S10)
+        L.circleMarker([r.a.lat, r.a.lon], { radius: (r.a.major ? 7 : 5) + 1.5, stroke: true, color: "#fff", opacity: 0.85, weight: 3,
+          fill: false, interactive: false }).addTo(layer);
+      }
       const txt = prob ? `${r.prob ?? "–"}% chance ≥ ${st.px}"${r.pmean === null ? "" : ` (expected ${fmt(r.pmean)}")`}` : `expected ${fmt(r.snow)}"${r.hi === null || r.hi === undefined ? "" : ` (${fmt(r.lo)}–${fmt(r.hi)}")`}`;
       (isRec(r.a)
         ? L.marker([r.a.lat, r.a.lon], { icon: L.divIcon({ className: "sp-icon", html: `<span style="background:${c}"></span>`, iconSize: [11, 11] }),
             keyboard: false, title: r.a.name })
-        : L.circleMarker([r.a.lat, r.a.lon], { radius: r.a.major ? 7 : 5, color: "#1b2a4a", weight: 1, fillColor: c, fillOpacity: 0.95 }))
+        : L.circleMarker([r.a.lat, r.a.lon], { radius: r.a.major ? 7 : 5, color: "#14202e", weight: 1.4, fillColor: c, fillOpacity: 1 }))
         .bindTooltip(`${esc(r.a.name)}: ${txt}`, { direction: "top" })
         .bindPopup(`<strong>${esc(r.a.name)}</strong><br>${txt}<br><a href="area.html#${encodeURIComponent(r.a.id)}">Forecast →</a>`)
         .addTo(layer);
@@ -287,12 +250,13 @@
     $("region").addEventListener("change", (e) => { st.region = e.target.value; render(); });
     $("sort").addEventListener("change", (e) => { st.sort = e.target.value; render(); });
     $("favonly").addEventListener("change", (e) => { st.fav = e.target.checked; render(); });
+    $("stype").checked = st.ty;
+    $("stype").addEventListener("change", (e) => { st.ty = e.target.checked; render(); });
     $("pday").addEventListener("change", (e) => { st.pd = Number(e.target.value); update(); });
     const when = (iso) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", timeZoneName: "short" });
     $("fresh").textContent = `NBM ${when(nbm.issued)} run${nws ? ` · NWS issued ${when(nws.issued)}` : ""}${obs?.snowfall_end ? ` · observed to ${when(obs.snowfall_end)}` : ""}`;
     if (st.m === "prob") await ensureExceed();
     update();
-    getJSON("data/ridge.json").then((x) => { ridge = x; render(); }).catch(() => { ridge = false; render(); });
     (window.requestIdleCallback || ((f) => setTimeout(f, 300)))(initMap, { timeout: 1500 });
   }
   load();

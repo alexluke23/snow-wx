@@ -124,7 +124,8 @@ footer a, #panel a { color: var(--accent); }
 .metrics td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
 .station h2 { font-size: 16px; margin: 0 0 2px; }
 .station .sub { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
-#chart { width: 100%; height: 300px; }
+#chart { width: 100%; }   /* grows with its panels (fixed 300 px let the charts spill over Data status) */
+#chart .chart { margin-bottom: 4px; }
 
 @media (max-width: 800px) {
   header { flex-wrap: wrap; row-gap: 4px; }
@@ -252,7 +253,7 @@ main.finder { display: block; overflow-y: auto; padding: 10px 14px 24px; width: 
 .alert-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 3px; background: #b42318; color: #fff;
                font-size: 11px; font-weight: 700; vertical-align: 2px; }
 @media (min-width: 720px) {
-  .frow, .frow.fhead { grid-template-columns: 40px minmax(150px, 1fr) 110px 70px 86px 70px 84px; }
+  .frow, .frow.fhead { grid-template-columns: 40px minmax(150px, 1fr) 110px 70px 86px 70px; }
   .frow.fhead { display: grid; position: sticky; top: 0; z-index: 2; font-size: 12px; color: var(--muted); font-weight: 600; background: var(--bg); }
   .frow .num { text-align: right; }
   .frow .details { display: contents; }
@@ -388,7 +389,8 @@ body.area-page > main { min-height: 100vh; min-height: 100dvh; }
 /* Powder Finder: Sno-Park markers (square) vs ski areas (circle) */
 .kind-sp { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 5px;
   border-radius: 3px; background: #14202e; color: #fff; font: 700 11px/1 system-ui, sans-serif; font-style: normal; vertical-align: 1px; }
-.sp-icon span { display: block; width: 11px; height: 11px; border: 1px solid #1b2a4a; border-radius: 2px; box-sizing: border-box; }
+.sp-icon span { display: block; width: 11px; height: 11px; border: 1.4px solid #14202e; border-radius: 2px; box-sizing: border-box;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.85); }
 
 /* ---- My mountains (mine.html) ---- */
 .nav-short { display: none; }
@@ -430,3 +432,20 @@ body.mine-page > main { min-height: 100vh; min-height: 100dvh; }
 .home-banner .close { position: absolute; top: 2px; right: 2px; border: 0; background: transparent; font-size: 20px; min-width: 40px; min-height: 40px; cursor: pointer; color: #4a5666; }
 .home-pref { font-size: 13.5px; margin: 0 0 10px; }
 .site-feedback { white-space: nowrap; }
+/* snow type strip (area pages, owner S10) */
+.snow-type-strip { list-style: none; margin: 6px 0 0; padding: 0; display: flex; gap: 3px; overflow-x: auto; }
+.snow-type-strip .st-cell { flex: 0 0 auto; min-width: 46px; text-align: center; font-size: 12px; }
+.snow-type-strip .st-cell.night { opacity: .85; }
+.snow-type-strip .st-day { display: block; color: #4a5666; white-space: nowrap; }
+.snow-type-strip .st-chip { display: inline-block; padding: 2px 5px; border-radius: 4px; border: 1px solid #8aa6c8; color: #10243c; font-weight: 600; white-space: nowrap; }
+.snow-type-strip .st-none { color: #8a96a6; }
+@media (min-width: 720px) {
+  .finder-list.with-type .frow, .finder-list.with-type .frow.fhead { grid-template-columns: 40px minmax(140px, 1fr) 104px 64px 82px 66px 60px; }
+}
+.mcard .stype { background: #e8f0fa; color: #10243c; border: 1px solid #8aa6c8; border-radius: 4px; padding: 0 6px; font-weight: 600; }
+
+/* small screens: the map credits take two lines; tap to read them all (OSM allows expandable credits on mobile) */
+@media (max-width: 600px) {
+  .leaflet-control-attribution.compact { max-height: 2.7em; overflow: hidden; cursor: pointer; font-size: 10px; line-height: 1.35; }
+  .leaflet-control-attribution.compact.open { max-height: none; }
+}
