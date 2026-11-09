@@ -238,6 +238,10 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       summit = high terrain; `common.forecast_areas()` = ski areas + Sno-Parks for every point product). Obs map perf
       pass (map_points.json, vendored Leaflet, parallel loads). Lighthouse realistic numbers: serve build/ with gzip
       (scratchpad gzserve.py pattern); the plain http.server has no gzip and understates mobile scores.
+- [x] S10 (dev10): ridge wind off forecast pages; SNOTEL panel overlap fix; snow redesign (NBM 25/75 snowfall + SNOWLR
+      10/90 selected, SELECTION_VERSION 6; periods snow_q1/q3 + snow_type; totals 48h + q1/q3; summary window[5] = main
+      snow type; area.js periodChart range bars, accumChart, slrChart + strip). Points fetch ~+60 % (391 s local).
+      NEXT: basemap design spike -> owner picks (AskUserQuestion), then implement.
 - [x] S9 (dev9): NBM forecast overlays (pipeline/nbm/layers.py in the points job -> data/points/layers/; overlays.js
       loads Observed + Forecast indexes) and "My mountains" (mine.html, js/mine.js; favorites in localStorage
       "snowwx.favorites"). Browser checks: forecast, mine. Follow-up (owner S9): landing banner on the obs map

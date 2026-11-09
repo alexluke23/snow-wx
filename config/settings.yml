@@ -50,3 +50,12 @@ cache:
 archive:
   # Forecast archive for verification (docs/verification.md): monthly CSVs on this release.
   release: verification
+
+snow_type:
+  # Heuristic snow type from NBM's snow-to-liquid ratio (SLR), shown per day/night period
+  # on forecast pages, My mountains and Powder Finder (owner S10). Labelled as a heuristic.
+  wet_max: 8          # SLR < 8:1 -> Wet/heavy
+  average_max: 12     # 8-12 -> Average
+  dry_max: 18         # 12-18 -> Dry/light; >= 18 -> Very dry/blower
+  wind_gust_mph: 30   # summit gusts during snowfall at/above this -> "wind-affected"
+  min_snow_in: 0.5    # no type for periods with less snow than this

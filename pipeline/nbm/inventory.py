@@ -96,6 +96,7 @@ def find(msgs: list[Msg], sel: Sel, fhour: int) -> Msg | None:
 
 
 PCTS = (10, 50, 90)
+SNOW_PCTS = (10, 25, 50, 75, 90)   # snowfall: 25/75 = the "likely" band (owner S10)
 QPF_PCTS = (10, 25, 50, 75, 90)   # qmd QPF: 10/90 to 48 h, 25/75 = "likely range" beyond (owner S3)
 T2, SFC, W10 = "2 m above ground", "surface", "10 m above ground"
 
@@ -148,6 +149,8 @@ def classify(m: Msg, h: int, cycle_hour: int, product: str) -> str | None:
                     ("SNOWLR", SFC): "slr"}.get((v, lev))
         if v == "SNOWLVL" and lev == SFC and k == "pct" and m.value in PCTS:
             return f"snowlvl_p{m.value}"
+        if v == "SNOWLR" and lev == SFC and k == "pct" and m.value in (10, 90):
+            return f"slr_p{m.value}"                          # snow-ratio band (owner S10)
         if v == "PTYPE" and k == "prob":
             return {">=5 <7": "p_snow_type", ">=1 <2": "p_rain_type"}.get(m.value)
         return None
@@ -165,9 +168,9 @@ def classify(m: Msg, h: int, cycle_hour: int, product: str) -> str | None:
             return "qpf6" if v == "APCP" else "snow6"
         if v == "APCP" and k == "prob" and m.value == ">0.254":
             return "pop6"
-        if v == "ASNOW" and k == "pct" and m.value in PCTS:
+        if v == "ASNOW" and k == "pct" and m.value in SNOW_PCTS:
             return f"snow6_p{m.value}"
-    if v == "ASNOW" and win in (24, 48, 72) and k == "pct" and m.value in PCTS and synoptic_end(h, cycle_hour):
+    if v == "ASNOW" and win in (24, 48, 72) and k == "pct" and m.value in SNOW_PCTS and synoptic_end(h, cycle_hour):
         return f"snow{win}_p{m.value}"
     if v == "ASNOW" and win in (24, 48, 72) and k == "prob" and synoptic_end(h, cycle_hour, 12):
         t = threshold_in(m.value)

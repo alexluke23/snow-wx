@@ -383,3 +383,15 @@ def test_series_pop_uses_synoptic_window_ends_for_odd_cycles():
     data[11]["pop6"] = np.full(2, 0.8)
     fc = point_forecast(data, hours, init, 0, elev_ft=9000, grid_ft=9000, tz=ZoneInfo("America/Denver"))
     assert fc["series"]["pop"][:6] == [0.3] * 5 + [0.8] and fc["series"]["pop"][10] == 0.8
+
+
+def test_snow_type_thresholds_and_window_main_type():
+    from pipeline import points as P
+    P.configure_snow_type({"snow_type": {"wet_max": 8, "average_max": 12, "dry_max": 18, "wind_gust_mph": 30}})
+    assert P.snow_type(7.5, 10, 2.0)["type"] == "wet" and P.snow_type(12, 10, 2.0)["type"] == "dry"
+    t = P.snow_type(19, 35, 3.0)
+    assert t == {"type": "very_dry", "label": "Very dry/blower", "wind": True}
+    assert P.snow_type(15, 10, 0.2) is None and P.snow_type(None, 10, 3) is None
+    per = [{"start": "a1", "end": "a2", "snow_in": 1.0, "snow_type": {"type": "wet"}},
+           {"start": "a2", "end": "a3", "snow_in": 4.0, "snow_type": {"type": "dry"}}]
+    assert P.window_snow_type(per, "a0", "a9") == "dry" and P.window_snow_type(per, "b", "c") is None

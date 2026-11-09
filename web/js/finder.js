@@ -29,7 +29,10 @@
   const pick = (k, def) => q.get(k) ?? saved[k] ?? def;
   const st = { m: pick("m", "amount"), w: pick("w", "72h"), e: pick("e", "summit"), src: pick("src", "nbm"),
                state: pick("st", ""), region: pick("r", ""), sort: pick("sort", "snow"), fav: pick("fav", "0") === "1",
-               pw: pick("pw", "24h"), px: Number(pick("px", "6")), pd: Number(pick("pd", "0")), t: pick("t", "ski") };
+               pw: pick("pw", "24h"), px: Number(pick("px", "6")), pd: Number(pick("pd", "0")), t: pick("t", "ski"),
+               ty: pick("ty", "0") === "1" };
+  const TYPE_SHORT = { wet: "Wet", average: "Avg", dry: "Dry", very_dry: "Blower" };
+  const TYPE_LONG = { wet: "Wet/heavy (< 8:1)", average: "Average (8–12:1)", dry: "Dry/light (12–18:1)", very_dry: "Very dry/blower (≥ 18:1)" };
   // Sno-Parks (kind "snopark") reuse the ski-area fields: summit = high terrain, base = trailhead
   const isRec = (a) => a.kind === "snopark";
   const ELEV_LABEL = { ski: ["Summit", "Base"], snopark: ["High terrain", "Trailhead"], all: ["Summit / high terrain", "Base / trailhead"] };
@@ -41,10 +44,11 @@
     if (st.state) p.set("st", st.state);
     if (st.region) p.set("r", st.region);
     if (st.fav) p.set("fav", "1");
+    if (st.ty) p.set("ty", "1");
     history.replaceState(null, "", `#${p}`);
     try {
       localStorage.setItem(PREF_KEY, JSON.stringify({ m: st.m, w: st.w, e: st.e, src: st.src, st: st.state, r: st.region,
-        sort: st.sort, fav: st.fav ? "1" : "0", pw: st.pw, px: String(st.px), pd: String(st.pd), t: st.t }));
+        sort: st.sort, fav: st.fav ? "1" : "0", pw: st.pw, px: String(st.px), pd: String(st.pd), t: st.t, ty: st.ty ? "1" : "0" }));
     } catch { /* private mode */ }
   };
 
@@ -86,7 +90,7 @@
         pmean = ea?.mean?.[st.pw]?.[st.pd] ?? null;
         if (ea?.pop) { pop = ea.pop[st.pw]?.[st.pd] ?? null; sl = ea.sl?.[st.pw]?.[st.pd] ?? null; }
       }
-      return { a, snow: t ? t[0] : null, lo: t ? t[1] : null, hi: t ? t[2] : null, pop,
+      return { a, snow: t ? t[0] : null, lo: t ? t[1] : null, hi: t ? t[2] : null, pop, stype: t && t.length > 5 ? t[5] : null,
                obs: o, sl, slVsBase: sl === null ? null : sl - a.elev.base, gust: src?.gust_max_72h_mph ?? null,
                prob, pmean, alerts: alerts[a.id] || [] };
     });
@@ -122,6 +126,8 @@
   function render() {
     writeHash();
     renderControls();
+    document.querySelector(".finder-list").classList.toggle("with-type", st.ty);   // optional Snow type column
+    document.querySelector(".fhead .col-type").hidden = !st.ty;
     const fav = favs(), prob = st.m === "prob";
     const list = rows.filter((r) => (st.t === "all" || (st.t === "snopark") === isRec(r.a))
       && (!st.state || r.a.state === st.state) && (!st.region || r.a.region === st.region)
@@ -159,6 +165,7 @@
           <span class="num" data-label="Snow level" title="${r.sl === null || dry ? "" : `lowest snow level while precipitation is likely in this window: ${Math.round(r.sl).toLocaleString()} ft`}">${slTxt}</span>
           <span class="num" data-label="Gust">${r.gust === null ? "–" : `${Math.round(r.gust)}`}<small> mph</small></span>
           ${ridgeCell(r.a.id)}
+          ${st.ty ? `<span class="num" data-label="Snow type" title="${r.stype ? esc(TYPE_LONG[r.stype]) + " — " : ""}heuristic from NBM's snow ratio">${r.stype ? esc(TYPE_SHORT[r.stype]) : "–"}</span>` : ""}
         </span>
       </div>`;
     }).join("") : `<p class="hint">No ${TYPE_WORD[st.t]} match these filters.</p>`;
@@ -287,6 +294,8 @@
     $("region").addEventListener("change", (e) => { st.region = e.target.value; render(); });
     $("sort").addEventListener("change", (e) => { st.sort = e.target.value; render(); });
     $("favonly").addEventListener("change", (e) => { st.fav = e.target.checked; render(); });
+    $("stype").checked = st.ty;
+    $("stype").addEventListener("change", (e) => { st.ty = e.target.checked; render(); });
     $("pday").addEventListener("change", (e) => { st.pd = Number(e.target.value); update(); });
     const when = (iso) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", timeZoneName: "short" });
     $("fresh").textContent = `NBM ${when(nbm.issued)} run${nws ? ` · NWS issued ${when(nws.issued)}` : ""}${obs?.snowfall_end ? ` · observed to ${when(obs.snowfall_end)}` : ""}`;

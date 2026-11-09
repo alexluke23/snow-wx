@@ -61,6 +61,7 @@
     const t24 = P.totals["24h"], t72 = P.totals["72h"];
     const c24 = chance(P.exceed, "24h", 6), c72 = chance(P.exceed, "72h", 6);
     const sl = wetSnowLevel(P);
+    const st = (P.periods || []).slice(0, 6).find((p) => p.snow_type)?.snow_type;   // first snowy period in 72 h
     const baseFt = kind === "snotel" ? P.elev_ft : (d.points.base || P).elev_ft;
     const slTxt = sl === null ? `<span class="hint">little precipitation expected</span>`
       : sl <= baseFt ? `<b class="tobase">to the ${kind === "snotel" ? "station" : label.base.toLowerCase()}</b> <span class="hint">(${ft(sl)})</span>`
@@ -80,7 +81,7 @@
       <div class="mhead"><h3><a href="area.html#${encodeURIComponent(id)}">${esc(a.name)}</a></h3>
         <button type="button" class="unfav" data-id="${esc(id)}" aria-label="Remove ${esc(a.name)} from favorites" title="Remove from favorites">★</button>
         <p class="sub">${sub}</p>
-        <div class="mtags">${alHtml}${avyHtml ? ` <span class="avy">Avalanche: ${avyHtml}</span>` : ""}</div></div>
+        <div class="mtags">${st ? `<span class="stype" title="Snow type (heuristic from NBM's snow ratio)">${esc(st.label)}${st.wind ? " · wind-affected" : ""}</span>` : ""}${alHtml}${avyHtml ? ` <span class="avy">Avalanche: ${avyHtml}</span>` : ""}</div></div>
       <div class="mgrid">
         <div><span class="lab">Next 24 h</span>${sw(t24?.snow_in)}<b>${inches(t24?.snow_in)}"</b><small>${rng(t24)}</small></div>
         <div><span class="lab">Next 72 h</span>${sw(t72?.snow_in)}<b>${inches(t72?.snow_in)}"</b><small>${rng(t72)}</small></div>

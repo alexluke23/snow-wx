@@ -395,7 +395,7 @@ rename, day-10 temp/wind panels, Sno-Park research).
 2. **M7 Precipitation by model at each point** — HRRR, RRFS, GFS (+ NBM)
    cumulative snow/QPF and snow level on one chart, from the existing
    model pipeline. Meteorologist-grade but readable (§6-B).
-3. **Powder quality** indicator (SLR + wind, §5.2 heuristic), clearly
+3. ✔ (S10, replaced by the snow ratio / snow type work) **Powder quality** — now: two-tone range bars, Accumulated snow chart (24/48/72 h NBM ranges + 7/10-day checkpoints), Snow ratio chart with 10–90 % band and per-period snow type (config `snow_type`), My mountains badge, optional Powder Finder Type column. Original text: **Powder quality** indicator (SLR + wind, §5.2 heuristic), clearly
    labeled as a heuristic, on area pages and in the finder.
 4. ✔ (S9) **"My mountains" home view** — mine.html + js/mine.js: one card per favorite (ski areas, Sno-Parks, SNOTEL): expected 24/72 h with NBM 10–90 %, chance of ≥ 6" (first 24/72-h windows), lowest snow level while precip is likely vs the base, alerts, avalanche danger; empty state explains ☆; remove from the card. Nav link "★ My mountains" on every page (short labels on phones). Lighthouse 100. Landing-page question open. Original text:: favorites dashboard (next 24/72 h
    expected + chance of ≥ 6", snow level, alerts) as the landing page for
