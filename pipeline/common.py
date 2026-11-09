@@ -93,3 +93,21 @@ def forecast_areas(repo: Path | None = None) -> list[dict]:
 def plural(n: int, word: str) -> str:
     """'1 ski area', '2 ski areas' (word given in the singular; trailing 's' added)."""
     return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
+POINT_SIDE_FILES = ("summary.json", "exceed_summary.json", "calibration.json")
+
+
+def stale_point_files(out: Path) -> list[Path]:
+    """JSON files a previous points run wrote into `out` (listed in its summary.json, plus the
+    snotel-* files and the side files), so a mistaken --out (e.g. build/data) never deletes other
+    site data. Nothing is deleted when `out` has no points summary.json."""
+    try:
+        prev = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(prev, dict) or "areas" not in prev or not ("cycle" in prev or "issued" in prev):
+        return []
+    ids = {a.get("id") for a in prev.get("areas", []) if isinstance(a, dict)}
+    return [f for f in out.glob("*.json")
+            if f.name in POINT_SIDE_FILES or f.stem in ids or f.stem.startswith("snotel-")]

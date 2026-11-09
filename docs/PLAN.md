@@ -153,6 +153,9 @@ percentiles, snow level method, verification).
 | Nov 8 (S10 follow-up) | Roads/towns layer loads as soon as the markers are drawn and the browser is idle (~2 s cap), not on first touch or after 10 s: orientation matters more than a few Lighthouse points (obs map ~83-85 accepted). |
 | Nov 8 (S10 follow-up) | Relief holes: keep the ancestor-tile filler; owner checks the live site. OpenFreeMap acceptable for now; self-hosted vector tiles = §11 backup item. |
 | Nov 8 (S10) | Basemap: owner picked design 3 — USGS shaded relief + a minimal OpenStreetMap reference layer (OpenFreeMap vector tiles drawn by MapLibre GL: faint roads, dashed state lines, haloed towns, peaks with elevations). USGS Topo and Imagery stay as optional base layers; the reference layer hides on them. |
+| Nov 9 (S11) | Snowfall bars become simple **range bars**: NBM 25th–75th percentile shown as "low–high" (e.g. "6–12″"); no expected tick and no 10–90 % on this chart. Never sum percentiles: ranges only from native NBM percentile windows. |
+| Nov 9 (S11) | Adopt the **NWS snowfall color table** site-wide (one definition in colors.js) for bars, tiles, Powder Finder markers, snowfall overlays and legends. |
+| Nov 9 (S11) | Accumulated snow shows only NBM's **expected running total by day** (no probabilistic checkpoint bars). |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;

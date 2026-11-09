@@ -395,3 +395,52 @@ def test_snow_type_thresholds_and_window_main_type():
     per = [{"start": "a1", "end": "a2", "snow_in": 1.0, "snow_type": {"type": "wet"}},
            {"start": "a2", "end": "a3", "snow_in": 4.0, "snow_type": {"type": "dry"}}]
     assert P.window_snow_type(per, "a0", "a9") == "dry" and P.window_snow_type(per, "b", "c") is None
+
+
+def test_day_spans_and_native_windows():
+    """Snowfall by day (owner S11): 12Z-12Z days; ranges only from one native NBM window."""
+    utc = timezone.utc
+    hours = list(range(1, 265))
+    assert P.day_spans(datetime(2026, 11, 8, 19, tzinfo=utc), hours)[:2] == [(0, 17), (17, 41)]
+    assert P.day_spans(datetime(2026, 11, 8, 13, tzinfo=utc), hours)[0] == (0, 23)
+    assert P.day_spans(datetime(2026, 11, 8, 12, tzinfo=utc), hours)[0] == (0, 24)
+    have = lambda key, e: (key, e) in {("snow24", 41), ("snow6", 5)}  # noqa: E731
+    assert P.native_window(17, 41, have) == "snow24"
+    assert P.native_window(-1, 5, have) == "snow6"                 # short first day = one 6-h window
+    assert P.native_window(-1, 17, have) is None                   # 18 h: no window, never a sum
+    assert P.native_window(17, 41, lambda k, e: False) is None
+    lab = P.day_label(datetime(2026, 11, 8, 19, tzinfo=utc), 17, 41, ZoneInfo("America/Denver"))
+    assert lab["label"] == "Mon 9" and lab["local"] == "Mon 5 AM – Tue 5 AM MST"
+
+
+def test_point_forecast_days_use_native_24h_percentiles():
+    init = datetime(2026, 11, 7, 18, tzinfo=timezone.utc)            # first day 18Z-12Z: 18 h, no native window
+    hours = list(range(1, 67))
+    data = {}
+    for h in hours:
+        d = _fake_hour(h if (18 + h) % 6 == 0 else 1)                 # 6-h fields at valid 00/06/12/18Z
+        if (18 + h) % 6 != 0:
+            for k in [k for k in d if k.startswith(("qpf6", "snow6", "pop6", "qpf12"))]:
+                del d[k]
+        if (18 + h) % 24 == 12 and h >= 42:
+            d.update(snow24_p25=np.full(2, 4.0), snow24_p50=np.full(2, 8.0), snow24_p75=np.full(2, 14.0))
+        data[h] = d
+    fc = point_forecast(data, hours, init, 0, elev_ft=9000, grid_ft=8000, tz=ZoneInfo("America/Denver"))
+    first, second = fc["days"][0], fc["days"][1]
+    assert first["partial"] and first["hours"] == 18 and first["snow_p25"] is None and first["range_window"] is None
+    assert first["snow_in"] == 9.0                                   # 3 x 3 in (6-h deterministic windows)
+    assert second["hours"] == 24 and not second["partial"] and second["range_window"] == "snow24"
+    assert (second["snow_p25"], second["snow_p50"], second["snow_p75"]) == (4.0, 8.0, 14.0)
+    assert second["snow_in"] == 12.0 and second["label"] == "Sun 8"
+
+
+def test_stale_point_files_only_touches_previous_points_output(tmp_path):
+    from pipeline.common import stale_point_files
+    import json as _json
+    (tmp_path / "meta.json").write_text("{}")
+    (tmp_path / "alta.json").write_text("{}")
+    assert stale_point_files(tmp_path) == []                       # no points summary: delete nothing
+    (tmp_path / "summary.json").write_text(_json.dumps({"cycle": "2026110819", "areas": [{"id": "alta"}]}))
+    (tmp_path / "snotel-1000-OR-SNTL.json").write_text("{}")
+    got = sorted(f.name for f in stale_point_files(tmp_path))
+    assert got == ["alta.json", "snotel-1000-OR-SNTL.json", "summary.json"]   # meta.json survives

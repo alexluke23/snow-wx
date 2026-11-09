@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 
 from .. import points as P
-from ..common import REPO_ROOT, utcnow, write_json
+from ..common import REPO_ROOT, stale_point_files, utcnow, write_json
 from .inventory import FULL_SUITE_CYCLES, parse_idx, required_keys, sample_hours, select
 
 log = logging.getLogger("snow-wx.nbm")
@@ -466,6 +466,30 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
             "snowlvl_min_ft": _r(min(sls), -2) if sls else None,
         })
 
+    # Snowfall by day (owner S11): 12Z-12Z days. Expected = sum of the 6-h deterministic windows;
+    # the range = NBM's own 25th/50th/75th snowfall percentiles for a window that exactly covers the
+    # day (24 h, or 6 h for a short first day), times P(snow at the point). Percentiles are never
+    # added, so a partial first day (e.g. 11 or 17 h) or a day past the percentile data has no range.
+    out_days = []
+    have = lambda key, e: v(e, f"{key}_p25") is not None and v(e, f"{key}_p75") is not None  # noqa: E731
+    first_w = (min(W) - 6) if W else 0          # first 6-h window start (like the totals' t0)
+    for s, e in P.day_spans(init, hours):
+        s = max(s, min(first_w, e - 6))         # a short first day starts at the first published window
+        ws = windows(s, e)
+        if e not in hset or ws is None:
+            continue
+        s_eff = e - 6 * len(ws)                 # 6-h windows end at 00/06/12/18Z; may start 1-5 h before init
+        q = sum(w["qpf"] for w in ws)
+        snow = 0.0 if q < P.WET_IN else sum(w["snow"] for w in ws)
+        pw = P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws])
+        key = P.native_window(s_eff, e, have)
+        pct = {f"snow_p{q_}": (_r(v(e, f"{key}_p{q_}") * (pw or 0.0), 1) if key and v(e, f"{key}_p{q_}") is not None else None)
+               for q_ in (25, 50, 75)}
+        pops = [x for x in (v(h, "pop6") for h in range(e, s_eff, -6)) if x is not None]
+        out_days.append({**P.day_label(init, s_eff, e, tz), "hours": e - s_eff, "partial": e - s_eff < 24,
+                         "snow_in": _r(snow, 1), **pct, "range_window": key,
+                         "qpf_in": _r(q, 2), "p_snow": _r(pw, 2), "pop": _r(max(pops), 2) if pops else None})
+
     totals = {}
     qblocks = {"24h": [("qpf_0_1d", 24)], "72h": [("qpf_0_3d", 72)],
                "7d": [("qpf_0_3d", 72), ("qpf_3_5d", 120), ("qpf_5_7d", 168)],
@@ -546,7 +570,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
     for w in ex.values():
         w["mean"] = window_means(out_periods, w["start"], w["end"])
         w["cell_mean"] = cell_window_sums(W, init, w["start"], w["end"])
-    return {"series": series, "precip": precip, "periods": out_periods, "totals": totals, "exceed": ex}
+    return {"series": series, "precip": precip, "periods": out_periods, "days": out_days, "totals": totals, "exceed": ex}
 
 
 def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: datetime,
@@ -774,7 +798,7 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
     files, summary = build_outputs(cat, data, hours, cycle, col, generated)
     files.update(station_outputs(stations, data, hours, cycle, col, generated))
     out.mkdir(parents=True, exist_ok=True)
-    for old in out.glob("*.json"):
+    for old in stale_point_files(out):   # common.py: only files a previous points run wrote
         old.unlink()
     sizes = []
     for aid, doc in files.items():
