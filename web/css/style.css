@@ -431,3 +431,14 @@ body.mine-page > main { min-height: 100vh; min-height: 100dvh; }
 .home-banner .close { position: absolute; top: 2px; right: 2px; border: 0; background: transparent; font-size: 20px; min-width: 40px; min-height: 40px; cursor: pointer; color: #4a5666; }
 .home-pref { font-size: 13.5px; margin: 0 0 10px; }
 .site-feedback { white-space: nowrap; }
+/* snow type strip (area pages, owner S10) */
+.snow-type-strip { list-style: none; margin: 6px 0 0; padding: 0; display: flex; gap: 3px; overflow-x: auto; }
+.snow-type-strip .st-cell { flex: 0 0 auto; min-width: 46px; text-align: center; font-size: 12px; }
+.snow-type-strip .st-cell.night { opacity: .85; }
+.snow-type-strip .st-day { display: block; color: #4a5666; white-space: nowrap; }
+.snow-type-strip .st-chip { display: inline-block; padding: 2px 5px; border-radius: 4px; border: 1px solid #8aa6c8; color: #10243c; font-weight: 600; white-space: nowrap; }
+.snow-type-strip .st-none { color: #8a96a6; }
+@media (min-width: 720px) {
+  .finder-list.with-type .frow, .finder-list.with-type .frow.fhead { grid-template-columns: 40px minmax(140px, 1fr) 104px 64px 82px 66px 84px 56px; }
+}
+.mcard .stype { background: #e8f0fa; color: #10243c; border: 1px solid #8aa6c8; border-radius: 4px; padding: 0 6px; font-weight: 600; }

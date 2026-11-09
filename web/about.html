@@ -40,7 +40,7 @@
       <a href="https://avalanche.org/" target="_blank" rel="noopener">avalanche center</a> before heading out.</p>
 
     <nav class="toc" aria-label="On this page">
-      <a href="#nbm">NBM forecasts</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#forecast-map">Forecast map</a> ·
+      <a href="#nbm">NBM forecasts</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#forecast-map">Forecast map</a> · <a href="#snow-type">Snow type</a> ·
       <a href="#snow-level">Snow level</a> · <a href="#elevation">Elevation</a> · <a href="#nws">NWS forecast</a> ·
       <a href="#ridge-wind">Ridge-top wind</a> · <a href="#snoparks">Sno-Parks</a> · <a href="#afd">Forecaster discussion</a> ·
       <a href="#sources">Data sources</a> · <a href="#disclaimer">Disclaimer</a>
@@ -72,7 +72,7 @@
 
     <section id="probabilities">
       <h3>Snowfall ranges and chances</h3>
-      <p><b>Ranges (whiskers and "NBM 10–90%")</b> are NBM's own snowfall percentiles. The 01, 07, 13 and 19 UTC
+      <p><b>Ranges (range bars: dark = likely, 25–75%; light = 10–90%)</b> are NBM's own snowfall percentiles. The 01, 07, 13 and 19 UTC
         NBM runs carry 24-, 48- and 72-hour snowfall percentiles out to about 11 days; we use those runs whenever
         they are available. A range for a period is built from the 10th and 90th percentiles of the windows that
         cover it. Adding windows rank by rank (10th + 10th, 90th + 90th) makes the range slightly too wide, so
@@ -88,6 +88,22 @@
         windows across the western US: they agree within about 1–4 percentage points on average. The chances are
         for the 2.5-km grid cell and are not adjusted to the summit or base elevation. They are NBM-only, because
         the NWS forecast has no snowfall probabilities.</p>
+    </section>
+
+    <section id="snow-type">
+      <h3>Snow ratio and snow type (a heuristic)</h3>
+      <p>The <b>snow ratio</b> is NBM's forecast snow-to-liquid ratio: how many inches of snow one inch of water makes.
+        Area pages chart it over time with NBM's 10–90% range where NBM provides one, drawn solid only where precipitation is
+        likely. From the ratio of each 12-hour period with at least half an inch of snow we give a simple <b>snow type</b>:</p>
+      <ul>
+        <li><b>Wet/heavy</b>: below 8:1 — dense, sticky snow.</li>
+        <li><b>Average</b>: 8–12:1.</li>
+        <li><b>Dry/light</b>: 12–18:1.</li>
+        <li><b>Very dry/blower</b>: 18:1 and up.</li>
+      </ul>
+      <p><b>Wind-affected</b> (≋) is added when NBM's summit gusts reach 30 mph while it snows. This is a rule of thumb from a
+        forecast, not a measurement: real snow quality also depends on crystal type, settling, sun and the snow already on the
+        ground. The thresholds live in the site's configuration and may be tuned once we can verify them.</p>
     </section>
 
     <section id="forecast-map">

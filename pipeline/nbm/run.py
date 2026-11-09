@@ -30,7 +30,7 @@ BUCKET = "https://noaa-nbm-grib2-pds.s3.amazonaws.com"
 CACHE = REPO_ROOT / "data_cache" / "nbm"
 CATALOG = REPO_ROOT / "data" / "ski_areas.json"
 SOURCE = "NOAA/NWS National Blend of Models (NBM) via NOAA Open Data Dissemination (AWS)"
-SELECTION_VERSION = 5          # bump when inventory.selections changes (invalidates the sample cache)
+SELECTION_VERSION = 6          # bump when inventory.selections changes (invalidates the sample cache)
 
 K_TO_F = lambda k: (k - 273.15) * 1.8 + 32.0  # noqa: E731
 MS_TO_MPH = 2.236936
@@ -322,7 +322,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
 
     hset = set(hours)
     series = {k: [] for k in ("t_f", "wind_mph", "gust_mph", "wdir", "sky", "snowlvl_ft",
-                              "snowlvl_p10", "snowlvl_p90", "p_snow", "slr", "pop")}
+                              "snowlvl_p10", "snowlvl_p90", "p_snow", "slr", "slr_p10", "slr_p90", "pop")}
     ps: dict[int, float | None] = {}
     for h in hours:
         series["t_f"].append(_r(P.lapse_adjust_f(v(h, "t2m"), grid_ft, elev_ft)))
@@ -339,6 +339,8 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
         ps[h] = P.p_snow_level_below(elev_ft, p10, mid, p90)
         series["p_snow"].append(_r(ps[h], 2))
         series["slr"].append(_r(v(h, "slr"), 1))
+        series["slr_p10"].append(_r(v(h, "slr_p10"), 1))
+        series["slr_p90"].append(_r(v(h, "slr_p90"), 1))
         # 6-h PoP of the window this hour falls in: windows end at valid 00/06/12/18Z, so for
         # the 01/07/13/19Z cycles they end at f005, f011, ... (not at multiples of 6)
         series["pop"].append(_r(v(h + (-(init.hour + h) % 6), "pop6"), 2))
@@ -375,8 +377,10 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
         pw = [ps[h] for h in steps_in(e - 6, e) if ps.get(h) is not None]
         pw = sum(pw) / len(pw) if pw else 1.0
         lo, hi = v(e, "snow6_p10"), v(e, "snow6_p90")
+        q1, q3 = v(e, "snow6_p25"), v(e, "snow6_p75")
         W[e] = {"qpf": q, "raw": raw, "ps": pw, "snow": 0.0 if q < P.WET_IN else raw * pw,
                 "rng": None if lo is None or hi is None else (lo * pw, hi * pw),
+                "iqr": None if q1 is None or q3 is None else (q1 * pw, q3 * pw),
                 "slr": slr_in(e - 6, e)}
 
     def windows(s, e):
@@ -428,6 +432,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
         # deterministic and probabilistic fields are calibrated separately.
         ext_rng, slr = extended_range(qpct(key, e, 25, 75), ws)       # "likely range"
         nbm_rng = P.rank_sum([w["rng"] for w in ws])                   # NBM snowfall 10-90
+        nbm_iqr = P.rank_sum([w["iqr"] for w in ws])                   # NBM snowfall 25-75 ("likely")
         extended = nbm_rng is None
         rng = ext_rng if extended else nbm_rng
         qp = qpct(key, e, 25, 75) if extended else qpct(key, e)
@@ -443,6 +448,8 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
             **P.period_label(init, s, e, tz),
             "snow_in": _r(snow, 1),
             "snow_lo": _r(rng[0], 1) if rng else None, "snow_hi": _r(rng[1], 1) if rng else None,
+            "snow_q1": _r(nbm_iqr[0], 1) if (nbm_iqr and not extended) else None,
+            "snow_q3": _r(nbm_iqr[1], 1) if (nbm_iqr and not extended) else None,
             "extended": extended, "range": "derived 25-75" if extended else "NBM 10-90",
             # 0-48 h only: the extended-outlook (likely) range too, for the calibration report
             "snow_ext_lo": _r(ext_rng[0], 1) if (ext_rng and not extended) else None,
@@ -453,6 +460,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
             "pop": _r(max(pops), 2) if pops else None,
             "slr": _r(slr, 1),
             "powder": P.powder_quality(slr, max(snowy_gusts, default=None), snow),
+            "snow_type": P.snow_type(slr, max(snowy_gusts, default=None), snow),
             "t_max_f": _r(max(temps)) if temps else None, "t_min_f": _r(min(temps)) if temps else None,
             "gust_max_mph": _r(max(gusts), 0) if gusts else None,
             "snowlvl_min_ft": _r(min(sls), -2) if sls else None,
@@ -465,7 +473,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
     # Totals start at the first valid 00/06/12/18Z (f000 for synoptic cycles, f005 for 01/07Z ...)
     t0 = (min(W) - 6) if W else 0
 
-    def nbm_cover(s, e):
+    def nbm_cover(s, e, qlo=10, qhi=90):
         """Rank-sum of NBM snowfall-percentile windows (72/48/24/6 h) that exactly tile
         (s, e]; None if they can't. Scaled by P(snow at the point). Tiles greedily with the
         longest window first, so a longer total extends the shorter one's windows (the 7-day
@@ -499,11 +507,11 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
             ws = windows(end2 - L, end2) or []
             pw = P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws]) if ws else 1.0
             key = "snow6" if L == 6 else f"snow{L}"
-            lo, hi = v(end2, f"{key}_p10"), v(end2, f"{key}_p90")
+            lo, hi = v(end2, f"{key}_p{qlo}"), v(end2, f"{key}_p{qhi}")
             parts.append(None if lo is None or hi is None else (lo * (pw or 0), hi * (pw or 0)))
         return P.rank_sum(parts)
 
-    for name, L in (("24h", 24), ("72h", 72), ("7d", 168), ("10d", 240)):
+    for name, L in (("24h", 24), ("48h", 48), ("72h", 72), ("7d", 168), ("10d", 240)):
         end = t0 + L
         ws = windows(t0, end)
         if end not in hset or ws is None:
@@ -511,7 +519,10 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
         q = sum(w["qpf"] for w in ws)
         snow = 0.0 if q < P.WET_IN else sum(w["snow"] for w in ws)
         cover = nbm_cover(t0, end)
-        if cover is not None:  # NBM's own snowfall percentiles (all horizons on 01/07/13/19Z cycles)
+        iqr = nbm_cover(t0, end, 25, 75) if cover is not None else None   # NBM 25-75 ("likely")
+        if name not in qblocks:   # 48 h: an accumulated-snow checkpoint; NBM's own windows only
+            srng, qrng = cover, None
+        elif cover is not None:  # NBM's own snowfall percentiles (all horizons on 01/07/13/19Z cycles)
             srng = cover
             qrng = P.rank_sum([qpct(k, e) for k, e in qblocks[name]]) if t0 == 0 and L <= 48 else None
         elif L <= 48:
@@ -524,6 +535,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
             qrng = P.rank_sum([qpct(k, e, 25, 75) for k, e in qblocks[name]])
         totals[name] = {"snow_in": _r(snow, 1),
                         "snow_lo": _r(srng[0], 1) if srng else None, "snow_hi": _r(srng[1], 1) if srng else None,
+                        "snow_q1": _r(iqr[0], 1) if iqr else None, "snow_q3": _r(iqr[1], 1) if iqr else None,
                         "qpf_in": _r(q, 2),
                         "qpf_lo": _r(qrng[0], 2) if qrng else None, "qpf_hi": _r(qrng[1], 2) if qrng else None,
                         "p_snow": _r(P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws]), 2),
@@ -566,9 +578,9 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
             out = {}
             for n, x in pts["totals"].items():
                 start = x.get("from") or init.strftime("%Y-%m-%dT%H:%MZ")
-                end = (init + timedelta(hours={"24h": 24, "72h": 72, "7d": 168, "10d": 240}[n])).strftime("%Y-%m-%dT%H:%MZ")
+                end = (init + timedelta(hours={"24h": 24, "48h": 48, "72h": 72, "7d": 168, "10d": 240}[n])).strftime("%Y-%m-%dT%H:%MZ")
                 pop, sl = P.window_wet(pts["periods"], start, end)
-                out[n] = [x["snow_in"], x["snow_lo"], x["snow_hi"], pop, sl]
+                out[n] = [x["snow_in"], x["snow_lo"], x["snow_hi"], pop, sl, P.window_snow_type(pts["periods"], start, end)]
             return out
         summary.append({
             "id": a["id"], "name": a["name"], "state": a["state"], "region": a["region"],
@@ -696,6 +708,7 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
                github_output: str | None = None, catalog: Path = CATALOG, now=None) -> int:
     cat = json.loads(Path(catalog).read_text(encoding="utf-8"))
     grid = cat["nbm_grid"]          # grid definition stored with the catalog
+    P.configure_snow_type(cfg)      # snow-type thresholds (config/settings.yml snow_type)
     rp = Path(catalog).with_name("rec_points.json")      # Sno-Parks / winter recreation (M4.5), same shape
     if rp.exists():
         cat["areas"] = cat["areas"] + json.loads(rp.read_text(encoding="utf-8"))["areas"]
