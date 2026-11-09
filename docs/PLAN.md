@@ -64,6 +64,9 @@ percentiles, snow level method, verification).
   halos/outlines on both maps. Lighthouse mobile obs map (gzip, prototype loads MapLibre eagerly from unpkg):
   current 89, design 1 83, design 2 87, design 3 85; Finder 97 vs 92 with design 3. Final (MapLibre vendored, loaded
   on first interaction or 10 s after the markers): obs map 87/88/88, Finder 93/97 (3 and 2 runs; accessibility 100).
+  Follow-up (owner): Finder Ridge column removed; roads layer now loads right after the markers once the visible relief
+  tiles are in and the browser is idle (2 s cap; starting it earlier slowed the relief tiles = LCP, obs map 71-76).
+  Lighthouse mobile: obs map 86/87/86 (LCP 3.3-3.6 s), Finder 99/99; accessibility 100. dev10 pushed.
 - **Session 9 (dev9, Nov 8):** snow forecast overlays on the obs map (Track 2 item 7), "My mountains" favorites page (Track 1 item 4). Powder quality and M7 not started.
 - **Session 7 (dev7, Nov 8):** "Expected" rename done; hour-by-hour temperature/wind to day 10 (6-hourly,
   shaded); Sno-Park source research written up (docs/sources_recreation.md), awaiting approval.
@@ -146,6 +149,9 @@ percentiles, snow level method, verification).
 | Nov 8 (S10) | User testing: no HRRR/RRFS ridge-top wind on the forecast page (pipeline data kept). |
 | Nov 8 (S10) | User testing: basemaps need geographic reference (roads, cities, state lines) without clutter; USGS Topo washes out markers; remove OpenTopoMap. Basemap design spike, owner picks. |
 | Nov 8 (S10) | M7 (precipitation by model) on hold. |
+| Nov 8 (S10 follow-up) | Powder Finder "Ridge" column removed too (ridge pipeline data kept; about.html ridge section removed with it). |
+| Nov 8 (S10 follow-up) | Roads/towns layer loads as soon as the markers are drawn and the browser is idle (~2 s cap), not on first touch or after 10 s: orientation matters more than a few Lighthouse points (obs map ~83-85 accepted). |
+| Nov 8 (S10 follow-up) | Relief holes: keep the ancestor-tile filler; owner checks the live site. OpenFreeMap acceptable for now; self-hosted vector tiles = §11 backup item. |
 | Nov 8 (S10) | Basemap: owner picked design 3 — USGS shaded relief + a minimal OpenStreetMap reference layer (OpenFreeMap vector tiles drawn by MapLibre GL: faint roads, dashed state lines, haloed towns, peaks with elevations). USGS Topo and Imagery stay as optional base layers; the reference layer hides on them. |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
@@ -666,6 +672,10 @@ season of usage analytics and verification results.
   private repo would exceed free Actions minutes at the current schedule
   (estimate the monthly cost before deciding). Public code is legal to
   keep but copyable — owner decision.
+- **Basemap reference tiles backup (owner S10):** self-host a western-US vector tile extract (e.g. a
+  PMTiles file built from OpenStreetMap/OpenMapTiles, served from the static host with HTTP range
+  requests and read by MapLibre's PMTiles protocol) as a backup or replacement for OpenFreeMap.
+  Estimate the file size for the western states at z0-14 and the host's range-request support first.
 - Paid features like alerts need a small backend (accounts, scheduler,
   email/SMS/push) — estimate cost and complexity before committing.
 
@@ -679,7 +689,8 @@ season of usage analytics and verification results.
 | OpenStreetMap / OpenSkiMap / OSM Sno-Parks | ODbL: attribution; derived databases shared under ODbL |
 | USFS EDW | Public domain |
 | **avalanche.org API** | **Verify** commercial-use terms; contact if unclear |
-| **OpenTopoMap tiles** | **Verify**: CC-BY-SA + fair-use policy; heavy commercial traffic may need self-hosted or paid tiles |
+| OpenTopoMap tiles | Removed in S10 (no longer used) |
+| OpenFreeMap vector tiles (roads/towns layer) | OK: no key, no limits, commercial use allowed; credit OpenFreeMap / OpenMapTiles / OSM (ODbL). Single volunteer-run service: see 11.2 backup item |
 | State Sno-Park lists (WA/OR/CA/ID) | Not copied; ask permission if ever needed |
 
 ### 11.4 Legal & trust

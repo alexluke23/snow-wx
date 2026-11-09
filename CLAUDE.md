@@ -243,10 +243,14 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       snow type; area.js periodChart range bars, accumChart, slrChart + strip). Points fetch ~+60 % (391 s local).
       Basemap (owner picked design 3): shaded relief + "Roads, towns & peaks" reference layer = js/basemap-ref.js
       (OpenFreeMap vector tiles, MapLibre GL 4.7.1 + maplibre-gl-leaflet 0.0.22 vendored in web/vendor/, pane
-      "reference" z 250, hidden on Topo/Imagery). Loaded only after the markers, on first interaction or 10 s later
-      (one 100-500 ms parse task; otherwise Lighthouse mobile drops below 85). USGSShadedReliefOnly has NO z9 tiles
+      "reference" z 250, hidden on Topo/Imagery). Loads right after the markers (app.js calls basemaps.loadReference()),
+      once the visible relief tiles are in and the browser is idle, 2 s cap (owner S10; starting it before the relief
+      tiles finish slows the LCP tile: obs map 71-76 vs 86-87). USGSShadedReliefOnly has NO z9 tiles
       (gaps at z10-11 too): basemap.js `snowTileLayer` fills holes from ancestor tiles. OpenTopoMap removed; marker
       halos; compact map credits under 600 px (tap to expand).
+      Follow-up: Powder Finder Ridge column removed (ridge.json still built, shown nowhere); about.html ridge section
+      removed. PLAN §11.2: self-hosted western-US PMTiles as an OpenFreeMap backup (not started). dev10 pushed.
+      NEXT (S11): owner reviews dev10 live (relief holes at z9-11, roads layer timing on phones).
 - [x] S9 (dev9): NBM forecast overlays (pipeline/nbm/layers.py in the points job -> data/points/layers/; overlays.js
       loads Observed + Forecast indexes) and "My mountains" (mine.html, js/mine.js; favorites in localStorage
       "snowwx.favorites"). Browser checks: forecast, mine. Follow-up (owner S9): landing banner on the obs map
