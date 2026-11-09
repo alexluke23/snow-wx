@@ -100,6 +100,22 @@ const SNOWFALL = {
   digits: 0,
 };
 
+// Legend of the NWS snowfall colours: the classes from `from` inches up to the class holding `maxIn`
+// (at least through `minTop`), each swatch labelled with its lower limit; pale swatches outlined.
+function snowLegendHtml(maxIn, { from = 0.1, minTop = 12, cls = "" } = {}) {
+  const S = SNOWFALL;
+  const first = Math.max(1, S.bins.findIndex((b) => b >= from) + 1);
+  let last = S.bins.findIndex((b) => b > Math.max(maxIn || 0, minTop));
+  last = last < 0 ? S.colors.length - 1 : last;
+  const items = [];
+  for (let k = first; k <= last; k++) {
+    const c = S.colors[k];
+    items.push(`<span class="sw${snowPale(c) ? " pale" : ""}" style="background:${c};color:${textOn(c)}">${S.legend[k]}</span>`);
+  }
+  return `<div class="snow-legend${cls ? ` ${cls}` : ""}" role="img" aria-label="Snowfall colours in inches (NWS colour table): ${S.legend.slice(first, last + 1).join(", ")}">` +
+    `<span class="lab">in</span>${items.join("")}</div>`;
+}
+
 // Swatches this light disappear on the white page: draw them with an outline (WCAG non-text contrast).
 function snowPale(hex) {
   const n = parseInt(String(hex).slice(1, 7), 16);

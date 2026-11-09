@@ -443,6 +443,12 @@ def check_forecast_overlays(b: Browser, base: str, log):
           return [clear, n]; })()""")
         log(f"  {lid}: clear pixels {clear[0]}/{clear[1]}")
         need(clear[0] > 0, f"{lid}: no transparent (dry) pixels at all")
+    # S11: snowfall overlays use the shared NWS snowfall colours + legend (one definition in colors.js)
+    leg = b.eval("""(() => { const s = document.querySelector('#overlay-select'); s.value = 'nbm72'; s.dispatchEvent(new Event('change'));
+      const l = document.querySelector('#overlays .snow-legend');
+      return {legend: !!l, first: l ? l.querySelector('.sw').textContent : null, nws: SNOWFALL.colors[7] === '#fffe95' && SNOWFALL.bins[6] === 6}; })()""")
+    log(f"  snowfall overlay legend: {leg}")
+    need(leg["legend"] and leg["first"] == "0.1" and leg["nws"], f"snowfall overlay legend / NWS colours: {leg}")
     need(not b.errors, f"JS errors: {b.errors}")
 
 
