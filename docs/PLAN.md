@@ -133,6 +133,11 @@ percentiles, snow level method, verification).
 | Nov 8 (S9) | 1. Landing: a visitor with favorites who opens the obs map directly (no link hash, not from another Snow-Wx page) gets a dismissible banner: "Go to My mountains", "Always open My mountains" (localStorage `snowwx.home`, try/catch; turn off on My mountains), dismiss (for the session). Shared links and new visitors land on the map. |
 | Nov 8 (S9) | 2. Forecast overlays carry the note "Grid values (2.5 km); site pages adjust for elevation."; near-zero snowfall (< 0.1 in) and chances < 5 % stay transparent. |
 | Nov 8 (S9) | 3. "Send feedback" link (mailto) in the footer of every page. |
+| Nov 8 (S10) | User testing: whisker plots are hard to read → two-tone range bars + an "Accumulated snow" chart (cumulative expected; uncertainty only from NBM's own 24/48/72 h ranges and our 7/10-day totals; never sum period percentiles). |
+| Nov 8 (S10) | User testing: show forecast snow ratios (NBM SLR, 10–90 % where available) plus a simple snow-type rating (Wet/heavy < 8:1, Average 8–12, Dry/light 12–18, Very dry/blower ≥ 18; "wind-affected" flag), labelled as a heuristic. Replaces the planned powder-quality item. |
+| Nov 8 (S10) | User testing: no HRRR/RRFS ridge-top wind on the forecast page (pipeline data kept). |
+| Nov 8 (S10) | User testing: basemaps need geographic reference (roads, cities, state lines) without clutter; USGS Topo washes out markers; remove OpenTopoMap. Basemap design spike, owner picks. |
+| Nov 8 (S10) | M7 (precipitation by model) on hold. |
 
 Defaults chosen in this plan (owner may override): ski-area scope = all
 western US downhill areas with lifts (~150–200), major resorts curated first;
