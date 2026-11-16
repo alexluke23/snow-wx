@@ -2,12 +2,30 @@
 
 Public website of open weather, snowpack and avalanche data for western US
 mountains, built for skiers and snow-science users. Owner is a meteorologist
-comfortable with Python. Free hosting: GitHub Actions (hourly) builds static
-JSON/PNG + HTML and deploys to GitHub Pages. No servers, no API keys.
+comfortable with Python. Free-first, with a possible small business later.
+Hosting today: GitHub Actions (hourly) builds static JSON/PNG + HTML and deploys
+to GitHub Pages; the planned move to a custom domain + Cloudflare Pages + R2 is
+milestone W1 (docs/specs/hosting-seo.md). No servers, no API keys so far (the W6
+alerts backend will add a small one; see docs/specs/alerts-backend.md).
 
-**Product plan: `docs/PLAN.md`** (vision, specs, milestones M0–M10, decisions log).
-Read it with this file at the start of every session; keep its §2 Status, §3
-Decisions log and §8 milestone checkboxes current as work lands.
+## Project docs (read only what the task needs)
+- At the start of every session read `docs/PLAN.md` (lean plan: status, rules, roadmap, acceptance criteria).
+- Before working on a feature, read ONLY its spec in `docs/specs/` (index in the "Where things live" table in PLAN.md).
+- Read `docs/DESIGN.md` only when building or changing charts, maps legends, colors or layout.
+- Do NOT read `docs/BUSINESS.md` (pricing, legal, go-to-market) or `docs/ARCHIVE.md` (history) unless the task explicitly asks for them.
+- When a milestone lands, tick it in PLAN.md §8; move finished items and stale decisions to `docs/ARCHIVE.md` so PLAN.md stays under ~15 KB.
+- Keep section numbers (§) stable; cross-references rely on them.
+- Keep PLAN.md §2 Status and §3 Decisions log current as work lands.
+- Reference docs (read only for that topic):
+  - `docs/verification.md` — forecast archive and M9 verification
+  - `docs/nbm_inventory.md`, `docs/nbm_prob_consistency_*.md`, `docs/nbm_validation_gsl_*.md` — NBM GRIB layouts, exceedance-probability consistency, GSL viewer validation (NBM fetch/decode work)
+  - `docs/sources_recreation.md` — Sno-Park / recreation source research and licences
+- Hard rules for all code are in PLAN §0 (safety info never gated or hidden; label heuristics, never present
+  them as accuracy or avalanche ratings; license-clean data with attribution; one accumulation period per
+  chart axis and NEVER add, scale or interpolate percentiles across windows; offline tests; static-host
+  limits of 20,000 files/deploy and 25 MiB/file, so bulk data goes to R2).
+- Current priority order: PLAN §8.2 (Sprint 1 Foundations first). Model maps are low priority; do not work on
+  them unless asked.
 
 ## Commands
 Use the project's conda env Python for every Python command (no `conda activate`
@@ -31,11 +49,13 @@ on Windows, and `pipeline/__main__.py` makes stdout tolerate emoji (Herbie print
 Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 
 ## Layout
+- `docs/` — PLAN.md (lean plan), DESIGN.md (§6 chart/map/UI standards), specs/ (one per feature),
+  BUSINESS.md and ARCHIVE.md (not read by default), plus the reference docs listed under "Project docs".
 - `config/settings.yml` — region, states, windows, toggles. Prefer config over code.
 - `pipeline/` — one module per source, each with `run(cfg, session, outdir) -> dict`
   registered in `pipeline/__main__.py:SOURCES`. Sources fail independently.
 - `web/` — static site (Leaflet + Plotly from CDN, plain JS, no build step).
-  `web/js/colors.js` holds color scales/legends.
+  `web/js/colors.js` holds color scales/legends (single definition of the NWS snowfall table).
 - `tests/` — pytest; extend `tests/fakes.py` with canned responses for new sources.
 - `pipeline/search.py` — header search index (data/search.json); `web/js/search.js` (header + shared ranking).
 - `tools/browser_check.py` — headless-Chrome regression checks (basemap, fallback, layout, search, charts).
@@ -43,7 +63,8 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
   `pipeline/cache.py` — data_cache pruning at the start of every run.
 - `config/models.yml` + `pipeline/models/` — model maps (see below); `web/models.html`
   + `web/js/models.js` — loop viewer.
-- `.github/workflows/update-site.yml` (hourly obs + deploy) and `models.yml` (model maps).
+- `.github/workflows/update-site.yml` (hourly obs + deploy) and `models.yml` (model maps, NBM points, NOHRSC
+  and NDFD matrix entries).
 
 ## Conventions
 - Keep fetch code separate from pure processing functions; test the pure parts.
@@ -51,17 +72,21 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 - US units on the site (in, °F, kt) for now. Exception (owner decision): 700 mb
   temperature is in °C (upper-air convention).
 - Use a polite User-Agent (config `http.user_agent`) and few requests per run.
+- Keep this file's handoff section short: when a session's work is merged, move its entry to
+  `docs/ARCHIVE.md` and keep only the gotchas worth re-reading every session.
 
-## Data licensing rules (site may be monetized later)
+## Data licensing rules (free-first now; monetization planned, see PLAN §10 for the full table)
 - OK: NOAA/NWS (NODD on AWS, api.weather.gov), USDA NRCS AWDB, IEM (states
   any lawful use incl. commercial), ECMWF open data (CC-BY-4.0, attribute).
 - Synoptic API: NOT available to this project.
+- Open-Meteo API: free tier is non-commercial only; NOT used in production (prototype only).
 - MADIS: only distribution category 3 ("Public – full distribution") may be shown.
 - Avalanche.org: show ratings unaltered, grey out expired ratings, always link
   to the center's full forecast.
+- OpenStreetMap / OpenSkiMap derived data: ODbL, keep attribution.
 - Ask before adding any source whose terms are unclear.
 
-## Model maps (Phase 2)
+## Model maps (Phase 2; low priority, see PLAN §8; spec: docs/specs/model-maps.md)
 - Flow: `fetch.py` (Herbie, `priority=["aws"]` = NODD only; one byte-range download per
   product and forecast hour; ecCodes decode cropped to the maps' lat/lon bounds) →
   `run.derive_frame` (in fhour order; QPF windows by differencing run-total APCP;
@@ -98,8 +123,10 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
     day (IQR about ±600 ft); all above-ground points: about +300 ft (dry air aloft, Stull
     runs warm). At/below-ground classification agrees on 92–99.7% of points.
     The 0 °C cap barely changes RRFS (it has 925 mb heights).
+  - Model-map snowfall colors still use the older NWS-style table; align them to `colors.js`
+    in a future model-map session (owner decision, deferred).
 
-## Ski areas and point forecasts (M1/M2)
+## Ski areas and point forecasts (M1/M2; spec: docs/specs/data-pipeline.md)
 - `python -m pipeline catalog` (on demand; needs build/data/snotel|asos.geojson from a
   `build`) → `data/ski_areas.json` (committed, ODbL) + `data/ski_areas_verify.csv`.
   Seeds: OpenSkiMap ski_areas + lifts GeoJSON (cached in data_cache/openskimap, ~140 MB).
@@ -137,15 +164,35 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
   stored reversed; qmd does not): index with `run.flat_index`. Check decodes against the
   NBS text bulletins (`blend.YYYYMMDD/HH/text/blend_nbstx.tHHz`: TMP, Q06, SLV).
 - Methods (pure, tested): lapse 6.5 °C/km grid→point (cap 4000 ft); P(snow) = P(snow
-  level < point) from p10/50/90 (det ±800 ft ramp later); 12-h periods 00Z–12Z /
-  12Z–00Z; snow range = QPF percentiles × det snow/QPF ratio; 7/10-day ranges add block
-  percentiles rank by rank (wider than true). Sanity vs NDFD:
-  `python -m pipeline.nbm.sanity`.
+  level < point) from p10/50/90 (det ±800 ft ramp later); 12-h day/night periods 00Z–12Z /
+  12Z–00Z for temps and snow type; snow charts use 12Z–12Z days.
+  **Snow ranges come only from native NBM snowfall percentile windows** (S10/dev11: 25/75 by day,
+  10/50/90 for 24/48/72 h; liquid ranges from QPF percentiles). Never add, scale or interpolate percentiles
+  across windows. The older 7/10-day ranges that added block percentiles rank by rank (wider than true) are
+  being removed (owner decision Nov 16: show expected totals only; remove any remaining uses).
+  Sanity vs NDFD: `python -m pipeline.nbm.sanity`.
 
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff.
-Branch `dev2` (from main after PR #1; not pushed). Session 2 scope: M0 → M1 → M2,
-then M3 for 3 areas if time allows.
+
+**Current state**
+- Branch `dev11` (not pushed at last update). dev11 follow-up decided Nov 16, pending: drop the 7/10-day summed
+  ranges (expected totals only; keep native 24/48/72 h ranges); keep the hatched grey expected bar for a
+  partial first day (legend/aria say "partial day — expected amount, no range"); SNOTEL 24 h depth gains use the
+  NWS colors, losses stay brown, legend titled "Snow depth change"; check the new "delete only files in the old
+  summary.json" cleanup on a FRESH CI runner (stale files for areas removed from the catalog) with a test; then
+  push and open a PR. Also confirm why the points data was ~a week old (NBM 19Z 8 Nov / NWS 04Z 9 Nov): cached
+  local data or a stale live pipeline.
+- Next (PLAN §8.2 Sprint 1): data-freshness check, W5a pipeline monitoring + data-status page, W1 hosting prep
+  (brand name and domain not decided yet; use configurable SITE_ORIGIN / DATA_ORIGIN with today's GitHub URLs
+  as defaults). Then W3 daily summaries (before W2: W2's meta descriptions use the summary), W2 prerendered
+  pages, W4 PWA.
+- Not started: storm-total tracker (PLAN §8.4 backlog), M7 precipitation by model, M8 ECMWF (IFS 0p1 / AIFS 0p25
+  via Herbie `ifs`/`aifs`, IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page), M6 zoomable
+  model layers + HRRR prs file (last, Track 3), self-hosted western-US PMTiles as an OpenFreeMap backup
+  (PLAN §11.2).
+
+**Done log (history; move to docs/ARCHIVE.md after merge)**
 Done earlier (branch `dev`, merged): Phase-1 polish A1–A5; model maps HRRR/RRFS/GFS
 (B6–B10) + CI. Full local runs 12Z 7 Nov: HRRR 1361 img / 114 MB / 214 s,
 RRFS 1349 / 100 MB / 240 s, GFS 362 / 23 MB / 178 s (before M0 removed upper air
@@ -153,14 +200,14 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
 - [x] M0 upper air (h500/t700) removed from HRRR/RRFS; snow-level note on maps +
       viewer caption; Actions bumped to node24 majors (checkout v7, cache v6,
       setup-micromamba v3, configure-pages v6, upload-pages-artifact v5,
-      deploy-pages v5), runners pinned `ubuntu-24.04`. CI not re-run yet (needs push).
+      deploy-pages v5), runners pinned `ubuntu-24.04`.
 - [x] M1 ski-area catalog: 161 areas, `data/ski_areas.json` (+ `_verify.csv`), map layer,
       search, area.html stub. Full run ~21 min cold (3DEP), ~7 s cached. Open items:
       Kirkwood / Olympic Valley summits unverified (see PLAN.md Status).
 - [x] M2 NBM point pipeline: `pipeline/nbm/`, `pipeline/points.py`, `points` CI matrix
-      entry (untested on GitHub), sanity script. Known weak spot: when NBM's
-      deterministic QPF is ~0 but its QPF percentiles are not, the fallback ratio
-      (SLR × P(snow)) can overstate trace snow (Mission Ridge 1.1 vs det 0.2 in).
+      entry, sanity script. Known weak spot: when NBM's deterministic QPF is ~0 but its QPF
+      percentiles are not, the fallback ratio (SLR × P(snow)) can overstate trace snow
+      (Mission Ridge 1.1 vs det 0.2 in).
 - [x] M3 ski-area page: owner decisions applied (means for bars/totals, NBM snowfall pct
       ranges 0–48 h, extended outlook after, P(snow at elevation), local period labels).
       Lighthouse via `PATH=/c/miniforge3/envs/tools:$PATH npx -y lighthouse@12.6.1 URL
@@ -206,10 +253,9 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       Lambert grid winds rotated with the cone constant) -> `<model>/ridge.json` (inside the model tar);
       `build` merges HRRR (to 48 h) then RRFS (to 84 h) -> build/data/ridge.json (~60 KB). Area
       meteogram trace + note; Powder Finder "Ridge" column (max in the window; lazy-loaded).
-- [ ] S5 (dev5, from main after PR #5): order = M9-prep archive + data_cache pruning (push dev5
-      right after, owner merges early) -> bugs B1-B7 (PLAN.md §8 M3.6) -> §6-B chart overhaul
-      (shared web/js/charts/theme.js, heat table, lazy charts below the fold) -> M4.5 Sno-Parks
-      (research sources + licences first, ask before unclear ones).
+      (Since dev10 ridge wind is off forecast pages and the Finder; ridge.json is still built.)
+- [x] S5 (dev5): M9-prep archive + data_cache pruning, bugs B1-B7 (PLAN.md §8 M3.6), §6-B chart overhaul
+      (shared web/js/charts/theme.js, heat table, lazy charts below the fold). M4.5 Sno-Parks followed in dev8.
 - [x] S5 item 1 (M9-prep): forecast archive -> docs/verification.md. `python -m pipeline archive
       --data build/data [--local DIR]` (CI: update-site.yml step, gh release "verification"; use
       --local into the scratchpad for dry runs and delete the output: the archive never lives on the
@@ -227,27 +273,31 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       blocked URLs need cache off + an unvisited view. Overlays draw on a view-sized canvas (overlays.js ViewOverlay),
       never an L.ImageOverlay of the whole West (GPU limit -> grey map). Document pages: body.doc-page.
 - [x] S7 (dev7): "Expected" rename (colors.js EXPECTED_TIP / expectedInfo()); hour-by-hour temp + wind to day 10
-      (area.js detailWindow/extendedShade); docs/sources_recreation.md written; M4.5 build waits for owner approval.
+      (area.js detailWindow/extendedShade); docs/sources_recreation.md written; M4.5 build waited for owner approval.
 - [x] (done S7) rename "most likely" -> "Expected" site-wide (area tiles, day/night bars + hovers,
       Powder Finder amount + chance modes, legend notes, headline, about.html) with an ⓘ tooltip: "NBM's average
       amount; it typically has about a 1-in-3 chance of being reached" (link about.html#nbm). Owner decision S6.
 - [x] (done S7) area page "Hour by hour" — extend temperature + wind panels to day 10 with NBM 3/6-hourly values,
       lightly shaded and labelled "extended (6-hourly)"; hourly detail stays ~3.5 days; snow stays as
-      day/night bars beyond 3.5 days (owner decision S5-2).
+      day/night bars beyond 3.5 days (owner decision S5-2; superseded for snow by the dev11 "Snowfall by day" bars).
+- [x] (S7) M4.5 Sno-Parks research: sources + licences first (USFS EDW, state Sno-Park lists, OSM gap-fill;
+      public-domain, key-free preferred), write docs/sources_recreation.md, ask the owner to approve BEFORE
+      building (owner decision S5-3). RIDB only if asked (key = Actions secret). NBM cell elev = full 3DEP mean.
 - [x] S8 (dev8): M4.5 Sno-Parks built (`catalog --rec` -> data/rec_points.json; kind "snopark", base = trailhead,
       summit = high terrain; `common.forecast_areas()` = ski areas + Sno-Parks for every point product). Obs map perf
       pass (map_points.json, vendored Leaflet, parallel loads). Lighthouse realistic numbers: serve build/ with gzip
       (scratchpad gzserve.py pattern); the plain http.server has no gzip and understates mobile scores.
-- [x] S11 (dev11, not pushed): snow charts on NATIVE NBM percentile windows only (never add percentiles).
-      points JSON `days` (12Z-12Z; nbm/run.py + ndfd.py): snow_in (sum of 6-h det windows), snow_p25/p50/p75 from the
-      one native window that exactly covers the day (snow24, or snow6 for a 6-h first day; P.native_window), else
-      None (01Z/19Z first day is 11-17 h: no range). area.js periodChart = "Snowfall by day" (p25-p75 bars coloured by
-      p50, "low–high″" labels, muted < 0.5 in, hatched expected when no native window); accumChart = expected running
-      total by day ending at the 10-day total's horizon. 12-h `periods` stay (temps, snow type, mine.js, Finder).
-      colors.js SNOWFALL = NWS snowfall table (NOHRSC legend, 0/T/0.1/1/2/3/4/6/8/12/18/24/30/36/48/60/72/96/120+),
-      snowLegendHtml() + snowPale() shared by area, overlays, Finder. `points --out` / `ndfd --out` = the points
-      folder itself (build/data/points, build/data/ndfd); cleanup now only deletes files listed in its old summary.json.
-      NEXT (S12): Track 2 item 8 storm-total tracker (NOHRSC snowfall + SNOTEL depth/SWE change), NWS colours.
+- [x] (done S8) build M4.5 Sno-Parks per PLAN.md §5.6 with the APPROVED sources (S7): USFS EDW backbone
+      (EDW_RecInfraRecreationSites_02 layer 0: SNOWPARK, SNOWPLAY AREA, SKI AREA NORDIC, winter TRAILHEADs) + OSM
+      gap-fill (ODbL, dedupe ~400 m); state lists = manual cross-check only. See docs/sources_recreation.md.
+- [x] S8 follow-up (owner decisions 2-5): Sno-Park facts only as stated by the source (rec.activities/permit_for);
+      no permit -> "Parking permits may be required — check <permit_check link>" (state program, else agency page,
+      else fs.usda.gov); "NWS alerts not available" when a site has no NWS grid point. Finder default stays Ski areas.
+- [x] S9 (dev9): NBM forecast overlays (pipeline/nbm/layers.py in the points job -> data/points/layers/; overlays.js
+      loads Observed + Forecast indexes) and "My mountains" (mine.html, js/mine.js; favorites in localStorage
+      "snowwx.favorites"). Browser checks: forecast, mine. Follow-up (owner S9): landing banner on the obs map
+      for visitors with favorites (app.js homeBanner; pref localStorage "snowwx.home" = "mine", toggle on mine.html),
+      forecast-overlay grid note, "Send feedback" mailto in every footer.
 - [x] S10 (dev10): ridge wind off forecast pages; SNOTEL panel overlap fix; snow redesign (NBM 25/75 snowfall + SNOWLR
       10/90 selected, SELECTION_VERSION 6; periods snow_q1/q3 + snow_type; totals 48h + q1/q3; summary window[5] = main
       snow type; area.js periodChart range bars, accumChart, slrChart + strip). Points fetch ~+60 % (391 s local).
@@ -259,23 +309,13 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
       (gaps at z10-11 too): basemap.js `snowTileLayer` fills holes from ancestor tiles. OpenTopoMap removed; marker
       halos; compact map credits under 600 px (tap to expand).
       Follow-up: Powder Finder Ridge column removed (ridge.json still built, shown nowhere); about.html ridge section
-      removed. PLAN §11.2: self-hosted western-US PMTiles as an OpenFreeMap backup (not started). dev10 pushed.
-      NEXT (S11): owner reviews dev10 live (relief holes at z9-11, roads layer timing on phones).
-- [x] S9 (dev9): NBM forecast overlays (pipeline/nbm/layers.py in the points job -> data/points/layers/; overlays.js
-      loads Observed + Forecast indexes) and "My mountains" (mine.html, js/mine.js; favorites in localStorage
-      "snowwx.favorites"). Browser checks: forecast, mine. Follow-up (owner S9): landing banner on the obs map
-      for visitors with favorites (app.js homeBanner; pref localStorage "snowwx.home" = "mine", toggle on mine.html),
-      forecast-overlay grid note, "Send feedback" mailto in every footer. NEXT: powder quality (Track 1 item 3),
-      then M7 precipitation by model.
-- [x] S8 follow-up (owner decisions 2-5): Sno-Park facts only as stated by the source (rec.activities/permit_for);
-      no permit -> "Parking permits may be required — check <permit_check link>" (state program, else agency page,
-      else fs.usda.gov); "NWS alerts not available" when a site has no NWS grid point. Finder default stays Ski areas.
-- [x] (done S8) build M4.5 Sno-Parks per PLAN.md §5.6 with the APPROVED sources (S7): USFS EDW backbone
-      (EDW_RecInfraRecreationSites_02 layer 0: SNOWPARK, SNOWPLAY AREA, SKI AREA NORDIC, winter TRAILHEADs) + OSM
-      gap-fill (ODbL, dedupe ~400 m); state lists = manual cross-check only. See docs/sources_recreation.md.
-- [x] (S7) M4.5 Sno-Parks research: sources + licences first (USFS EDW, state Sno-Park lists, OSM gap-fill;
-      public-domain, key-free preferred), write docs/sources_recreation.md, ask the owner to approve BEFORE
-      building (owner decision S5-3). RIDB only if asked (key = Actions secret). NBM cell elev = full 3DEP mean.
-- [ ] M6 zoomable model layers + HRRR prs file: deferred to S6 (baseline numbers in PLAN.md §2).
-- [ ] C12/M8 ECMWF open data IFS 0p1 / AIFS 0p25 (not started): Herbie `ifs`/`aifs`,
-      IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page.
+      removed. dev10 pushed.
+- [x] S11 (dev11, not pushed): snow charts on NATIVE NBM percentile windows only (never add percentiles).
+      points JSON `days` (12Z-12Z; nbm/run.py + ndfd.py): snow_in (sum of 6-h det windows), snow_p25/p50/p75 from the
+      one native window that exactly covers the day (snow24, or snow6 for a 6-h first day; P.native_window), else
+      None (01Z/19Z first day is 11-17 h: no range). area.js periodChart = "Snowfall by day" (p25-p75 bars coloured by
+      p50, "low–high″" labels, muted < 0.5 in, hatched expected when no native window); accumChart = expected running
+      total by day ending at the 10-day total's horizon. 12-h `periods` stay (temps, snow type, mine.js, Finder).
+      colors.js SNOWFALL = NWS snowfall table (NOHRSC legend, 0/T/0.1/1/2/3/4/6/8/12/18/24/30/36/48/60/72/96/120+),
+      snowLegendHtml() + snowPale() shared by area, overlays, Finder. `points --out` / `ndfd --out` = the points
+      folder itself (build/data/points, build/data/ndfd); cleanup now only deletes files listed in its old summary.json.
