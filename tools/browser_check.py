@@ -350,6 +350,13 @@ def check_charts(b: Browser, base: str, log):
         need(st["days"] >= 8 and st["bars"] == st["days"] and st["ticks"] == 0 and st["legend"] and st["bad"] == 0,
              f"{area}: daily snowfall chart wrong: {st}")
         need(len(st["labels"]) == st["days"], f"{area}: every day needs a low–high label: {st['labels']}")
+        # Nov 16: no 7/10-day ranges on the tiles; the partial first day is labelled in the legend and summary
+        t7 = b.eval("""(() => { const tiles = [...document.querySelectorAll('.tiles .tile')].map(t => [t.querySelector('.label').textContent, t.querySelector('.rng').textContent]);
+          const leg = document.querySelector('.snow-legend'); const sum = document.getElementById('period-chart').previousElementSibling;
+          return {tiles, partialLegend: !!(leg && /partial day — expected amount, no range/.test(leg.getAttribute('aria-label') || '')),
+                  sum: sum ? sum.textContent : ''}; })()""")
+        log(f"  charts {area}: tiles {t7['tiles']} partial legend {t7['partialLegend']}")
+        need(all("expected total only" in r if "7 days" in l or "10 days" in l else "–" in r for l, r in t7["tiles"]), f"{area}: 7/10-day tiles still show a range: {t7['tiles']}")
         # S11 step 4: accumulated = expected running total by day, no probability bars; ends at the 10-day total
         acc = b.eval("""(async () => {
           const d = await (await fetch('data/points/%s.json')).json();

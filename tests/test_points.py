@@ -444,3 +444,27 @@ def test_stale_point_files_only_touches_previous_points_output(tmp_path):
     (tmp_path / "snotel-1000-OR-SNTL.json").write_text("{}")
     got = sorted(f.name for f in stale_point_files(tmp_path))
     assert got == ["alta.json", "snotel-1000-OR-SNTL.json", "summary.json"]   # meta.json survives
+
+
+def test_cleanup_on_fresh_runner_and_dropped_areas(tmp_path):
+    """B6: a fresh CI runner has no previous summary.json (nothing to delete); areas dropped from the catalog
+    are removed by the old summary (normal) or as orphans (interrupted run); nothing foreign is ever touched."""
+    import json as _json
+    from pipeline.common import orphan_point_files, stale_point_files
+    def doc(i):
+        return _json.dumps({"id": i, "points": {"summit": {}}, "issued": "2026-11-16T01:00Z", "source": "x"})
+    # fresh runner: empty folder, and a folder of foreign files without summary.json
+    assert stale_point_files(tmp_path) == []
+    (tmp_path / "meta.json").write_text("{}")
+    (tmp_path / "alta.json").write_text(doc("alta"))
+    assert stale_point_files(tmp_path) == []
+    # a leftover point file (area dropped from the catalog, no old summary lists it) is an orphan; the rest is untouched
+    (tmp_path / "gone-area.json").write_text(doc("gone-area"))
+    (tmp_path / "map_points.json").write_text(_json.dumps({"id": "map_points", "areas": []}))   # no "points"/"issued"
+    (tmp_path / "other.json").write_text(doc("not-the-stem"))                                   # id != stem
+    (tmp_path / "broken.json").write_text("{not json")
+    orph = sorted(f.name for f in orphan_point_files(tmp_path, {"alta.json"}))
+    assert orph == ["gone-area.json"]
+    # an old summary that lists a dropped area deletes it up front
+    (tmp_path / "summary.json").write_text(_json.dumps({"cycle": "1", "areas": [{"id": "gone-area"}]}))
+    assert "gone-area.json" in {f.name for f in stale_point_files(tmp_path)} and "meta.json" not in {f.name for f in stale_point_files(tmp_path)}

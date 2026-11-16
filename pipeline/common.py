@@ -111,3 +111,21 @@ def stale_point_files(out: Path) -> list[Path]:
     ids = {a.get("id") for a in prev.get("areas", []) if isinstance(a, dict)}
     return [f for f in out.glob("*.json")
             if f.name in POINT_SIDE_FILES or f.stem in ids or f.stem.startswith("snotel-")]
+
+
+def orphan_point_files(out: Path, keep: set[str]) -> list[Path]:
+    """Point-forecast files in `out` that this run did NOT write and the previous summary.json does not list:
+    leftovers of an interrupted run, or areas dropped from the catalog before summary.json existed. Only
+    files that look like our own output are returned (`{"id": <file stem>, "points": ..., "issued": ...}`),
+    only directly inside `out`, never anything else (a mistaken --out like build/data is safe)."""
+    found = []
+    for f in out.glob("*.json"):
+        if f.name in keep or f.name in POINT_SIDE_FILES:
+            continue
+        try:
+            doc = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and doc.get("id") == f.stem and "points" in doc and "issued" in doc:
+            found.append(f)
+    return found

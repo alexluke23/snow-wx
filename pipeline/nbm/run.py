@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 
 from .. import points as P
-from ..common import REPO_ROOT, stale_point_files, utcnow, write_json
+from ..common import REPO_ROOT, orphan_point_files, stale_point_files, utcnow, write_json
 from .inventory import FULL_SUITE_CYCLES, parse_idx, required_keys, sample_hours, select
 
 log = logging.getLogger("snow-wx.nbm")
@@ -812,6 +812,9 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
     log.info("calibration: %s", json.dumps({k: v for k, v in cal.items() if k in ("first_48h", "beyond_48h")}))
     write_json(out / "summary.json", {"cycle": cid, "quality": quality, "issued": cycle.strftime("%Y-%m-%dT%H:%MZ"),
                                       "generated_at": generated, "source": SOURCE, "areas": summary})
+    for old in orphan_point_files(out, {f"{aid}.json" for aid in files}):     # leftovers from interrupted runs / dropped areas
+        old.unlink()
+        log.info("NBM: removed orphan point file %s", old.name)
     log.info("NBM %s: wrote %d area files (max %.0f KB, total %.1f MB) + summary.json",
              cid, len(files), max(sizes) / 1024, sum(sizes) / 1e6)
     try:                         # snow forecast overlays for the obs map (fail-soft)

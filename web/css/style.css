@@ -459,3 +459,5 @@ body.mine-page > main { min-height: 100vh; min-height: 100dvh; }
 .snow-legend .sw { min-width: 26px; padding: 2px 3px; text-align: center; line-height: 1.35; }
 .snow-legend .sw.pale, .sw.pale { box-shadow: inset 0 0 0 1px rgba(20, 32, 46, 0.35); }
 @media (max-width: 480px) { .snow-legend, .snow-legend.chart-legend { margin-left: 0; } .snow-legend .sw { min-width: 22px; } }
+.snow-legend .sw.partial { background: repeating-linear-gradient(135deg, #c9ced6 0 4px, #e3e6ea 4px 8px); color: #111; box-shadow: inset 0 0 0 1px rgba(20,32,46,.35); padding: 2px 6px; margin-left: 6px; white-space: nowrap; }
+.legend .legend-title { flex: 1 0 100%; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
