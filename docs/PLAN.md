@@ -67,8 +67,9 @@ centers). Full text: `docs/ARCHIVE.md`.
   site-wide, 7/10-day summed ranges removed. Details: `docs/ARCHIVE.md`.
 - **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas,
   Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
-- **Known issues:** obs map Lighthouse mobile 85 (target ≥ 85, no headroom); site ≈ 240 MB (recheck vs §5.10);
-  GitHub's scheduled runs are best-effort; live data freshness to be checked (see CLAUDE.md handoff).
+- **Known issues:** **live SNOTEL data missing** (Nov 16: AWDB fetch returned no stations; `snotel.geojson` 404): fix first in
+  Sprint 1 with W5a; other sources are fresh (points 13Z/19Z, NDFD, NOHRSC, models). Obs map Lighthouse mobile 71–88
+  (bimodal; target ≥ 85); site ≈ 240 MB (recheck vs §5.10); GitHub's scheduled runs are best-effort.
 
 ---
 

@@ -173,149 +173,42 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
   Sanity vs NDFD: `python -m pipeline.nbm.sanity`.
 
 ## TODO / session handoff (keep current; newest state wins)
-Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff.
+Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state**
-- Branch `dev11` (not pushed at last update). dev11 follow-up decided Nov 16, pending: drop the 7/10-day summed
-  ranges (expected totals only; keep native 24/48/72 h ranges); keep the hatched grey expected bar for a
-  partial first day (legend/aria say "partial day — expected amount, no range"); SNOTEL 24 h depth gains use the
-  NWS colors, losses stay brown, legend titled "Snow depth change"; check the new "delete only files in the old
-  summary.json" cleanup on a FRESH CI runner (stale files for areas removed from the catalog) with a test; then
-  push and open a PR. Also confirm why the points data was ~a week old (NBM 19Z 8 Nov / NWS 04Z 9 Nov): cached
-  local data or a stale live pipeline.
-- Next (PLAN §8.2 Sprint 1): data-freshness check, W5a pipeline monitoring + data-status page, W1 hosting prep
-  (brand name and domain not decided yet; use configurable SITE_ORIGIN / DATA_ORIGIN with today's GitHub URLs
-  as defaults). Then W3 daily summaries (before W2: W2's meta descriptions use the summary), W2 prerendered
-  pages, W4 PWA.
-- Not started: storm-total tracker (PLAN §8.4 backlog), M7 precipitation by model, M8 ECMWF (IFS 0p1 / AIFS 0p25
-  via Herbie `ifs`/`aifs`, IDX_STYLE eccodes; attribution "© ECMWF, CC BY 4.0" on images + page), M6 zoomable
-  model layers + HRRR prs file (last, Track 3), self-hosted western-US PMTiles as an OpenFreeMap backup
-  (PLAN §11.2).
+**Current state (Nov 16 2026)**
+- Branch `dev11` is pushed (head: owner-decision commit + docs commits); the PR is opened by the owner (no `gh` CLI or token here;
+  branches have no CI: `update-site.yml`/`models.yml` only run on main/schedule). Contents: snow charts on native NBM
+  windows ("Snowfall by day" p25–p75 bars, expected running total), NWS snowfall colors site-wide (colors.js), 7/10-day
+  summed ranges dropped (expected total only), partial-day labelling, SNOTEL depth-change colors, safer points/ndfd cleanup.
+- **Urgent, not fixed (found Nov 16):** the live site has no SNOTEL data: `meta.json` says `snotel: ok false, "no SNOTEL
+  stations returned"` after 308 s, and `data/snotel.geojson` / `data/snotel/*.json` return 404. The pipeline otherwise runs
+  on schedule (points 13Z/19Z 16 Nov, NDFD, NOHRSC, models all fresh). Fix AWDB fetch/fallback and keep the last good SNOTEL
+  data when a run fails (W5a: failure alert + status page).
+- Next (PLAN §8.2 Sprint 1): SNOTEL fix + W5a pipeline monitoring and data-status page, W1 hosting prep (brand name and domain
+  not decided; configurable SITE_ORIGIN / DATA_ORIGIN, GitHub URLs as defaults), then W3 daily summaries (before W2), W2, W4.
+- Not started: storm-total tracker (PLAN §8.4), M7, M8 (ECMWF via Herbie `ifs`/`aifs`, attribution "© ECMWF, CC BY 4.0"),
+  M6, model-map NWS colors (§8.4), self-hosted PMTiles backup (§8.4).
 
-**Done log (history; move to docs/ARCHIVE.md after merge)**
-Done earlier (branch `dev`, merged): Phase-1 polish A1–A5; model maps HRRR/RRFS/GFS
-(B6–B10) + CI. Full local runs 12Z 7 Nov: HRRR 1361 img / 114 MB / 214 s,
-RRFS 1349 / 100 MB / 240 s, GFS 362 / 23 MB / 178 s (before M0 removed upper air
-from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
-- [x] M0 upper air (h500/t700) removed from HRRR/RRFS; snow-level note on maps +
-      viewer caption; Actions bumped to node24 majors (checkout v7, cache v6,
-      setup-micromamba v3, configure-pages v6, upload-pages-artifact v5,
-      deploy-pages v5), runners pinned `ubuntu-24.04`.
-- [x] M1 ski-area catalog: 161 areas, `data/ski_areas.json` (+ `_verify.csv`), map layer,
-      search, area.html stub. Full run ~21 min cold (3DEP), ~7 s cached. Open items:
-      Kirkwood / Olympic Valley summits unverified (see PLAN.md Status).
-- [x] M2 NBM point pipeline: `pipeline/nbm/`, `pipeline/points.py`, `points` CI matrix
-      entry, sanity script. Known weak spot: when NBM's deterministic QPF is ~0 but its QPF
-      percentiles are not, the fallback ratio (SLR × P(snow)) can overstate trace snow
-      (Mission Ridge 1.1 vs det 0.2 in).
-- [x] M3 ski-area page: owner decisions applied (means for bars/totals, NBM snowfall pct
-      ranges 0–48 h, extended outlook after, P(snow at elevation), local period labels).
-      Lighthouse via `PATH=/c/miniforge3/envs/tools:$PATH npx -y lighthouse@12.6.1 URL
-      --only-categories=performance` (Node lives in a separate `tools` conda env).
-      Points files embed the area record; `avalanche_ratings.json` = zone_id → rating.
-- [x] M3.5 B obs-map performance: SNOTEL/ASOS/ski symbols on one canvas
-      (`web/js/points-canvas.js`, declutter cached per zoom, capture-phase hit testing so
-      points win over avalanche polygons), Plotly lazy + idle prefetch. Benchmark:
-      `tools/mapbench.py URL` (CDP, 4x CPU). Lighthouse obs map 46 -> 72, TBT 1270 -> 132 ms.
-      Keyboard focus on individual markers is gone (search box is the keyboard path).
-- [x] M3.5 C NOHRSC overlays: `python -m pipeline nohrsc` -> build/data/nohrsc/ (6 layers,
-      ~0.9 MB, 25 s; CI `nohrsc` in the models.yml matrix). Layer system = `pipeline/layers.py`
-      (EPSG:3857 grid, nearest regrid, 16-bit value code in R/G of an RGBA PNG, alpha =
-      no data) + `web/js/overlays.js` (decode once with createImageBitmap(premultiplyAlpha:
-      none, colorSpaceConversion: none), colourize with colors.js palettes, exact hover value).
-      SNODAS glacier cells are capped at 32767 mm (shown as "glacier / permanent snow").
-- [x] M3.5 D forecasts at every SNOTEL site + NWS official:
-      `python -m pipeline catalog --snotel` -> data/snotel_points.json (NBM cell + elevation;
-      new cells use a 5-point 3DEP mean, the full-cell statistics call is too slow for ~800
-      cells). NBM points now include SNOTEL (`snotel-<triplet with dashes>` files).
-      `python -m pipeline ndfd` samples NDFD GRIB2 (whole files from noaa-ndfd-pds
-      opnl/AR.conus/VP.001-003 + VP.004-007, ~320 MB, no .idx) at all points -> build/data/ndfd/,
-      same JSON shape as NBM so area.js toggles NBM <-> NWS. NDFD has snowlevel in GRIB
-      (api.weather.gov not needed); snow/QPF/snowlevel only to 72 h. Values checked against
-      api.weather.gov gridpoints (temps within 0.1 F, 6-h snow exact).
-- [x] S3 (dev3): owner decisions 1-8 (see PLAN.md); M4 Powder Finder (`web/finder.html`,
-      `web/js/finder.js`; data: points/summary.json, ndfd/summary.json, nohrsc/ski.json,
-      alerts/index.json). Keep its first paint static: buttons are in the HTML and the list
-      reserves height, otherwise Lighthouse CLS jumps to 0.7.
-- [x] M5 part 1 alerts: `pipeline/alerts.py` is an obs SOURCE (runs in every hourly build) ->
-      build/data/alerts/index.json (+ details.json). Matching needs each point's NWS forecast
-      zone + county: ski areas `nws.<pt>.zone/county`, SNOTEL `nws.zone/county`
-      (`python -m pipeline catalog --snotel` fetches /points). Most winter alerts have no polygon.
-- [x] S4 (dev4): NBM full-suite cycle order + liquid_source, own exceedance probabilities
-      (`exceed` per point incl. window `mean`; `exceed_summary.json`), decisions 2-5, A Powder
-      Finder "Chance of" view (PROB palette in colors.js) + area-page exceedance chart.
-- [x] S4 B: AFD = obs SOURCE `afd` (`pipeline/afd.py` -> build/data/afd/<WFO>.json + index.json; WFOs
-      from catalog `nws.*.wfo`); area-page section; `web/about.html` (methods: keep it in sync
-      when methods change).
-- [x] S4 C ridge-top wind: `pipeline/models/ridge.py`. Model runs with `ridge: {levels: [...]}` in
-      config/models.yml (HRRR 850/700/500, RRFS 850-600 every 50 mb) sample u/v/HGT at every frame
-      at each ski-area summit (nearest column, linear in height, levels below model terrain skipped,
-      Lambert grid winds rotated with the cone constant) -> `<model>/ridge.json` (inside the model tar);
-      `build` merges HRRR (to 48 h) then RRFS (to 84 h) -> build/data/ridge.json (~60 KB). Area
-      meteogram trace + note; Powder Finder "Ridge" column (max in the window; lazy-loaded).
-      (Since dev10 ridge wind is off forecast pages and the Finder; ridge.json is still built.)
-- [x] S5 (dev5): M9-prep archive + data_cache pruning, bugs B1-B7 (PLAN.md §8 M3.6), §6-B chart overhaul
-      (shared web/js/charts/theme.js, heat table, lazy charts below the fold). M4.5 Sno-Parks followed in dev8.
-- [x] S5 item 1 (M9-prep): forecast archive -> docs/verification.md. `python -m pipeline archive
-      --data build/data [--local DIR]` (CI: update-site.yml step, gh release "verification"; use
-      --local into the scratchpad for dry runs and delete the output: the archive never lives on the
-      PC). Every run prunes data_cache > 2 days (`pipeline/cache.py`; keeps catalog/, openskimap/).
-- [x] S5 items 2-3: bugs B1-B7 + §6-B chart rework. Charts use `web/js/charts/theme.js` (SnowCharts: local-time
-      axes via wall-clock strings, Okabe-Ito, axis titles as top-left annotations, summary() + tableToggle(),
-      heatTable(), lazy(); always C.plot so the container gets an explicit height). Base maps: `web/js/basemap.js`.
-      Lighthouse: scratchpad lh_all.sh pattern (perf + a11y, 6 pages). Element screenshots: CDP clip after
-      scrollIntoView WITHOUT captureBeyondViewport (that resizes the viewport and Plotly re-lays out).
-- [x] Archive live: PR #6 merged, verification release has nbm/ndfd/snotel-202611.csv.gz.
-- [x] S6 Part A (dev6): fixes 1-9 from the dev5 live review (PLAN.md §8 M3.6). Browser regression checks:
-      `C:/miniforge3/envs/snow-wx/python.exe tools/browser_check.py [-v] [--only basemap,fallback,layout,search,charts]`
-      (serves build/ itself, real headless Chrome via CDP; `SNOWWX_BROWSER=1 pytest` runs them too). Copy web/* to
-      build/ first. Notes: Page.navigate with only a hash change does not reload (open() goes via about:blank);
-      blocked URLs need cache off + an unvisited view. Overlays draw on a view-sized canvas (overlays.js ViewOverlay),
-      never an L.ImageOverlay of the whole West (GPU limit -> grey map). Document pages: body.doc-page.
-- [x] S7 (dev7): "Expected" rename (colors.js EXPECTED_TIP / expectedInfo()); hour-by-hour temp + wind to day 10
-      (area.js detailWindow/extendedShade); docs/sources_recreation.md written; M4.5 build waited for owner approval.
-- [x] (done S7) rename "most likely" -> "Expected" site-wide (area tiles, day/night bars + hovers,
-      Powder Finder amount + chance modes, legend notes, headline, about.html) with an ⓘ tooltip: "NBM's average
-      amount; it typically has about a 1-in-3 chance of being reached" (link about.html#nbm). Owner decision S6.
-- [x] (done S7) area page "Hour by hour" — extend temperature + wind panels to day 10 with NBM 3/6-hourly values,
-      lightly shaded and labelled "extended (6-hourly)"; hourly detail stays ~3.5 days; snow stays as
-      day/night bars beyond 3.5 days (owner decision S5-2; superseded for snow by the dev11 "Snowfall by day" bars).
-- [x] (S7) M4.5 Sno-Parks research: sources + licences first (USFS EDW, state Sno-Park lists, OSM gap-fill;
-      public-domain, key-free preferred), write docs/sources_recreation.md, ask the owner to approve BEFORE
-      building (owner decision S5-3). RIDB only if asked (key = Actions secret). NBM cell elev = full 3DEP mean.
-- [x] S8 (dev8): M4.5 Sno-Parks built (`catalog --rec` -> data/rec_points.json; kind "snopark", base = trailhead,
-      summit = high terrain; `common.forecast_areas()` = ski areas + Sno-Parks for every point product). Obs map perf
-      pass (map_points.json, vendored Leaflet, parallel loads). Lighthouse realistic numbers: serve build/ with gzip
-      (scratchpad gzserve.py pattern); the plain http.server has no gzip and understates mobile scores.
-- [x] (done S8) build M4.5 Sno-Parks per PLAN.md §5.6 with the APPROVED sources (S7): USFS EDW backbone
-      (EDW_RecInfraRecreationSites_02 layer 0: SNOWPARK, SNOWPLAY AREA, SKI AREA NORDIC, winter TRAILHEADs) + OSM
-      gap-fill (ODbL, dedupe ~400 m); state lists = manual cross-check only. See docs/sources_recreation.md.
-- [x] S8 follow-up (owner decisions 2-5): Sno-Park facts only as stated by the source (rec.activities/permit_for);
-      no permit -> "Parking permits may be required — check <permit_check link>" (state program, else agency page,
-      else fs.usda.gov); "NWS alerts not available" when a site has no NWS grid point. Finder default stays Ski areas.
-- [x] S9 (dev9): NBM forecast overlays (pipeline/nbm/layers.py in the points job -> data/points/layers/; overlays.js
-      loads Observed + Forecast indexes) and "My mountains" (mine.html, js/mine.js; favorites in localStorage
-      "snowwx.favorites"). Browser checks: forecast, mine. Follow-up (owner S9): landing banner on the obs map
-      for visitors with favorites (app.js homeBanner; pref localStorage "snowwx.home" = "mine", toggle on mine.html),
-      forecast-overlay grid note, "Send feedback" mailto in every footer.
-- [x] S10 (dev10): ridge wind off forecast pages; SNOTEL panel overlap fix; snow redesign (NBM 25/75 snowfall + SNOWLR
-      10/90 selected, SELECTION_VERSION 6; periods snow_q1/q3 + snow_type; totals 48h + q1/q3; summary window[5] = main
-      snow type; area.js periodChart range bars, accumChart, slrChart + strip). Points fetch ~+60 % (391 s local).
-      Basemap (owner picked design 3): shaded relief + "Roads, towns & peaks" reference layer = js/basemap-ref.js
-      (OpenFreeMap vector tiles, MapLibre GL 4.7.1 + maplibre-gl-leaflet 0.0.22 vendored in web/vendor/, pane
-      "reference" z 250, hidden on Topo/Imagery). Loads right after the markers (app.js calls basemaps.loadReference()),
-      once the visible relief tiles are in and the browser is idle, 2 s cap (owner S10; starting it before the relief
-      tiles finish slows the LCP tile: obs map 71-76 vs 86-87). USGSShadedReliefOnly has NO z9 tiles
-      (gaps at z10-11 too): basemap.js `snowTileLayer` fills holes from ancestor tiles. OpenTopoMap removed; marker
-      halos; compact map credits under 600 px (tap to expand).
-      Follow-up: Powder Finder Ridge column removed (ridge.json still built, shown nowhere); about.html ridge section
-      removed. dev10 pushed.
-- [x] S11 (dev11, not pushed): snow charts on NATIVE NBM percentile windows only (never add percentiles).
-      points JSON `days` (12Z-12Z; nbm/run.py + ndfd.py): snow_in (sum of 6-h det windows), snow_p25/p50/p75 from the
-      one native window that exactly covers the day (snow24, or snow6 for a 6-h first day; P.native_window), else
-      None (01Z/19Z first day is 11-17 h: no range). area.js periodChart = "Snowfall by day" (p25-p75 bars coloured by
-      p50, "low–high″" labels, muted < 0.5 in, hatched expected when no native window); accumChart = expected running
-      total by day ending at the 10-day total's horizon. 12-h `periods` stay (temps, snow type, mine.js, Finder).
-      colors.js SNOWFALL = NWS snowfall table (NOHRSC legend, 0/T/0.1/1/2/3/4/6/8/12/18/24/30/36/48/60/72/96/120+),
-      snowLegendHtml() + snowPale() shared by area, overlays, Finder. `points --out` / `ndfd --out` = the points
-      folder itself (build/data/points, build/data/ndfd); cleanup now only deletes files listed in its old summary.json.
+**Reusable gotchas (earlier session log: docs/ARCHIVE.md)**
+- Lighthouse: `PATH=/c/miniforge3/envs/tools:$PATH npx -y lighthouse@12.6.1 URL --only-categories=performance,accessibility`
+  (Node lives in the `tools` conda env), against a gzip server (like Pages) of build/; the plain http.server understates
+  mobile scores. The obs map scores bimodally (71–88, tile-server timing); compare changes with interleaved A/B runs.
+- Browser regression checks: `PYTHONIOENCODING=utf-8 C:/miniforge3/envs/snow-wx/python.exe tools/browser_check.py [-v] [--only ...]`
+  (serves build/ itself, real headless Chrome via CDP); copy web/* to build/ first. `Page.navigate` with only a hash change does
+  not reload; blocked URLs need cache off + an unvisited view. Element screenshots: CDP clip after scrollIntoView WITHOUT
+  captureBeyondViewport (it resizes the viewport and Plotly re-lays out).
+- `pipeline points --out` and `pipeline ndfd --out` take the points/ndfd folder itself (`build/data/points`, `build/data/ndfd`),
+  never `build/data`. Cleanup deletes only files the previous run's `summary.json` lists, plus orphans that look like our own
+  point files (`common.stale_point_files` / `orphan_point_files`; fresh runners have nothing to delete).
+- Charts: shared theme `web/js/charts/theme.js` (always `C.plot`; summary + tableToggle + lazy). Snow charts use the `days`
+  array (12Z–12Z) in the points JSON; percentiles only from one native NBM window (`points.native_window`). Colors:
+  `colors.js` `SNOWFALL` (NWS table) + `snowLegendHtml`. about.html must be updated whenever methods change.
+- Maps: obs-map symbols draw on one canvas (`points-canvas.js`; no marker keyboard focus: the search box is the keyboard path);
+  overlays draw on a view-sized canvas (`overlays.js`), never an `L.ImageOverlay` of the whole West (GPU limit → grey map).
+  USGSShadedReliefOnly has no z9 tiles (gaps at z10–11): `basemap.js snowTileLayer` fills holes from ancestor tiles. The OSM
+  reference layer (`basemap-ref.js`, MapLibre vendored in web/vendor/) loads after the markers once the relief tiles are in
+  (earlier loading slows the LCP tile).
+- Powder Finder: keep its first paint static (buttons in the HTML, list reserves height) or Lighthouse CLS jumps.
+- GitHub: no `gh` CLI here; read run status via the public REST API with `requests` (`/actions/workflows/<file>/runs`,
+  release assets under `/releases/tags/model-maps`). The forecast archive never lives on the PC (`pipeline archive --local` into
+  the scratchpad, then delete).
