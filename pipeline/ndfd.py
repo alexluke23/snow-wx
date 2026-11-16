@@ -34,7 +34,7 @@ import numpy as np
 
 from . import points as P
 from .catalog import lcc_ij
-from .common import REPO_ROOT, stale_point_files, utcnow, write_json
+from .common import REPO_ROOT, orphan_point_files, stale_point_files, utcnow, write_json
 from .nbm.run import flat_index
 
 log = logging.getLogger("snow-wx.ndfd")
@@ -382,6 +382,9 @@ def run(cfg: dict, session, out: Path, *, published: str | None = None, github_o
                                       "generated_at": generated, "areas": summary})
     write_json(out / "index.json", {"key": key, "issued": issued.strftime("%Y-%m-%dT%H:%MZ"),
                                     "generated_at": generated, "source": SOURCE, "count": len(pts)})
+    for old in orphan_point_files(out, {f"{f['id']}.json" for f in pts}):    # dropped areas / interrupted runs
+        old.unlink()
+        log.info("NDFD: removed orphan point file %s", old.name)
     log.info("NDFD %s: wrote %d files (max %.0f KB, total %.1f MB)", key, len(sizes), max(sizes) / 1024, sum(sizes) / 1e6)
     emit(new="true", cycle=tag)
     return 0

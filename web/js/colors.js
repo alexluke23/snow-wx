@@ -102,7 +102,7 @@ const SNOWFALL = {
 
 // Legend of the NWS snowfall colours: the classes from `from` inches up to the class holding `maxIn`
 // (at least through `minTop`), each swatch labelled with its lower limit; pale swatches outlined.
-function snowLegendHtml(maxIn, { from = 0.1, minTop = 12, cls = "" } = {}) {
+function snowLegendHtml(maxIn, { from = 0.1, minTop = 12, cls = "", partial = false } = {}) {
   const S = SNOWFALL;
   const first = Math.max(1, S.bins.findIndex((b) => b >= from) + 1);
   let last = S.bins.findIndex((b) => b > Math.max(maxIn || 0, minTop));
@@ -112,8 +112,9 @@ function snowLegendHtml(maxIn, { from = 0.1, minTop = 12, cls = "" } = {}) {
     const c = S.colors[k];
     items.push(`<span class="sw${snowPale(c) ? " pale" : ""}" style="background:${c};color:${textOn(c)}">${S.legend[k]}</span>`);
   }
-  return `<div class="snow-legend${cls ? ` ${cls}` : ""}" role="img" aria-label="Snowfall colours in inches (NWS colour table): ${S.legend.slice(first, last + 1).join(", ")}">` +
-    `<span class="lab">in</span>${items.join("")}</div>`;
+  return `<div class="snow-legend${cls ? ` ${cls}` : ""}" role="img" aria-label="Snowfall colours in inches (NWS colour table): ${S.legend.slice(first, last + 1).join(", ")}${partial ? "; hatched grey: partial day — expected amount, no range" : ""}">` +
+    `<span class="lab">in</span>${items.join("")}` +
+    (partial ? `<span class="sw partial" title="Partial day — expected amount, no range">partial day — expected amount, no range</span>` : "") + `</div>`;
 }
 
 // Swatches this light disappear on the white page: draw them with an outline (WCAG non-text contrast).
@@ -123,6 +124,18 @@ function snowPale(hex) {
   const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
   return 1.05 / (L + 0.05) < 1.6;          // contrast against white below 1.6:1
 }
+
+// SNOTEL depth change (24 h / 72 h): gains use the NWS snowfall colours (same classes, from 1 in), losses stay brown.
+// A depth change includes compaction, so it is NOT snowfall (owner Nov 16): the legend says "Snow depth change".
+(function depthChangeColors() {
+  const k = SNOWFALL.bins.indexOf(1), last = SNOWFALL.bins.indexOf(36);
+  const bins = [-2, ...SNOWFALL.bins.slice(k, last + 1)];             // -2, 1, 2, 3, 4, 6, 8, 12, 18, 24, 30, 36
+  const colors = ["#a6761d", "#f0f0f0", ...SNOWFALL.colors.slice(k + 1, last + 2)];
+  for (const key of ["depth_24h", "depth_72h"]) {
+    SNOTEL_VARS[key].bins = bins; SNOTEL_VARS[key].colors = colors;
+    SNOTEL_VARS[key].legendTitle = "Snow depth change (in); includes compaction, not snowfall";
+  }
+})();
 
 // Chance of at least X inches (%): sequential, shared by Powder Finder table/map and area charts.
 const PROB = {

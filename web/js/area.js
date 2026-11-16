@@ -88,13 +88,15 @@
   function tiles(fc, pt, elev) {
     const P = fc.points[pt];
     const cell = (name, label) => {
-      const t = P.totals[name];
+      let t = P.totals[name];
       if (!t) return "";
       const c = colorFor(SNOWFALL, t.snow_in) || "#f4f6f8";
+      const long = name === "7d" || name === "10d";        // no range beyond 72 h (owner Nov 16): expected total only
+      if (long) { t = { ...t, snow_lo: null, snow_hi: null }; }
       const note = outside(t) ? ` <a class="info" href="about.html#nbm" title="${esc(SEPARATE)}" aria-label="Why the ranges can disagree">ⓘ</a>` : "";
       return `<div class="tile${t.extended ? " ext" : ""}"><span class="label">${label}</span>
         <span class="swatch${snowPale(c) ? " pale" : ""}" style="background:${c}"></span><strong>${inches(t.snow_in)}<small> in</small></strong>
-        <span class="rng">${t.snow_hi === null || t.snow_hi === undefined ? "NWS: no range" : `${rangeName(t)}: ${range(t.snow_lo, t.snow_hi)}${note}`}</span>
+        <span class="rng">${long ? "expected total only" : t.snow_hi === null || t.snow_hi === undefined ? "NWS: no range" : `${rangeName(t)}: ${range(t.snow_lo, t.snow_hi)}${note}`}</span>
         <span class="rng liquid">${(t.qpf_in ?? 0).toFixed(2)} in liquid</span></div>`;
     };
     const head = P.raw
@@ -165,7 +167,8 @@
       return d.snow_p75 < MUTED_IN ? "Little or no snow likely (NBM's middle half of outcomes is under ½ in)"
         : `Likely ${dayRange(d).replace("″", "")} in — the middle half of NBM's outcomes`;
     }
-    return `No NBM range for ${d.partial ? `this partial day (${d.hours} h)` : "this day"}; expected ${plain(d.snow_in)} in`;
+    return d.partial ? `Partial day (${d.hours} h) — expected amount, no range: ${plain(d.snow_in)} in`
+      : `No NBM range for this day — expected amount: ${plain(d.snow_in)} in`;
   }
   function daySummary(fc, pt, nws) {
     const days = fc.points[pt].days || [];
@@ -174,10 +177,11 @@
     const key = (d) => (nws || !hasV(d.snow_p75) ? d.snow_in ?? 0 : d.snow_p75);
     const big = days.reduce((b, d) => (key(d) > (b ? key(b) : 0) ? d : b), null);
     const span = tot["10d"] ? "10 days" : tot["7d"] ? "7 days" : "72 hours";
+    const part = !nws && days.length && days[0].partial && !hasV(days[0].snow_p75) ? ` First day: partial day — expected amount ${dayAmount(days[0].snow_in)}, no range.` : "";
     const totTxt = total && hasV(total.snow_in) ? ` ${nws ? "NWS total" : "Expected total"} over ${span}: ${inches(total.snow_in)} in.` : "";
-    if (!big || key(big) < MUTED_IN) return `Little or no snow on any day in the next ${days.length} days.${totTxt}`;
+    if (!big || key(big) < MUTED_IN) return `Little or no snow on any day in the next ${days.length} days.${totTxt}${part}`;
     return `Snowiest day: ${big.label} (${big.local}) — ${nws ? `${inches(big.snow_in)} in (NWS)` : hasV(big.snow_p75)
-      ? `likely ${dayRange(big).replace("″", "")} in` : `expected ${inches(big.snow_in)} in`}.${totTxt}`;
+      ? `likely ${dayRange(big).replace("″", "")} in` : `expected ${inches(big.snow_in)} in`}.${totTxt}${part}`;
   }
   function periodChart(el, fc, pt, tz, nws = false) {
     const days = fc.points[pt].days || [];
@@ -221,7 +225,7 @@
         : [d.label, d.local, ranged[i] ? dayRange(d) : "–", ranged[i] ? plain(d.snow_p50) : "–", plain(d.snow_in),
           hasV(d.pop) ? `${Math.round(d.pop * 100)}%` : "–"])));
     // colour legend directly under the chart (before the table toggle)
-    el.insertAdjacentHTML("afterend", snowLegendHtml(ymax, { minTop: 18, cls: "chart-legend" }));
+    el.insertAdjacentHTML("afterend", snowLegendHtml(ymax, { minTop: 18, cls: "chart-legend", partial: !nws && days.some((d, i) => !ranged[i] && d.partial) }));
     return days.some((d, i) => !ranged[i] && !nws);
   }
 
