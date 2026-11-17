@@ -40,7 +40,7 @@
       <a href="https://avalanche.org/" target="_blank" rel="noopener">avalanche center</a> before heading out.</p>
 
     <nav class="toc" aria-label="On this page">
-      <a href="#nbm">NBM forecasts</a> · <a href="#daily-snow">Snowfall by day</a> · <a href="#accumulated">Accumulated snow</a> · <a href="#snow-colors">Snowfall colours</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#forecast-map">Forecast map</a> · <a href="#snow-type">Snow type</a> ·
+      <a href="#nbm">NBM forecasts</a> · <a href="#daily-snow">Snowfall by day</a> · <a href="#accumulated">Accumulated snow</a> · <a href="#snow-colors">Snowfall colours</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#forecast-map">Forecast map</a> · <a href="#powder-quality">Powder quality</a> ·
       <a href="#snow-level">Snow level</a> · <a href="#elevation">Elevation</a> · <a href="#nws">NWS forecast</a> ·
 <a href="#snoparks">Sno-Parks</a> · <a href="#afd">Forecaster discussion</a> ·
       <a href="#sources">Data sources</a> · <a href="#disclaimer">Disclaimer</a>
@@ -131,20 +131,23 @@
         the NWS forecast has no snowfall probabilities.</p>
     </section>
 
-    <section id="snow-type">
-      <h3>Snow ratio and snow type (a heuristic)</h3>
-      <p>The <b>snow ratio</b> is NBM's forecast snow-to-liquid ratio: how many inches of snow one inch of water makes.
-        Area pages chart it over time with NBM's 10–90% range where NBM provides one, drawn solid only where precipitation is
-        likely. From the ratio of each 12-hour period with at least half an inch of snow we give a simple <b>snow type</b>:</p>
+    <section id="powder-quality">
+      <h3>Snow ratio and powder quality (a documented heuristic)</h3>
+      <p>The <b>snow ratio</b> is NBM's forecast snow-to-liquid ratio: how many inches of snow one inch of water makes. The
+        area-page panel draws NBM's median (line) and 10–90% range (shading) only while snow is falling, because NBM's ratio
+        is meaningless in dry hours. Behind it, <b>powder quality</b> is a simple, documented rule of thumb on the median ratio:</p>
       <ul>
-        <li><b>Wet/heavy</b>: below 8:1 — dense, sticky snow.</li>
-        <li><b>Average</b>: 8–12:1.</li>
-        <li><b>Dry/light</b>: 12–18:1.</li>
-        <li><b>Very dry/blower</b>: 18:1 and up.</li>
+        <li><b>Dense</b>: below 10:1 — heavy, wetter snow.</li>
+        <li><b>Medium</b>: 10–15:1.</li>
+        <li><b>Blower</b>: 15:1 and up — light, dry powder.</li>
       </ul>
-      <p><b>Wind-affected</b> (≋) is added when NBM's summit gusts reach 30 mph while it snows. This is a rule of thumb from a
-        forecast, not a measurement: real snow quality also depends on crystal type, settling, sun and the snow already on the
-        ground. The thresholds live in the site's configuration and may be tuned once we can verify them.</p>
+      <p>A <b>wind-affected</b> marker (◆) is shown where NBM's summit gusts exceed 30 mph while it snows (wind can scour or
+        pack snow). This is a heuristic from a forecast, <b>not an accuracy claim, a measurement or an avalanche rating</b>: real
+        snow quality also depends on crystal type, settling, sun and the snow already on the ground. The thresholds may be tuned
+        once we can verify them. Colours are chosen to be distinct from the snowfall colours; each band is also labelled in text.</p>
+      <p id="snow-type"><b>"Type" in Powder Finder and My mountains</b> uses a finer four-step version of the same idea
+        (Wet/heavy below 8:1, Average 8–12, Dry/light 12–18, Very dry/blower 18 and up, from the 12-hour periods with at least
+        half an inch of snow) and is also a heuristic; its thresholds live in the site configuration.</p>
     </section>
 
     <section id="forecast-map">

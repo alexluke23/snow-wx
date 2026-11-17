@@ -290,47 +290,68 @@
       steps.map((s) => [s.d.label, endTxt(s), plain(s.add), plain(s.run)]));
   }
 
-  /** Snow ratio (owner S10): NBM snow-to-liquid ratio with its 10-90 % band, solid where
-   *  precipitation is likely and grey otherwise; then a snow-type strip per period. */
-  const SNOW_TYPE_COLOR = { wet: "#5b7fa6", average: "#8fb3d9", dry: "#cfe3f6", very_dry: "#ffffff" };
+  /** Snow ratio + powder quality in ONE panel (dev13 item 4). NBM's snow-to-liquid ratio (SNOWLR): p50 line and
+   *  p10-p90 band, drawn only where snow is falling (SNOWLR is ~0 otherwise). Background bands = the documented
+   *  powder-quality heuristic (Dense < 10:1, Medium 10-15, Blower >= 15; PLAN §5.2, about.html#powder-quality);
+   *  a marker where summit gusts exceed 30 mph while it snows ("wind-affected"). A heuristic, not an accuracy claim.
+   *  Band colors are Okabe-Ito categories (never the NWS snowfall palette); every band is also labelled in text. */
+  const POWDER = [["Dense", 0, 10, "#CC79A7"], ["Medium", 10, 15, "#009E73"], ["Blower", 15, Infinity, "#56B4E9"]];
+  const POWDER_WIND_MPH = 30;
+  function snowingMask(fc, pt) {
+    // time i is "snowing" when the precipitation window containing it has snow (hourly to 36 h, then 6-hourly)
+    const pr = fc.points[pt].precip;
+    return fc.times.map((iso) => {
+      const t = new Date(iso).getTime();
+      for (let k = 0; k < pr.end.length; k++) {
+        const e = new Date(pr.end[k]).getTime(), b = e - (pr.hours[k] || 1) * 3.6e6;
+        if (t > b && t <= e) return (pr.snow_in[k] ?? 0) > 0;
+      }
+      return false;
+    });
+  }
   function slrChart(el, fc, pt, tz) {
     const P = fc.points[pt], s = P.series, xs = fc.times.map((x) => C.wall(x, tz));
-    const chance = precipChance(fc, pt);
-    const wet = s.slr.map((v, i) => ((chance[i] ?? 0) >= WET && v ? v : null));
-    let nb = 0;
-    while (nb < xs.length && s.slr_p10?.[nb] !== null && s.slr_p10?.[nb] !== undefined) nb++;
-    const ax = C.timeAxis(xs[0], xs[xs.length - 1], el.clientWidth - C.MARGIN.l - 70);
-    const shapes = [...ax.shapes], annotations = [C.axisTitle("Snow ratio (inches of snow per inch of water)")];
-    for (const [v, lab] of [[8, "8:1"], [12, "12:1"], [18, "18:1"]]) {
-      const r = C.refLine(v, lab, { color: "#6b7686", dash: "dot", width: 1 });
-      shapes.push(r.shape); annotations.push(r.ann);
+    const snowing = snowingMask(fc, pt);
+    const only = (arr) => arr.map((v, i) => (snowing[i] && v ? v : null));
+    const p50 = only(s.slr), p10 = only(s.slr_p10 || []), p90 = only(s.slr_p90 || []);
+    const windy = fc.times.map((_, i) => (snowing[i] && (s.gust_mph?.[i] ?? 0) > POWDER_WIND_MPH && p50[i] ? i : null)).filter((v) => v !== null);
+    const ymax = Math.max(24, ...p90.filter(Boolean).map((v) => v + 3), ...p50.filter(Boolean).map((v) => v + 3));
+    const ax = C.timeAxis(xs[0], xs[xs.length - 1], el.clientWidth - C.MARGIN.l - 20);
+    const shapes = [...ax.shapes], annotations = [C.axisTitle(C.small() ? "Snow ratio (snow : water)" : "Snow ratio (inches of snow per inch of water)")];
+    for (const [name, lo, hi, col] of POWDER) {
+      const top = Math.min(hi, ymax);
+      shapes.push({ type: "rect", xref: "paper", yref: "y", x0: 0, x1: 1, y0: lo, y1: top, fillcolor: col, opacity: 0.16,
+        line: { width: 0 }, layer: "below" });
+      annotations.push({ xref: "paper", x: 0.995, xanchor: "right", yref: "y", y: (lo + top) / 2, yanchor: "middle", showarrow: false,
+        bgcolor: "rgba(255,255,255,0.8)", borderpad: 2,
+        text: `<b>${name}</b> ${hi === Infinity ? `≥ ${lo}` : lo === 0 ? `< ${hi}` : `${lo}–${hi}`}:1`, font: C.font(12, "#1f2937") });
     }
+    const hasSnow = p50.some(Boolean);
     const traces = [];
-    if (nb > 1) {
-      traces.push({ x: xs.slice(0, nb), y: s.slr_p90.slice(0, nb), mode: "lines", line: { width: 0 }, hoverinfo: "skip" },
-        { x: xs.slice(0, nb), y: s.slr_p10.slice(0, nb), mode: "lines", line: { width: 0 }, fill: "tonexty",
-          fillcolor: "rgba(0,114,178,0.14)", hoverinfo: "skip" });
+    if (p10.some(Boolean) && p90.some(Boolean)) {
+      traces.push({ x: xs, y: p90, mode: "lines", line: { width: 0 }, hoverinfo: "skip", connectgaps: false },
+        { x: xs, y: p10, mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: "rgba(31,41,55,0.22)", hoverinfo: "skip", connectgaps: false });
     }
-    traces.push({ x: xs, y: s.slr.map((v) => v || null), mode: "lines", line: { color: "#aab3bf", width: 1.4, dash: "dot" },
-      hovertemplate: "ratio %{y:.0f}:1<extra></extra>", connectgaps: false },
-    { x: xs, y: wet, mode: "lines", line: { color: C.OI.blue, width: 2.6 }, hoverinfo: "skip", connectgaps: false });
-    C.plot(el, traces, C.layout(220, { margin: { r: 44, b: ax.b }, shapes, annotations, xaxis: ax.axis,
-      yaxis: C.yaxis({ range: [0, Math.max(24, ...s.slr.filter((v) => v).map((v) => v + 2))] }) }));
-    const per = P.periods.filter((p) => p.snow_type);
+    traces.push({ x: xs, y: p50, mode: "lines", line: { color: "#111827", width: 2.6 }, connectgaps: false,
+      customdata: p10.map((v, i) => [v, p90[i]]), hovertemplate: "ratio %{y:.0f}:1 (10–90%: %{customdata[0]:.0f}–%{customdata[1]:.0f})<extra></extra>" });
+    if (windy.length) {
+      traces.push({ x: windy.map((i) => xs[i]), y: windy.map(() => ymax * 0.93), mode: "markers", hovertemplate: "wind-affected: summit gusts over 30 mph while snowing<extra></extra>",
+        marker: { symbol: "diamond", size: 9, color: C.OI.vermillion, line: { color: "#111827", width: 1 } } });
+      annotations.push({ xref: "paper", x: 1, xanchor: "right", yref: "paper", y: 1, yanchor: "bottom", yshift: 4, showarrow: false,
+        text: C.small() ? "◆ wind-affected" : "◆ wind-affected (gusts > 30 mph while snowing)", font: C.font(12, "#7a2e00") });
+    }
+    if (!hasSnow) annotations.push({ xref: "paper", yref: "paper", x: 0.5, y: 0.5, showarrow: false, text: "No snow expected: no snow ratio", font: C.font(14, C.MUTED) });
+    C.plot(el, traces, C.layout(280, { margin: { r: 20, b: ax.b }, showlegend: false, shapes, annotations, xaxis: ax.axis,
+      yaxis: C.yaxis({ range: [0, ymax] }) }));
+    const per = P.periods.filter((p) => p.powder);
+    const label = (p) => `${p.label} ${Math.round(p.slr)}:1 ${p.powder.split(",")[0].toLowerCase()}${/wind/.test(p.powder) ? ", wind-affected" : ""}`;
     C.summary(el, per.length
-      ? `Snowy periods: ${per.slice(0, 4).map((p) => `${p.label} ${p.snow_type.label.toLowerCase()}${p.snow_type.wind ? " (wind-affected)" : ""}`).join("; ")}${per.length > 4 ? "; …" : ""}.`
-      : "No snowy periods expected, so no snow type.");
-    const strip = document.getElementById("snow-type-strip");
-    if (strip) {
-      strip.innerHTML = P.periods.map((p) => {
-        const t = p.snow_type;
-        return `<li class="st-cell${p.is_day ? "" : " night"}" title="${esc(p.label)} (${esc(p.local)})${t ? `: ${esc(t.label)}${t.wind ? ", wind-affected" : ""}` : ": little or no snow"}">
-          <span class="st-day">${esc(p.label.replace(" day", "").replace(" night", " ☾"))}</span>
-          ${t ? `<span class="st-chip" style="background:${SNOW_TYPE_COLOR[t.type]}">${esc(t.label.split("/")[0])}${t.wind ? ` <b title="wind-affected">≋</b>` : ""}</span>` : `<span class="st-none">–</span>`}</li>`;
-      }).join("");
-    }
-    C.tableToggle(el, "Snow ratio and snow type by period", ["Period", "Snow ratio", "Snow type", "Expected snow (in)"],
-      P.periods.map((p) => [p.label, p.slr ? `${Math.round(p.slr)}:1` : "–", p.snow_type ? `${p.snow_type.label}${p.snow_type.wind ? ", wind-affected" : ""}` : "–", plain(p.snow_in)]));
+      ? `Snow ratio and powder quality (a documented heuristic): ${per.slice(0, 4).map(label).join("; ")}${per.length > 4 ? "; …" : ""}.`
+      : "No snow expected, so no snow ratio or powder quality.");
+    C.tableToggle(el, "Snow ratio and powder quality by period (documented heuristic)",
+      ["Period", "Snow ratio", "Powder quality", "Wind-affected", "Expected snow (in)"],
+      P.periods.map((p) => [p.label, p.slr && p.powder ? `${Math.round(p.slr)}:1` : "–", p.powder ? p.powder.split(",")[0] : "–",
+        p.powder ? (/wind/.test(p.powder) ? "yes" : "no") : "–", plain(p.snow_in)]));
   }
 
   /** Chance of precipitation (0-1) at every forecast time, through the whole forecast (fix 4):
@@ -783,11 +804,9 @@
       <section><h3>Accumulated snow</h3>
         <div class="chart" id="acc-chart" style="height:240px"><p class="hint">Loading chart…</p></div>
         <p class="note" id="acc-note"></p></section>
-      <section><h3>Snow ratio and snow type <a class="info" href="about.html#snow-type" title="A simple heuristic from NBM's snow-to-liquid ratio: Wet/heavy below 8:1, Average 8–12, Dry/light 12–18, Very dry/blower 18 and up; wind-affected when summit gusts are high while it snows. Not a measurement." aria-label="How the snow type works">ⓘ</a></h3>
-        <div class="chart" id="slr-chart" style="height:220px"><p class="hint">Loading chart…</p></div>
-        <ul class="snow-type-strip" id="snow-type-strip" aria-label="Snow type by period"></ul>
-        <p class="note">Snow type is a heuristic from NBM's forecast snow ratio (wet/heavy &lt; 8:1, average 8–12, dry/light 12–18,
-          very dry/blower ≥ 18); ≋ = wind-affected (summit gusts ≥ 30 mph while snowing). The line is solid where precipitation is likely.</p></section>
+      <section><h3>Snow ratio and powder quality <a class="info" href="about.html#powder-quality" title="Powder quality is a documented heuristic from NBM's snow-to-liquid ratio (Dense below 10:1, Medium 10–15, Blower 15 and up; wind-affected when summit gusts exceed 30 mph while it snows). Not an accuracy claim or an avalanche rating." aria-label="How powder quality works">ⓘ</a></h3>
+        <div class="chart" id="slr-chart" style="height:280px"><p class="hint">Loading chart…</p></div>
+        <p class="note">NBM's forecast snow ratio (line = median, shading = 10–90%), drawn only while snow is falling. The colored bands are a <b>documented heuristic</b> for powder quality, not an accuracy claim. <a href="about.html#powder-quality">How it works →</a></p></section>
       <section id="ex-sec"><h3>Chance of at least…</h3>
         <div class="seg" role="group" aria-label="Window" id="ex-win"><button type="button" class="on" data-w="24h" aria-pressed="true">24 h</button><button type="button" data-w="48h" aria-pressed="false">48 h</button><button type="button" data-w="72h" aria-pressed="false">72 h</button></div>
         <div id="ex-chart" class="heat-box"><p class="hint">Loading…</p></div>
