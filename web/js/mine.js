@@ -20,7 +20,7 @@
     return r.json();
   };
   const inches = (v) => (v === null || v === undefined ? "–" : v < 0.5 ? (v < 0.05 ? "0" : "<1") : `${Math.round(v)}`);
-  const rng = (t) => (t?.snow_hi === null || t?.snow_hi === undefined ? "" : t.snow_hi < 0.5 ? "0–1" : `${Math.round(t.snow_lo ?? 0)}–${Math.max(1, Math.round(t.snow_hi))}`);
+  const rng = (t) => (t?.snow_hi === null || t?.snow_hi === undefined || t?.native !== true ? "" : t.snow_hi < 0.5 ? "0–1" : `${Math.round(t.snow_lo ?? 0)}–${Math.max(1, Math.round(t.snow_hi))}`);
   const ft = (v) => (v === null || v === undefined ? "–" : `${Math.round(v).toLocaleString()} ft`);
   const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");
   const dayFmt = (iso, tz) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", timeZone: tz });

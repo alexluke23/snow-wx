@@ -58,8 +58,8 @@
     if (!s) return "";
     const where = keys.length > 1 ? ` at the ${POINT_LABEL[pt].toLowerCase()}` : "";
     let txt;
-    const rng = (t) => (t.snow_hi === null || t.snow_hi === undefined ? "" : ` (${rangeName(t)} ${range(t.snow_lo, t.snow_hi)})`);
-    if ((s.snow_hi ?? s.snow_in ?? 0) < 0.5) {
+    const rng = (t) => (t.snow_hi === null || t.snow_hi === undefined || t.native !== true ? "" : ` (${rangeName(t)} ${range(t.snow_lo, t.snow_hi)})`);
+    if (((s.native === true ? s.snow_hi : null) ?? s.snow_in ?? 0) < 0.5) {
       txt = `No significant snow in the next 72 hours${where}.`;
     } else {
       txt = `Next 72 h${where}: expected <strong>${inches(s.snow_in)} in</strong> ${expectedInfo()}` +
@@ -91,12 +91,13 @@
       let t = P.totals[name];
       if (!t) return "";
       const c = colorFor(SNOWFALL, t.snow_in) || "#f4f6f8";
-      const long = name === "7d" || name === "10d";        // no range beyond 72 h (owner Nov 16): expected total only
+      // ranges only from ONE native NBM window (t.native); 7/10-day and composite ones: expected total only (owner Nov 16)
+      const long = name === "7d" || name === "10d" || (t.snow_hi != null && t.native !== true);
       if (long) { t = { ...t, snow_lo: null, snow_hi: null }; }
       const note = outside(t) ? ` <a class="info" href="about.html#nbm" title="${esc(SEPARATE)}" aria-label="Why the ranges can disagree">ⓘ</a>` : "";
       return `<div class="tile${t.extended ? " ext" : ""}"><span class="label">${label}</span>
         <span class="swatch${snowPale(c) ? " pale" : ""}" style="background:${c}"></span><strong>${inches(t.snow_in)}<small> in</small></strong>
-        <span class="rng">${long ? "expected total only" : t.snow_hi === null || t.snow_hi === undefined ? "NWS: no range" : `${rangeName(t)}: ${range(t.snow_lo, t.snow_hi)}${note}`}</span>
+        <span class="rng">${long ? "expected total only (no native NBM range)" : t.snow_hi === null || t.snow_hi === undefined ? "NWS: no range" : `${rangeName(t)}: ${range(t.snow_lo, t.snow_hi)}${note}`}</span>
         <span class="rng liquid">${(t.qpf_in ?? 0).toFixed(2)} in liquid</span></div>`;
     };
     const head = P.raw
