@@ -151,9 +151,11 @@ function snowBasemaps(map, { initial = "Shaded relief (USGS)", maxZoom = 17, onS
       .then((gl) => {
         reference.addLayer(gl);
         refState.state = "ready"; refState.layer = gl;
-        gl.getMaplibreMap?.().once("idle", () => { refState.state = "idle"; });
+        // the MapLibre map only exists once the group is on the map (not while Topo/Imagery hides the reference layer)
+        const mm = gl.getMaplibreMap?.();
+        if (mm) mm.once("idle", () => { refState.state = "idle"; });
       })
-      .catch((err) => { refState.state = "failed"; console.debug("basemap: reference layer unavailable", err); });
+      .catch((err) => { refState.state = "failed"; refState.error = String((err && err.message) || err); console.debug("basemap: reference layer unavailable", err); });
     s.onerror = () => { refState.state = "failed"; };
     document.head.appendChild(s);
   }
@@ -209,7 +211,8 @@ function snowBasemaps(map, { initial = "Shaded relief (USGS)", maxZoom = 17, onS
       if (!attr.classList.contains("open") && window.matchMedia("(max-width: 600px)").matches) { attr.classList.add("open"); e.preventDefault(); }
     }, true);
   }
-  const api = { layers, overlays: { [REF]: reference }, use, current: () => current, loadReference: scheduleReference };
+  const api = { layers, overlays: { [REF]: reference }, use, current: () => current, loadReference: scheduleReference,
+    setReferenceWanted(v) { refWanted = !!v; syncRef(); }, referenceWanted: () => refWanted };
   window.snowwx.basemap = api;            // test handle (tools/browser_check.py)
   return api;
 }

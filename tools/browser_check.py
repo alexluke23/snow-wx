@@ -445,7 +445,10 @@ def check_snoparks(b: Browser, base: str, log):
     need(st["elev"] == ["Summit", "Base"], f"finder elevation labels {st['elev']}")
     b.open(f"{base}/index.html", wait=7)
     ref = b.eval("window.snowwx.reference.state")
-    log(f"  obs map reference layer without interaction: {ref}")
+    if ref == "failed":                    # headless Chrome can lose WebGL after many page loads in one session: one retry
+        b.open(f"{base}/index.html", wait=9)
+        ref = b.eval("window.snowwx.reference.state")
+    log("  obs map reference layer without interaction: " + str(ref) + " " + str(b.eval("window.snowwx.reference.error || ''")))
     need(ref in ("ready", "idle"), f"roads/towns layer did not load on its own: {ref}")
     n = b.eval("(() => { const g = window.snowwx.map && document.querySelector('.leaflet-control-layers'); return [...document.querySelectorAll('.leaflet-control-layers-overlays label')].map(l => l.textContent.trim()).join('|'); })()")
     log(f"  obs map layers: {n}")
@@ -633,7 +636,48 @@ def check_finder_filters(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters}
+def check_hazards(b: Browser, base: str, log):
+    """dev13 item 2: layer defaults, memory, hash override, reset, NWS hazards layer + never-blank fallback."""
+    LAYERS = """(() => Object.fromEntries([...document.querySelectorAll('.leaflet-control-layers-overlays label')]
+      .map(l => [l.textContent.trim(), l.querySelector('input').checked])))()"""
+    b.open(f"{base}/about.html", wait=2)
+    b.eval("localStorage.removeItem('snowwx.layers'); 1")
+    b.open(f"{base}/index.html#map=6/42/-112", wait=10)
+    d = b.eval(LAYERS)
+    log(f"  defaults: {d}")
+    on = {k for k, v in d.items() if v}
+    need({"Roads, towns & peaks", "Ski areas", "Avalanche danger", "NWS winter hazards"} <= on and not ({"SNOTEL", "ASOS / AWOS (wind, temp)"} & on),
+         f"layer defaults wrong: {d}")
+    hz = b.eval("(() => ({status: window.snowwx.hazards.state.status, count: window.snowwx.hazards.state.count, panel: document.getElementById('hazards').textContent.trim(),"
+                " hidden: document.getElementById('hazards').hidden}))()")
+    log(f"  hazards: {hz['status']} {hz['count']} | {hz['panel'][:110]!r}")
+    need(not hz["hidden"] and hz["status"] in ("ok", "fallback") and len(hz["panel"]) > 40, f"hazards panel is blank: {hz}")
+    # memory: turn SNOTEL on, reload: still on; hash carries it
+    b.eval("document.querySelectorAll('.leaflet-control-layers-overlays label input')[5].click(); 1")
+    time.sleep(0.8)
+    st = b.eval("({ls: localStorage.getItem('snowwx.layers'), hash: location.hash})")
+    need("snotel" in (st["ls"] or "") and "ly=" in st["hash"], f"layer choice not remembered: {st}")
+    b.open(f"{base}/index.html#map=6/42/-112", wait=9)
+    need(b.eval(LAYERS).get("SNOTEL") is True, "SNOTEL choice not restored from localStorage")
+    # explicit hash beats memory
+    b.open(f"{base}/index.html#map=6/42/-112&ly=ref,ski", wait=8)
+    d2 = b.eval(LAYERS)
+    need(d2.get("Ski areas") is True and d2.get("SNOTEL") is False and d2.get("NWS winter hazards") is False, f"hash override: {d2}")
+    # reset to defaults
+    b.eval("document.getElementById('reset-layers').click(); 1")
+    time.sleep(1.0)
+    d3 = b.eval(LAYERS)
+    st = b.eval("({ls: localStorage.getItem('snowwx.layers'), hash: location.hash})")
+    need(d3.get("NWS winter hazards") is True and d3.get("SNOTEL") is False and st["ls"] is None and "ly=" not in st["hash"], f"reset: {d3} {st}")
+    # never a silent blank: service blocked -> our alerts index fallback notice
+    b.open(f"{base}/index.html#map=6/42/-112", wait=8, block=["*mapservices.weather.noaa.gov*"])
+    fb = b.eval("(async () => { await new Promise(r => setTimeout(r, 2500)); return {status: window.snowwx.hazards.state.status, panel: document.getElementById('hazards').textContent.trim()}; })()")
+    log(f"  blocked service: {fb['status']} | {fb['panel'][:120]!r}")
+    need(fb["status"] == "fallback" and "not showing" in fb["panel"], f"no visible fallback when the NWS service fails: {fb}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards}
 
 
 def main(argv=None) -> int:

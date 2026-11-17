@@ -467,3 +467,14 @@ body.mine-page > main { min-height: 100vh; min-height: 100dvh; }
 .finder-controls .dir-btn:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 1px; }
 .finder-controls select { min-height: 40px; }
 @media (min-width: 720px) { .finder-controls .sel-grp { flex: 0 1 auto; } }
+
+/* NWS winter hazards panel (dev13 item 2) */
+.hazards { margin-top: 10px; }
+.hazards .hz-title { font-size: 13px; font-weight: 600; margin: 0 0 4px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.hz-legend { list-style: none; margin: 0 0 4px; padding: 0; font-size: 13px; }
+.hz-legend li { display: flex; align-items: center; gap: 6px; min-height: 22px; }
+.hz-sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(20, 32, 46, .6); flex: none; }
+.hz-sw.watch { border-style: dashed; border-width: 2px; }
+.hz-sw.warning { border-width: 3px; }
+.layer-reset { margin: 8px 0 0; font-size: 13px; }
+.linklike { background: none; border: 0; padding: 8px 0; min-height: 40px; color: #1d4ed8; text-decoration: underline; cursor: pointer; font: inherit; }
