@@ -47,11 +47,12 @@
       <div class="seg" role="group" aria-label="Time window" id="win"><button type="button">24 h</button><button type="button" class="on">72 h</button><button type="button">7 d</button><button type="button">10 d</button></div>
       <div class="seg" role="group" aria-label="Elevation" id="elev"><button type="button" class="on">Summit</button><button type="button">Base</button></div>
       <div class="seg" role="group" aria-label="Forecast source" id="src"><button type="button" class="on">NBM</button><button type="button">NWS</button></div>
-      <label class="sel">State <select id="state"><option value="">All</option></select></label>
-      <label class="sel">Region <select id="region"><option value="">All</option></select></label>
-      <label class="sel" id="sort-wrap">Sort <select id="sort">
+      <label class="sel">State <select id="state" aria-label="State (narrows the region list)"><option value="">All states</option></select></label>
+      <label class="sel">Region <select id="region" aria-label="Region (narrows the state list)"><option value="">All regions</option></select></label>
+      <div class="sel-grp" id="sort-wrap"><label class="sel">Sort <select id="sort">
         <option value="snow">Most snow</option><option value="obs">Most observed (24 h)</option>
         <option value="sl">Lowest snow level</option><option value="name">Name</option></select></label>
+        <button type="button" id="sort-dir" class="dir-btn" aria-label="Sort direction: descending. Activate to reverse." title="Reverse the sort">↓</button></div>
       <label class="chk"><input type="checkbox" id="favonly"> Favorites only</label>
       <label class="chk"><input type="checkbox" id="stype"> Snow type <a class="info" href="about.html#snow-type" title="Heuristic from NBM's snow-to-liquid ratio" aria-label="How snow type works">ⓘ</a></label>
       <p class="note" id="src-note" hidden>Chances use NBM's probabilistic guidance; the NWS forecast has no snowfall probabilities.

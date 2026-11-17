@@ -577,7 +577,63 @@ def check_snotel_outage(b: Browser, base: str, log):
             p.write_bytes(raw)
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage}
+def check_finder_filters(b: Browser, base: str, log):
+    """dev13 item 1: linked state/region menus with counts, deterministic sort, bounds fit, hash restore."""
+    b.open(f"{base}/finder.html#t=ski&m=amount&w=72h&e=summit&sort=name", wait=8)
+    MENU = """(() => { const o = (id) => [...document.getElementById(id).options].map(x => [x.value, x.textContent, x.disabled]);
+      const rows = [...document.querySelectorAll('#rows .frow .who a')].map(a => a.textContent);
+      return {state: o('state'), region: o('region'), rows, hash: location.hash}; })()"""
+    st0 = b.eval(MENU)
+    n_all = len(st0["rows"])
+    log(f"  finder: {n_all} rows; states {len(st0['state'])} regions {len(st0['region'])}; first state options {st0['state'][:3]}")
+    need(n_all > 100 and st0["state"][0][1].startswith("All (") and st0["region"][0][1].startswith("All ("), f"menus: {st0['state'][:2]}")
+    # choose a state: the region list narrows, counts add up, empty regions are disabled
+    b.eval("(() => { const s = document.getElementById('state'); s.value = 'UT'; s.dispatchEvent(new Event('change')); })()")
+    time.sleep(1.2)
+    st1 = b.eval(MENU)
+    ut_total = int(st1["state"][0][1].split("(")[1].rstrip(")"))
+    regs = [(v, int(t.rsplit("(", 1)[1].rstrip(")")), d) for v, t, d in st1["region"][1:]]
+    log(f"  finder UT: rows {len(st1['rows'])}, regions with places {[r for r in regs if r[1]][:5]}")
+    need(len(st1["rows"]) == sum(c for _, c, _ in regs) and len(st1["rows"]) < n_all, f"UT rows {len(st1['rows'])} vs region counts {regs}")
+    need(all(d for v, c, d in regs if c == 0 and v != ""), "empty regions must be disabled")
+    need("st=UT" in st1["hash"], f"hash: {st1['hash']}")
+    # sort stable: same relative order of the places that stay, on sort=name; ties by name
+    names_all = st0["rows"]
+    need(st1["rows"] == [n for n in names_all if n in set(st1["rows"])], "selecting a state must not reorder the list")
+    # region -> the state list narrows to states that have it; Tahoe-like overlaps show both states
+    b.eval("(() => { const s = document.getElementById('state'); s.value = ''; s.dispatchEvent(new Event('change')); })()")
+    time.sleep(0.8)
+    multi = b.eval("""(() => { const r = [...document.getElementById('region').options].map(o => o.value).filter(Boolean);
+      for (const name of r) { const s = document.getElementById('region'); s.value = name; s.dispatchEvent(new Event('change'));
+        const st = [...document.getElementById('state').options].filter(o => o.value && !o.disabled).map(o => o.value);
+        if (st.length > 1) return {region: name, states: st, rows: document.querySelectorAll('#rows .frow').length}; } return null; })()""")
+    log(f"  finder multi-state region: {multi}")
+    need(multi is None or len(multi["states"]) > 1, f"overlap region: {multi}")
+    # regions north to south
+    order = b.eval("""(() => [...document.getElementById('region').options].map(o => o.value).filter(Boolean))()""")
+    log(f"  finder region order (first 6): {order[:6]}")
+    # sort direction: reverse keeps the same set, reverses the order; the hash carries it
+    b.eval("(() => { const r = document.getElementById('region'); r.value = ''; r.dispatchEvent(new Event('change')); })()")
+    time.sleep(0.6)
+    a1 = b.eval("[...document.querySelectorAll('#rows .frow .who a')].map(a => a.textContent)")
+    b.eval("document.getElementById('sort-dir').click()")
+    time.sleep(0.8)
+    a2 = b.eval("({rows: [...document.querySelectorAll('#rows .frow .who a')].map(a => a.textContent), hash: location.hash})")
+    need(a2["rows"] == a1[::-1] and "dir=desc" in a2["hash"], f"sort direction toggle: {a2['hash']}")
+    # hash restores state, region and sort
+    b.open(f"{base}/finder.html#t=ski&m=amount&w=72h&e=summit&sort=name&dir=desc&st=CO", wait=8)
+    rs = b.eval("({state: document.getElementById('state').value, rows: [...document.querySelectorAll('#rows .frow .who a')].map(a => a.textContent), dir: document.getElementById('sort-dir').textContent})")
+    log(f"  finder hash restore: state {rs['state']} dir {rs['dir']} rows {len(rs['rows'])}")
+    need(rs["state"] == "CO" and rs["dir"] == "↓" and rs["rows"] == sorted(rs["rows"], reverse=True), "hash did not restore state/direction")
+    # the map fits the filtered places (Colorado only)
+    bounds = b.eval("""(async () => { await new Promise(r => setTimeout(r, 2500));
+      const m = window.snowwx && window.snowwx.map; if (!m) return null; const c = m.getCenter(); return {lat: c.lat, lon: c.lng, z: m.getZoom()}; })()""")
+    log(f"  finder map after state=CO: {bounds}")
+    need(bounds is None or (36 < bounds["lat"] < 42 and -110 < bounds["lon"] < -104 and bounds["z"] >= 6), f"map did not fit Colorado: {bounds}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters}
 
 
 def main(argv=None) -> int:

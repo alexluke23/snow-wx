@@ -458,3 +458,12 @@ body.mine-page > main { min-height: 100vh; min-height: 100dvh; }
 
 /* SNOTEL outage notes (fix-snotel): stale or unavailable observations are always labelled */
 .snotel-note { margin: 6px 0; padding: 6px 8px; font-size: 13px; color: #5c3d00; background: #fff4d6; border-left: 3px solid #d9a400; border-radius: 3px; }
+
+/* Powder Finder: sort direction button and linked menus (dev13 item 1); tap targets >= 40 px */
+.finder-controls .sel-grp { display: inline-flex; align-items: flex-end; gap: 6px; flex: 1 1 55%; }
+.finder-controls .sel-grp select { min-width: 150px; }
+.finder-controls .sel-grp .sel { flex: 1 1 auto; }
+.finder-controls .dir-btn { min-width: 40px; min-height: 40px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 18px; cursor: pointer; color: var(--ink); }
+.finder-controls .dir-btn:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 1px; }
+.finder-controls select { min-height: 40px; }
+@media (min-width: 720px) { .finder-controls .sel-grp { flex: 0 1 auto; } }
