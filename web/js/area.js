@@ -85,6 +85,15 @@
     return txt;
   }
 
+  /** Daily Snow summary (W3: pipeline/summary.py, rules in config/summary_rules.yml): deterministic, hedged, never an LLM. */
+  function summaryCard(sm) {
+    if (!sm || !sm.sentence) return "";
+    const conf = { high: "", medium: " · medium confidence (no native NBM window for part of the forecast)", low: " · low confidence (NBM ranges unavailable)" }[sm.confidence] || "";
+    return `<p class="summary-line"><b class="summary-tag">${esc(sm.tag)}</b> ${esc(sm.sentence)}</p>
+      ${sm.bullets?.length ? `<ul class="summary-bullets">${sm.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : ""}
+      <p class="hint summary-note">Automatic summary from the numbers below (rules, not a person)${esc(conf)}. <a href="about.html#daily-summary">How it works →</a></p>`;
+  }
+
   function tiles(fc, pt, elev) {
     const P = fc.points[pt];
     const cell = (name, label) => {
@@ -794,7 +803,8 @@
         : alR.status === "fulfilled" ? alertBanner((isStation ? alR.value.points : alR.value.areas)?.[a.id], alR.value,
           nwsLink(isStation ? a : a.summit), tz) : ""}
       ${recFacts}
-      ${src ? `<p class="headline" id="headline"></p>
+      ${src ? `<div id="summary-card" class="summary-card" aria-live="polite"></div>
+      <p class="headline" id="headline"></p>
       <p class="fresh" id="fresh"></p>
       <div class="sec-head seg-row">${srcSeg}<span id="elev-seg"></span></div>
       <div id="tiles"></div>
@@ -870,6 +880,7 @@
         if (!keys.includes(pt)) pt = keys[0];
         const stale = (Date.now() - new Date(d.issued)) / 3.6e6 > (src === "nws" ? 12 : 18);
         $("headline").innerHTML = headline(d, keys);
+        $("summary-card").innerHTML = src === "nws" ? "" : summaryCard(d.summary);
         $("fresh").className = `fresh${stale ? " stale" : ""}`;
         $("fresh").textContent = `${src === "nws" ? "NWS forecast (NDFD) issued" : "NBM"} ${localFmt(d.issued, tz,
           { weekday: "short", hour: "numeric", timeZoneName: "short" })}${src === "nws" ? "" : " run"} · ${ago(d.issued)}${stale ? " — out of date" : ""}`;

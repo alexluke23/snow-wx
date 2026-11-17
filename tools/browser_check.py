@@ -350,6 +350,11 @@ def check_charts(b: Browser, base: str, log):
         need(st["days"] >= 8 and st["bars"] == st["days"] and st["ticks"] == 0 and st["legend"] and st["bad"] == 0,
              f"{area}: daily snowfall chart wrong: {st}")
         need(len(st["labels"]) == st["days"], f"{area}: every day needs a low–high label: {st['labels']}")
+        # dev13 B1 (W3): the rules-based summary is at the top of the forecast card, hedged and labelled
+        sm = b.eval("(() => ({tag: (document.querySelector('.summary-tag') || {}).textContent || '', text: (document.querySelector('.summary-line') || {}).textContent || '',"
+                    " note: (document.querySelector('.summary-note') || {}).textContent || ''}))()")
+        log(f"  charts {area}: summary {sm['tag']!r}")
+        need(sm["tag"] and "rules, not a person" in sm["note"], f"{area}: daily summary card missing: {sm}")
         # dev13 item 4: ONE snow-ratio + powder-quality panel (>= 260 px), no strip, powder bands + labels, p50 line only when snowing
         pq = b.eval("""(() => { const el = document.getElementById('slr-chart'); const L = el.layout || {};
           const anns = (L.annotations || []).map(a => a.text || '');

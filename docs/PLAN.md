@@ -158,7 +158,7 @@ analytics, pipeline monitoring.
 
 **W1 Domain & hosting** — custom domain on Cloudflare Pages + R2; ≤ 20,000 files, no file > 25 MiB; old URL redirects;
 Lighthouse not worse; rollback plan. **W2 Indexable pages** — ≥ 161 server-rendered area pages (title/description/summary
-without JS); sitemap; `#id` redirects; OG cards for top 60. **W3 Daily summaries** — every point has a summary in
+without JS); sitemap; `#id` redirects; OG cards for top 60. **W3 Daily summaries** (v1 pipeline + area card done in dev13; Finder/My mountains/meta pending) — every point has a summary in
 `points/<id>.json`; fixture-tested rules; shown on cards, Finder rows, meta descriptions. **W4 PWA** — §5.8 tests pass on
 real iPhone + Android; staleness banners; install event. **W5 Analytics/monitoring** — cookieless events (favorite,
 install, signup, alert, avalanche-center click, "view as table"); feedback link; failure notifications; public status

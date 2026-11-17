@@ -577,6 +577,16 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
     return {"series": series, "precip": precip, "periods": out_periods, "days": out_days, "totals": totals, "exceed": ex}
 
 
+def daily_summary(doc: dict) -> dict | None:
+    """Daily Snow summary (W3, pipeline/summary.py) for one point document; never breaks the points run."""
+    try:
+        from ..summary import summarize
+        return summarize(doc)
+    except Exception as exc:                      # a rules bug must not cost the whole points product
+        log.warning("daily summary failed for %s: %s", doc.get("id"), exc)
+        return None
+
+
 def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: datetime,
                   col: dict[tuple, int], generated: str) -> tuple[dict, list]:
     files, summary = {}, []
@@ -597,6 +607,7 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
                                 "grid": [g["i"], g["j"]], **fc}
         tot = {k: doc["points"][k]["totals"] for k in ("summit", "base")}
         doc["checks"] = P.plausibility(tot["base"], tot["summit"])
+        doc["summary"] = daily_summary(doc)
         files[a["id"]] = doc
         per = doc["points"]["summit"]["periods"]
         def brief(k):
@@ -724,7 +735,8 @@ def station_outputs(stations: list[dict], data, hours, init, col, generated) -> 
         g = st["nbm_grid"]
         fc = point_forecast(data, hours, init, col[(g["i"], g["j"])], st["elev_ft"], g.get("elev_ft"),
                             ZoneInfo(st.get("tz") or "America/Denver"))
-        out[st["id"]] = {"id": st["id"], "name": st["name"], "tz": st.get("tz"), "source": SOURCE,
+        sdoc = {"points": {"point": {"elev_ft": st["elev_ft"], "grid_elev_ft": g.get("elev_ft"), "grid": [g["i"], g["j"]], **fc}}}
+        out[st["id"]] = {"summary": daily_summary(sdoc), "id": st["id"], "name": st["name"], "tz": st.get("tz"), "source": SOURCE,
                          "cycle": init.strftime("%Y%m%d%H"), "liquid_cycle": liquid_cycle(init, data), "issued": init.strftime("%Y-%m-%dT%H:%MZ"),
                          "generated_at": generated, "times": times, "fhours": hours, "station": st,
                          "points": {"point": {"elev_ft": st["elev_ft"], "grid_elev_ft": g.get("elev_ft"),
