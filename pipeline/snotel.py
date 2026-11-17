@@ -11,8 +11,10 @@ Outputs
 
 from __future__ import annotations
 
+import json
 import logging
-from datetime import timedelta
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -37,6 +39,59 @@ QC_LIMITS = {
 # --------------------------------------------------------------------------
 # Fetching
 # --------------------------------------------------------------------------
+
+class SnotelUnavailable(RuntimeError):
+    """The AWDB service is down or returned nothing usable. `status` is merged into the source's
+    meta.json entry (stale / unavailable, ages, dates) by run_obs."""
+
+    def __init__(self, message: str, status: dict | None = None):
+        super().__init__(message)
+        self.status = status or {}
+
+
+_clock = time.monotonic          # tests replace this to simulate a slow service
+
+
+class Deadline:
+    """Hard overall time budget for one source run (a down AWDB used to cost ~5 min per hourly run)."""
+
+    def __init__(self, seconds: float):
+        self.end = _clock() + seconds
+
+    def left(self) -> float:
+        return self.end - _clock()
+
+    def check(self) -> None:
+        if self.left() <= 0:
+            raise SnotelUnavailable("SNOTEL fetch hit its time limit")
+
+
+def _get(session, url: str, params: dict, deadline: Deadline | None = None, timeout: float | None = None):
+    """One request through the session's fast (low-retry) variant, never longer than the deadline."""
+    s = getattr(session, "fast", session)
+    t = timeout or session.request_timeout
+    if deadline is not None:
+        deadline.check()
+        t = max(1.0, min(t, deadline.left()))
+    r = s.get(url, params=params, timeout=t)
+    r.raise_for_status()
+    return r
+
+
+def probe(session, timeout: float = 10.0) -> None:
+    """Cheap health check (one station, short timeout): raises SnotelUnavailable when AWDB is down, so a
+    dead service costs seconds, not minutes. The next hourly run simply tries again."""
+    try:
+        r = _get(session, f"{AWDB}/stations", {"stationTriplets": "1308:UT:SNTL", "returnStationElements": "false"},
+                 timeout=timeout)
+        rows = r.json()
+    except SnotelUnavailable:
+        raise
+    except Exception as exc:
+        raise SnotelUnavailable(f"AWDB health probe failed: {str(exc)[:160]}") from exc
+    if not isinstance(rows, list):
+        raise SnotelUnavailable("AWDB health probe returned an unexpected payload")
+
 
 def normalize_station(row: dict) -> dict | None:
     trip = row.get("stationTriplet")
@@ -75,7 +130,7 @@ def utc_offset(data_tz, state: str | None, lon: float) -> float:
     return -7.0
 
 
-def fetch_stations(session, states: Iterable[str]) -> list[dict]:
+def fetch_stations(session, states: Iterable[str], deadline: Deadline | None = None) -> list[dict]:
     """Active SNOTEL stations for the given states (one request per state)."""
     stations: list[dict] = []
     for st in states:
@@ -87,9 +142,9 @@ def fetch_stations(session, states: Iterable[str]) -> list[dict]:
             "returnReservoirMetadata": "false",
         }
         try:
-            r = session.get(f"{AWDB}/stations", params=params, timeout=session.request_timeout)
-            r.raise_for_status()
-            rows = r.json()
+            rows = _get(session, f"{AWDB}/stations", params, deadline).json()
+        except SnotelUnavailable:
+            raise
         except Exception as exc:  # keep going with other states
             log.warning("SNOTEL station list failed for %s: %s", st, exc)
             continue
@@ -126,7 +181,7 @@ def parse_data(payload: list) -> dict[str, dict[str, list[tuple]]]:
     return out
 
 
-def _awdb_data(session, triplets, elements, duration, begin, end, tendency="NONE"):
+def _awdb_data(session, triplets, elements, duration, begin, end, tendency="NONE", deadline=None):
     params = {
         "stationTriplets": ",".join(triplets),
         "elements": ",".join(elements),
@@ -139,9 +194,7 @@ def _awdb_data(session, triplets, elements, duration, begin, end, tendency="NONE
         "returnOriginalValues": "false",
         "returnSuspectData": "false",
     }
-    r = session.get(f"{AWDB}/data", params=params, timeout=session.request_timeout)
-    r.raise_for_status()
-    return parse_data(r.json())
+    return parse_data(_get(session, f"{AWDB}/data", params, deadline).json())
 
 
 # --------------------------------------------------------------------------
@@ -270,13 +323,119 @@ def _chunks(seq: list, n: int):
         yield seq[i : i + n]
 
 
+# --------------------------------------------------------------------------
+# Last good copy (stale handling)
+# --------------------------------------------------------------------------
+
+def feature_obs_utc(f: dict) -> datetime | None:
+    """UTC time of a station feature's latest observation (obs_time is station-local standard time)."""
+    props = f.get("properties") or {}
+    ot = props.get("obs_time")
+    if not ot:
+        return None
+    try:
+        local = datetime.strptime(ot, "%Y-%m-%d %H:%M")
+    except ValueError:
+        return None
+    lon = (f.get("geometry") or {}).get("coordinates", [-111.0])[0]
+    off = utc_offset(None, props.get("state"), float(lon))
+    return (local - timedelta(hours=off)).replace(tzinfo=timezone.utc)
+
+
+def load_previous(outdir: Path) -> list[dict]:
+    """Station features of the last snotel.geojson in outdir (the previous good copy), or []."""
+    try:
+        gj = json.loads((outdir / "snotel.geojson").read_text(encoding="utf-8"))
+        return [f for f in gj.get("features", []) if f.get("properties", {}).get("triplet")]
+    except (OSError, ValueError):
+        return []
+
+
+def split_by_age(features: list[dict], now: datetime, max_age_h: float) -> tuple[list[dict], list[dict]]:
+    """(usable, too old) previous features. A feature without a parsable observation time is too old."""
+    ok, old = [], []
+    for f in features:
+        t = feature_obs_utc(f)
+        (ok if t is not None and (now - t).total_seconds() / 3600 <= max_age_h else old).append(f)
+    return ok, old
+
+
+def _station_file(outdir: Path, props: dict) -> Path:
+    return outdir / (props.get("file") or f"snotel/{props['triplet'].replace(':', '_')}.json")
+
+
+def _iso(t: datetime | None) -> str | None:
+    return t.strftime("%Y-%m-%dT%H:%MZ") if t else None
+
+
+def _stale(f: dict, now: datetime) -> dict:
+    """A previous feature kept as is (ORIGINAL timestamps), flagged stale with its age in hours."""
+    age = round((now - feature_obs_utc(f)).total_seconds() / 3600, 1)
+    return {**f, "properties": {**f["properties"], "stale": True, "age_h": age}}
+
+
 def run(cfg: dict, session, outdir: Path) -> dict:
+    """Fetch SNOTEL, or fail fast and fall back to the last good copy (never older than max_age_hours).
+
+    Fresh data replaces everything, so recovery needs no manual step. When AWDB is down, stations whose
+    latest observation is younger than max_age_hours stay as they were, with their ORIGINAL timestamps and
+    `stale`/`age_h` flags, and the status says stale; older ones are removed, and when nothing is left the
+    source reports "unavailable" with the last observation date, so an old value is never shown as current.
+    """
     scfg = cfg["snotel"]
+    max_age = float(scfg.get("max_age_hours", 48))
+    now = utcnow()
+    previous = load_previous(outdir)
+    usable_prev, _ = split_by_age(previous, now, max_age)
+    try:
+        return _fetch_all(cfg, session, outdir, scfg, Deadline(float(scfg.get("max_seconds", 600))), usable_prev, now)
+    except SnotelUnavailable as exc:
+        raise _fall_back(exc, outdir, previous, usable_prev, now, max_age) from exc
+    except Exception as exc:                      # any other failure of the fetch is treated the same way
+        raise _fall_back(SnotelUnavailable(str(exc)[:300]), outdir, previous, usable_prev, now, max_age) from exc
+
+
+def _fall_back(exc: SnotelUnavailable, outdir: Path, previous: list[dict], usable: list[dict], now: datetime,
+               max_age: float) -> SnotelUnavailable:
+    """Keep the usable previous copy (flagged stale), drop the rest; fill exc.status for meta.json."""
+    newest = max((t for t in (feature_obs_utc(f) for f in previous) if t), default=None)
+    keep = {f["properties"]["triplet"] for f in usable}
+    dropped = 0
+    for f in previous:
+        if f["properties"]["triplet"] not in keep:
+            try:
+                _station_file(outdir, f["properties"]).unlink()
+            except OSError:
+                pass
+            dropped += 1
+    if usable:
+        feats = [_stale(f, now) for f in usable]
+        through = max(feature_obs_utc(f) for f in usable)
+        age_h = round((now - through).total_seconds() / 3600, 1)
+        write_json(outdir / "snotel.geojson", feature_collection(feats, stale=True, observed_through=_iso(through),
+                                                                 checked_at=_iso(now)))
+        log.warning("SNOTEL down (%s): keeping %d stations from the last good copy (%.1f h old, max %.0f h), "
+                    "dropped %d older", exc, len(feats), age_h, max_age, dropped)
+        exc.status = {"stale": True, "age_h": age_h, "observed_through": _iso(through), "count": len(feats),
+                      "dropped_too_old": dropped}
+    else:
+        try:
+            (outdir / "snotel.geojson").unlink()
+        except OSError:
+            pass
+        log.warning("SNOTEL down (%s): no usable previous copy (max age %.0f h): unavailable", exc, max_age)
+        exc.status = {"unavailable": True, "last_observed": _iso(newest), "dropped_too_old": dropped}
+    return exc
+
+
+def _fetch_all(cfg: dict, session, outdir: Path, scfg: dict, deadline: Deadline, usable_prev: list[dict],
+               now: datetime) -> dict:
     elements = scfg["elements"]
     min_median = float(scfg.get("min_median_swe_in", 1.0))
-    stations = fetch_stations(session, cfg["region"]["states"])
+    probe(session, float(scfg.get("probe_timeout_s", 10)))
+    stations = fetch_stations(session, cfg["region"]["states"], deadline)
     if not stations:
-        raise RuntimeError("no SNOTEL stations returned")
+        raise SnotelUnavailable("no SNOTEL stations returned")
 
     # AWDB dates are station-local standard time. Asking a little past "now"
     # in Pacific Standard Time (UTC-8) covers every western station.
@@ -287,17 +446,27 @@ def run(cfg: dict, session, outdir: Path) -> dict:
     d_begin = (now_pst - timedelta(days=3)).strftime("%Y-%m-%d")
 
     by_trip = {s["triplet"]: s for s in stations}
-    features, failed_chunks, failed_stations = [], 0, 0
+    features, failed_chunks, failed_stations, in_a_row = [], 0, 0, 0
+    max_in_a_row = int(scfg.get("max_consecutive_chunk_failures", 3))
     for chunk in _chunks(list(by_trip), scfg["chunk_size"]):
         try:
-            hourly = _awdb_data(session, chunk, elements, "HOURLY", begin, end)
+            deadline.check()
+            hourly = _awdb_data(session, chunk, elements, "HOURLY", begin, end, deadline=deadline)
+            in_a_row = 0
+        except SnotelUnavailable as exc:        # out of time: keep what we have, else give up
+            log.warning("SNOTEL stopped early: %s", exc)
+            break
         except Exception as exc:
             failed_chunks += 1
+            in_a_row += 1
             log.warning("SNOTEL hourly chunk failed (%s...): %s", chunk[0], exc)
+            if in_a_row >= max_in_a_row:        # the service died mid-run: stop wasting the run
+                log.warning("SNOTEL: %d chunks in a row failed, stopping", in_a_row)
+                break
             continue
         try:
-            daily = _awdb_data(session, chunk, ["WTEQ"], "DAILY", d_begin, d_end, "MEDIAN")
-        except Exception as exc:
+            daily = _awdb_data(session, chunk, ["WTEQ"], "DAILY", d_begin, d_end, "MEDIAN", deadline=deadline)
+        except Exception as exc:                # includes the time limit: medians are optional
             log.info("SNOTEL median lookup failed (%s...): %s", chunk[0], exc)
             daily = {}
 
@@ -326,11 +495,20 @@ def run(cfg: dict, session, outdir: Path) -> dict:
             props["file"] = f"snotel/{fname}.json"
             props.update(summary)
             features.append(feature(st["lon"], st["lat"], props))
+    return _finish(outdir, features, usable_prev, now, failed_chunks, failed_stations)
 
-    write_json(outdir / "snotel.geojson", feature_collection(features))
-    log.info("SNOTEL: wrote %d stations (%d failed chunks, %d stations skipped)",
-             len(features), failed_chunks, failed_stations)
+
+def _finish(outdir: Path, features: list[dict], usable_prev: list[dict], now: datetime, failed_chunks: int,
+            failed_stations: int) -> dict:
     if not features:
-        raise RuntimeError("SNOTEL returned no usable data")
-    return {"count": len(features), "failed_chunks": failed_chunks,
-            "skipped_stations": failed_stations}
+        raise SnotelUnavailable("SNOTEL returned no usable data")
+    # stations this run did not refresh keep their previous copy (original timestamps, flagged stale)
+    fresh = {f["properties"]["triplet"] for f in features}
+    carried = [_stale(f, now) for f in usable_prev if f["properties"]["triplet"] not in fresh]
+    write_json(outdir / "snotel.geojson", feature_collection(features + carried, stale=False, checked_at=_iso(now)))
+    log.info("SNOTEL: wrote %d stations (%d carried from the last good copy, %d failed chunks, %d stations skipped)",
+             len(features), len(carried), failed_chunks, failed_stations)
+    out = {"count": len(features), "failed_chunks": failed_chunks, "skipped_stations": failed_stations}
+    if carried:
+        out["carried_stale"] = len(carried)
+    return out

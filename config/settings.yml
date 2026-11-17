@@ -23,6 +23,14 @@ snotel:
   # Hide "% of median SWE" when the median itself is below this (inches).
   # Early-season medians are tiny, so 0.7" vs 0.175" would read as 400%.
   min_median_swe_in: 1.0
+  # Outage handling (the NRCS AWDB service can be down for days): a one-station health probe fails fast,
+  # the whole fetch has a hard time limit, and three failed chunks in a row stop the run. A down source
+  # keeps the previous good copy only while its latest observation is younger than max_age_hours
+  # (ORIGINAL timestamps, flagged stale); older data is removed and shown as "unavailable".
+  probe_timeout_s: 10
+  max_seconds: 600
+  max_consecutive_chunk_failures: 3
+  max_age_hours: 48
 
 asos:
   enabled: true

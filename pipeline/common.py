@@ -39,6 +39,14 @@ def make_session(cfg: dict) -> requests.Session:
     s.mount("http://", HTTPAdapter(max_retries=retry))
     s.headers["User-Agent"] = cfg.get("http", {}).get("user_agent", "snow-wx")
     s.request_timeout = cfg.get("http", {}).get("timeout", 60)  # type: ignore[attr-defined]
+    # fail-fast variant for sources that handle an outage themselves (SNOTEL): one quick retry, so a down
+    # service costs seconds, not the minutes the polite retries above would take
+    fast = requests.Session()
+    quick = Retry(total=1, backoff_factor=1, status_forcelist=(429, 500, 502, 503, 504), allowed_methods=("GET",))
+    fast.mount("https://", HTTPAdapter(max_retries=quick))
+    fast.mount("http://", HTTPAdapter(max_retries=quick))
+    fast.headers["User-Agent"] = s.headers["User-Agent"]
+    s.fast = fast  # type: ignore[attr-defined]
     return s
 
 
