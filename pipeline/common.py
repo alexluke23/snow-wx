@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -96,6 +97,9 @@ def plural(n: int, word: str) -> str:
 
 
 POINT_SIDE_FILES = ("summary.json", "exceed_summary.json", "calibration.json")
+# catalog ids are lowercase slugs ("alta-ski-area", "sp-segelsen-creek-sno-park", "snotel-1000-or-sntl"): anything else
+# (map_points.json, meta.json, ski_areas.json ...) is never a point file
+POINT_FILE_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*\.json$")
 
 
 def stale_point_files(out: Path) -> list[Path]:
@@ -119,8 +123,8 @@ def orphan_point_files(out: Path, keep: set[str]) -> list[Path]:
     files that look like our own output are returned (`{"id": <file stem>, "points": ..., "issued": ...}`),
     only directly inside `out`, never anything else (a mistaken --out like build/data is safe)."""
     found = []
-    for f in out.glob("*.json"):
-        if f.name in keep or f.name in POINT_SIDE_FILES:
+    for f in out.glob("*.json"):                      # direct children only: layers/, ndfd/ ... are never entered
+        if f.name in keep or f.name in POINT_SIDE_FILES or not POINT_FILE_NAME.match(f.name):
             continue
         try:
             doc = json.loads(f.read_text(encoding="utf-8"))

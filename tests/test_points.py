@@ -468,3 +468,57 @@ def test_cleanup_on_fresh_runner_and_dropped_areas(tmp_path):
     # an old summary that lists a dropped area deletes it up front
     (tmp_path / "summary.json").write_text(_json.dumps({"cycle": "1", "areas": [{"id": "gone-area"}]}))
     assert "gone-area.json" in {f.name for f in stale_point_files(tmp_path)} and "meta.json" not in {f.name for f in stale_point_files(tmp_path)}
+
+
+def test_totals_are_marked_native_only_for_one_native_window():
+    """Composite totals (several 6 h percentile windows added) carry native=False so no range is shown."""
+    init = datetime(2026, 11, 7, 12, tzinfo=timezone.utc)
+    hours = list(range(1, 37)) + list(range(42, 73, 6))
+    data = {h: _fake_hour(h) for h in hours}
+    fc = point_forecast(data, hours, init, 0, elev_ft=9000, grid_ft=8000, tz=ZoneInfo("America/Denver"))
+    assert fc["totals"]["24h"]["native"] is False        # only 6 h percentiles: four windows added
+    assert fc["totals"]["72h"]["native"] is False
+    for h in (24, 72):                                     # now NBM's own 24 h / 72 h windows exist
+        data[h].update({f"snow{h}_p{q}": np.full(2, float(q)) for q in (10, 25, 50, 75, 90)})
+    fc = point_forecast(data, hours, init, 0, elev_ft=9000, grid_ft=8000, tz=ZoneInfo("America/Denver"))
+    assert fc["totals"]["24h"]["native"] is True and fc["totals"]["72h"]["native"] is True
+    assert fc["totals"]["24h"]["snow_lo"] == 10.0 and fc["totals"]["24h"]["snow_hi"] == 90.0   # p10/p90 x P(snow)=1
+
+
+def test_archive_rows_never_contain_composite_totals_ranges():
+    """B (Nov 16): nbm_rows reads det from the 12 h periods, p10/p50/p90 and P(>=X) from the native exceedance
+    windows only; the totals' snow_lo/snow_hi (possibly composite) are never read."""
+    from pipeline import archive
+    ex = {"24h": {"start": ["2026-11-09T12:00Z"], "end": ["2026-11-10T12:00Z"], "thr": [4.0], "p": [[30]],
+                  "pct": {"10": [1.0], "50": [3.0], "90": [9.0]}, "mean": [4.0], "cell_mean": [4.5]}}
+    pt = {"elev_ft": 9000, "grid_elev_ft": 8000, "periods": [], "exceed": ex,
+          "totals": {"24h": {"snow_in": 4.0, "snow_lo": 111.0, "snow_hi": 999.0, "native": False}}}
+    rows = archive.nbm_rows({"id": "a", "cycle": "2026110819", "points": {"summit": pt}})
+    assert rows and all(r.get("p10") == 1.0 and r.get("p90") == 9.0 for r in rows if r.get("hours") == 24)
+    assert not any(111.0 in r.values() or 999.0 in r.values() for r in rows)
+
+
+def test_cleanup_never_touches_layers_or_ndfd_and_matching_is_strict(tmp_path):
+    import json as _json
+    from pipeline.common import orphan_point_files, stale_point_files
+    def doc(i):
+        return _json.dumps({"id": i, "points": {"summit": {}}, "issued": "2026-11-16T01:00Z"})
+    data = tmp_path / "data"
+    (data / "points" / "layers").mkdir(parents=True)
+    (data / "ndfd").mkdir()
+    (data / "points" / "layers" / "index.json").write_text(doc("index"))
+    (data / "points" / "layers" / "nbm24.json").write_text(doc("nbm24"))
+    (data / "ndfd" / "alta.json").write_text(doc("alta"))
+    (data / "ndfd" / "summary.json").write_text(_json.dumps({"issued": "x", "areas": [{"id": "alta"}]}))
+    (data / "points" / "meta.json").write_text(_json.dumps({"generated_at": "x", "sources": {}}))   # real shape
+    for name in ("map_points.json", "ski_areas.json", "Alta-Ski.json", "alta_2.json", "a.b.json"):   # odd names, even with point-like content
+        (data / "points" / name).write_text(doc(name[:-5]))
+    (data / "points" / "alta.json").write_text(doc("alta"))
+    (data / "points" / "summary.json").write_text(_json.dumps({"cycle": "1", "areas": [{"id": "alta"}]}))
+    pts = data / "points"
+    touched = [f.relative_to(data).as_posix() for f in stale_point_files(pts) + orphan_point_files(pts, set())]
+    assert sorted(set(touched)) == ["points/alta.json", "points/summary.json"]
+    # strict: orphans are slug-named files only; layers/ and ndfd/ and odd names are untouched
+    assert [f.name for f in orphan_point_files(pts, set())] == ["alta.json"]
+    # pointing --out at the parent by mistake: no summary.json there, nothing is deleted
+    assert stale_point_files(data) == [] and orphan_point_files(data, set()) == []

@@ -91,8 +91,10 @@
         if (ea?.pop) { pop = ea.pop[st.pw]?.[st.pd] ?? null; sl = ea.sl?.[st.pw]?.[st.pd] ?? null; }
       }
       // 7/10-day ranges were sums of NBM windows (owner Nov 16: dropped); only native 24/48/72 h ranges are shown
-      const longWin = st.w === "7d" || st.w === "10d";
-      return { a, snow: t ? t[0] : null, lo: t && !longWin ? t[1] : null, hi: t && !longWin ? t[2] : null, pop, stype: t && t.length > 5 ? t[5] : null,
+      // Ranges only from ONE native NBM window (t[6]): 7/10-day ranges and composite ones (percentiles of
+      // several windows added) are never shown; expected total only (owner Nov 16)
+      const nat = !!(t && t.length > 6 && t[6] === true) && st.w !== "7d" && st.w !== "10d";
+      return { a, snow: t ? t[0] : null, lo: t && nat ? t[1] : null, hi: t && nat ? t[2] : null, pop, stype: t && t.length > 5 ? t[5] : null,
                obs: o, sl, slVsBase: sl === null ? null : sl - a.elev.base, gust: src?.gust_max_72h_mph ?? null,
                prob, pmean, alerts: alerts[a.id] || [] };
     });
@@ -176,7 +178,7 @@
         `probabilistic guidance for the 2.5 km grid cell. ${SEPARATE} Small number: NBM's expected amount in the same window (about a 1-in-3 chance of reaching it). ` +
         `Snow level: lowest while precipitation is likely in that window.`
       : `Expected snowfall at the ${st.e} (${st.src === "nws" ? "NWS forecast, 2.5 km grid cell" : "NBM"})` +
-        `${st.src === "nws" ? "" : (st.w === "7d" || st.w === "10d" ? "; expected total only beyond 72 h (no range)" : "; small numbers: NBM 10–90%")}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest while precipitation is likely in the window, vs the base ` +
+        `${st.src === "nws" ? "" : (st.w === "7d" || st.w === "10d" ? "; expected total only beyond 72 h (no range)" : "; small numbers: NBM 10–90% where NBM gives it for the whole window")}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest while precipitation is likely in the window, vs the base ` +
         `("–" when the chance of precipitation is under 20 %). Gust: highest summit gust in 72 h (NBM). ★ favorites list first.`;
     $("rows").querySelectorAll(".star").forEach((b) => b.addEventListener("click", () => {
       const s = favs(); s.has(b.dataset.id) ? s.delete(b.dataset.id) : s.add(b.dataset.id); saveFavs(s); render();

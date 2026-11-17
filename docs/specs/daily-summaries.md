@@ -24,6 +24,11 @@ A deterministic rules engine, **not** an LLM, run in the points pipeline.
 | Deep powder day | p50 24 h ≥ 8" **and** P(≥ 12") ≥ 30% **and** SLR p50 ≥ 14 **and** summit gust < 25 mph | "Deep, light snow likely…" |
 | Storm cycle | 72 h p50 ≥ 18" | "Multi-day storm: X–Y in by …" |
 
+> **Native windows only (owner Nov 16):** any summary rule that uses p50 or P(≥X) must require a native NBM window
+> (`totals[...]["native"] === true` for 24/48/72 h; `days[].range_window` set; `exceed` windows are always native).
+> When the window is composite (`native: false`: percentiles of several 6 h windows added, as on fallback cycles) or
+> beyond 72 h, lower the rule's confidence or skip it and use the expected total only.
+>
 > **Storm cycle copy:** use NBM's native 72 h snowfall window (`totals["72h"]`, its p10/p50/p90 from the native
 > `snow72` percentiles) for "X–Y in". Never a range built by adding day or 6 h percentiles (owner decision Nov 16).
 > The 7/10-day ranges no longer exist; use the expected total for longer spans.

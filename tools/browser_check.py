@@ -356,7 +356,9 @@ def check_charts(b: Browser, base: str, log):
           return {tiles, partialLegend: !!(leg && /partial day — expected amount, no range/.test(leg.getAttribute('aria-label') || '')),
                   sum: sum ? sum.textContent : ''}; })()""")
         log(f"  charts {area}: tiles {t7['tiles']} partial legend {t7['partialLegend']}")
-        need(all("expected total only" in r if "7 days" in l or "10 days" in l else "–" in r for l, r in t7["tiles"]), f"{area}: 7/10-day tiles still show a range: {t7['tiles']}")
+        need(all("expected total only" in r if ("7 days" in l or "10 days" in l) else ("–" in r or "expected total only" in r) for l, r in t7["tiles"]),
+             f"{area}: 7/10-day tiles still show a range: {t7['tiles']}")
+        need(all("10–90" not in r for l, r in t7["tiles"] if "7 days" in l or "10 days" in l), f"{area}: long-window tile shows a 10–90 range")
         # S11 step 4: accumulated = expected running total by day, no probability bars; ends at the 10-day total
         acc = b.eval("""(async () => {
           const d = await (await fetch('data/points/%s.json')).json();

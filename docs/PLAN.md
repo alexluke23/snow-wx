@@ -69,7 +69,7 @@ centers). Full text: `docs/ARCHIVE.md`.
   Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
 - **Known issues:** **live SNOTEL data missing** (Nov 16: AWDB fetch returned no stations; `snotel.geojson` 404): fix first in
   Sprint 1 with W5a; other sources are fresh (points 13Z/19Z, NDFD, NOHRSC, models). Obs map Lighthouse mobile 71–88
-  (bimodal; target ≥ 85); site ≈ 240 MB (recheck vs §5.10); GitHub's scheduled runs are best-effort.
+  (bimodal run to run; target: median of ≥ 3 interleaved runs ≥ 85); site ≈ 240 MB (recheck vs §5.10); GitHub's scheduled runs are best-effort.
 
 ---
 
@@ -101,6 +101,7 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
 | Nov 16 | **Drop the 7/10-day 10–90% ranges** (Finder, My mountains, area tiles): expected total only; keep native 24/48/72 h ranges. |
 | Nov 16 | Partial first day keeps the **hatched grey expected bar**; legend/tooltip/aria: "partial day — expected amount, no range". |
 | Nov 16 | SNOTEL 24 h depth change on the obs map: gains use NWS colors, losses stay brown, legend titled "Snow depth change" (compaction ≠ snowfall). |
+| Nov 16 | **Composite ranges are never shown:** where a 24/48/72 h total would add several 6 h percentile windows (fallback cycles), show the expected total only; points JSON marks totals `native: true/false`. Archive columns unchanged (they never carry composite ranges). Lighthouse target: median of ≥ 3 interleaved runs ≥ 85. |
 | Nov 16 | Model-map snowfall colors stay as is for now (backlog §8.4). **Guard:** points JSON and the forecast archive keep their existing fields (p10/p50/p90, P(≥4/8/12″), 24/48/72 h). |
 
 ---
