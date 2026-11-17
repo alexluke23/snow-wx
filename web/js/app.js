@@ -570,7 +570,7 @@
   // One line per source: obs fetched by this build plus products merged in from
   // other jobs (NBM points, model maps, NOHRSC), each with its own time.
   const SOURCE_LABEL = { snotel: "SNOTEL", asos: "ASOS", avalanche: "Avalanche", alerts: "NWS alerts", points: "NBM forecasts",
-    models: "Model maps", nohrsc: "NOHRSC snow" };
+    models: "Model maps", nohrsc: "NOHRSC snow", ndfd: "NWS forecasts (NDFD)" };
   const UNIT = { snotel: "stations", asos: "stations", avalanche: "zones" };
   const ago = (iso) => {
     if (!iso) return "";

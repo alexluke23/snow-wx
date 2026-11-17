@@ -371,7 +371,15 @@ def _iso(t: datetime | None) -> str | None:
 def _stale(f: dict, now: datetime) -> dict:
     """A previous feature kept as is (ORIGINAL timestamps), flagged stale with its age in hours."""
     age = round((now - feature_obs_utc(f)).total_seconds() / 3600, 1)
-    return {**f, "properties": {**f["properties"], "stale": True, "age_h": age}}
+    props = {**f["properties"], "stale": True, "age_h": age}
+    # a change over the last 24 h / 72 h says nothing once the data are older than that window: hide it
+    # (owner Nov 17); the obs_time and every other timestamp stay exactly as originally observed
+    for window, keys in ((24, ("depth_24h", "swe_24h", "precip_24h", "tmax_24h", "tmin_24h")), (72, ("depth_72h", "swe_72h"))):
+        if age > window:
+            for k in keys:
+                if k in props:
+                    props[k] = None
+    return {**f, "properties": props}
 
 
 def run(cfg: dict, session, outdir: Path) -> dict:

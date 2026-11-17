@@ -53,7 +53,31 @@ Per run: a one-station health probe (10 s), then stations per state and hourly/d
   (banner, greyed markers), station panel and area-page "Recent observations". Old values are never shown as current.
 - **Per-source history** (`meta.json`): `last_success_at`, `consecutive_failures`, `outage_since` (history needs the previous
   meta.json; on a fresh CI runner it restarts until the previous live copy is restored, see PLAN §2).
+- **Previous copy on CI (owner Nov 17: option A):** `pipeline restore` downloads the live site's `meta.json`, `snotel.geojson`
+  and the young station files (`SITE_ORIGIN` / `site.origin`) before every build; no secrets, no extra assets. Timestamps are
+  preserved, so a stale copy can never be re-stamped fresh (test: five failed runs, `obs_time`/files unchanged, age grows).
+  While stale, the 24 h / 72 h changes are hidden once the data are older than that window.
 - NBM/NDFD forecasts at SNOTEL sites use the committed `data/snotel_points.json`, not AWDB.
+
+### 5.2c Data-health monitoring (`pipeline/monitor.py`, W5a slice)
+- `meta.json` per source: `last_success_at`, `consecutive_failures`, `outage_since`. Limits per source in config
+  `monitoring.sources`, from the source's real cadence: hourly obs sources = 3 consecutive failures or 6 h; points (job every
+  6 h, ~1.7 h model lag) 14 h; NDFD and model maps (job every 3 h) 10 h; NOHRSC 30 h.
+- The `monitor` job in `update-site.yml` runs after the deploy (`needs: [build, deploy]`, `if: always()`, `continue-on-error`),
+  reads the LIVE meta.json and opens/updates/closes ONE issue per unhealthy source ("Data health: <source>", label
+  `data-health`, assigned to `monitoring.assignee` so GitHub e-mails them). Uses only the workflow's `GITHUB_TOKEN`
+  (`issues: write`); no secrets. It cannot fail the deploy: separate job after deploy, `continue-on-error`, script always exits 0.
+- Delivery: GitHub e-mails the assignee (Settings → Notifications → e-mail on); the GitHub mobile app gives push.
+- **Known gap (plan, not built): a check inside the hourly workflow cannot notice that the workflow did not run at all**
+  (GitHub's schedules are best-effort and can pause for hours). Independent options for W5a, in order of recommendation:
+  1. **Dead-man's-switch heartbeat (Healthchecks.io free tier, or similar):** the hourly job `curl`s a ping URL at the end;
+     the service e-mails the owner when no ping arrives within a grace period (e.g. 3 h). Independent of GitHub, so it also
+     catches a paused scheduler. Needs one secret (`HEALTHCHECK_URL`) and an account; the ping step is `continue-on-error`.
+  2. **Cloudflare Worker cron (after W1):** a scheduled Worker fetches the live `meta.json`, e-mails/pushes when `generated_at`
+     is older than ~3 h, and can call `workflow_dispatch` to restart the pipeline (this is also the "external cron trigger"
+     of PLAN §11, decision 8). Needs a fine-grained token secret.
+  3. **Second GitHub scheduled workflow (`watchdog.yml`, every 6 h, offset):** cheap and secret-free, but it shares GitHub's
+     scheduler, so it only protects against a failure of one workflow, not of the scheduler.
 
 ### 5.3 NWS official layer (NDFD + alerts + discussion)
 `api.weather.gov` with our User-Agent; `/points` lookups cached in the catalog.
