@@ -1,0 +1,29 @@
+# Offline unit tests on every pull request (no network, no secrets, no deploy). The hourly build in
+# update-site.yml runs the same tests before deploying; this catches problems before merge.
+name: Tests
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: Unit tests (offline)
+        shell: bash -el {0}
+        run: pytest -q

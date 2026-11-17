@@ -66,6 +66,12 @@ def product_status(outdir: Path) -> dict:
                          "at": js.get("generated_at"), **({"quality": q} if q else {})}
     except (OSError, ValueError, KeyError):
         out["points"] = {"ok": False, "error": "no NBM point forecasts yet"}
+    nd = outdir / "data" / "ndfd" / "index.json"
+    try:
+        js = json.loads(nd.read_text(encoding="utf-8"))
+        out["ndfd"] = {"ok": True, "detail": f"NDFD {js['issued'][5:13].replace('T', ' ')}Z", "at": js.get("generated_at")}
+    except (OSError, ValueError, KeyError):
+        out["ndfd"] = {"ok": False, "error": "no NWS (NDFD) forecasts yet"}
     nh = outdir / "data" / "nohrsc" / "index.json"
     try:
         js = json.loads(nh.read_text(encoding="utf-8"))
@@ -90,9 +96,22 @@ def product_status(outdir: Path) -> dict:
     return out
 
 
+def with_history(entry: dict, prev: dict | None) -> dict:
+    """Per-source history for meta.json (W5a): last_success_at, consecutive_failures, outage_since. `prev` is
+    the source's previous meta entry (None on a fresh runner: history then restarts, see PLAN §2)."""
+    prev = prev or {}
+    at = entry.get("at")
+    if entry.get("ok"):
+        return {**entry, "last_success_at": at, "consecutive_failures": 0}
+    return {**entry, "last_success_at": prev.get("last_success_at"),
+            "consecutive_failures": int(prev.get("consecutive_failures") or 0) + 1,
+            "outage_since": prev.get("outage_since") or at}
+
+
 def run_obs(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
     session = make_session(cfg)
     status = {}
+    prev_sources = read_meta(outdir).get("sources") or {}
     for name, func in SOURCES.items():
         if only and name not in only:
             continue
@@ -100,13 +119,17 @@ def run_obs(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
             continue
         t0 = time.time()
         try:
+            if os.environ.get("SIMULATE_FAILURE") == name and name != "snotel":      # workflow_dispatch test input
+                raise RuntimeError("simulated failure (SIMULATE_FAILURE)")
             info = func(cfg, session, outdir)
             status[name] = {"ok": True, **info}
         except Exception as exc:
             logging.getLogger("snow-wx").exception("%s failed", name)
-            status[name] = {"ok": False, "error": str(exc)[:300]}
+            # a source may attach details (SNOTEL: stale / unavailable, ages) to its exception
+            status[name] = {"ok": False, "error": str(exc)[:300], **(getattr(exc, "status", None) or {})}
         status[name]["seconds"] = round(time.time() - t0, 1)
         status[name]["at"] = utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        status[name] = with_history(status[name], prev_sources.get(name))
 
     write_meta(cfg, outdir, status)
     ok = [n for n, s in status.items() if s["ok"]]
@@ -201,6 +224,11 @@ def main(argv=None) -> int:
     p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("restore", help="restore the previous good SNOTEL copy from the live site (CI, before the build)")
+    p.add_argument("--out", default="build/data")
+    p.add_argument("--origin", default=None, help="live site origin (default: SITE_ORIGIN env or config site.origin)")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("archive", help="append forecasts + SNOTEL obs to the verification archive (CI)")
     p.add_argument("--data", default="build/data", help="site data folder (points/, ndfd/, snotel/)")
     p.add_argument("--release", default=None, help="GitHub release tag (default: config archive.release)")
@@ -238,6 +266,11 @@ def main(argv=None) -> int:
     cfg = load_config(args.config)
     from .cache import housekeeping
     housekeeping(REPO_ROOT, cfg)                 # prune data_cache (> 2 days), log disk use
+    if args.cmd == "restore":
+        from . import restore
+        info = restore.restore_previous(cfg, make_session(cfg), Path(args.out), args.origin)
+        print(f"restore: {info}")
+        return 0                                   # never fails the build
     if args.cmd == "archive":
         import tempfile
         from . import archive

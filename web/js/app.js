@@ -107,6 +107,8 @@
       hit: (full) => (full ? [-w / 2 - 2, -h / 2 - 2, w / 2 + 2, h / 2 + 2] : [-7, -7, 7, 7]),
       draw(ctx, x, y, full) {
         const sel = p.triplet === selected;
+        const a0 = ctx.globalAlpha;
+        if (p.stale) ctx.globalAlpha = 0.45;            // last good copy during an outage: greyed (fix-snotel)
         ctx.fillStyle = bg || "#fff";
         if (full) {
           rrect(ctx, x - w / 2, y - h / 2, w, h, 3);
@@ -122,6 +124,7 @@
           ctx.lineWidth = 1.2; ctx.strokeStyle = OUTLINE; ctx.fill(); ctx.stroke();
           if (sel) { ctx.strokeStyle = "#e6007e"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 8.5, 0, 2 * Math.PI); ctx.stroke(); }
         }
+        ctx.globalAlpha = a0;
       },
       onClick: () => selectSnotel(p),
     };
@@ -326,6 +329,7 @@
       <h2>${esc(p.name)}</h2>
       <div class="sub">SNOTEL ${esc(p.triplet)} · ${num(p.elev_ft, 0)} ft ·
         obs ${esc(p.obs_time || "–")} (local std. time)</div>
+      ${p.stale ? `<p class="snotel-note">Observations are ${Math.max(1, Math.round(p.age_h))} h old (SNOTEL data service not responding).</p>` : ""}
       <table class="metrics">
         <tr><td>Snow depth</td><td>${num(p.depth_in, 0, '"')}</td></tr>
         <tr><td>Depth change 24 / 72 hr</td><td>${signed(p.depth_24h, 0, '"')} / ${signed(p.depth_72h, 0, '"')}</td></tr>
@@ -345,7 +349,7 @@
       const ts = await getJSON(p.file, lastUpdated);
       drawChart(ts);
     } catch (e) {
-      $("chart").textContent = `Chart unavailable (${e.message})`;
+      $("chart").textContent = snotelInfo.text || `Chart unavailable (${e.message})`;
     }
   }
 
@@ -561,11 +565,12 @@
 
   // ---------------------------------------------------------------- load
   let lastUpdated = "";
+  let snotelInfo = { state: "unknown", text: "" };     // SNOTEL outage state from meta.json (snotel-status.js)
 
   // One line per source: obs fetched by this build plus products merged in from
   // other jobs (NBM points, model maps, NOHRSC), each with its own time.
   const SOURCE_LABEL = { snotel: "SNOTEL", asos: "ASOS", avalanche: "Avalanche", alerts: "NWS alerts", points: "NBM forecasts",
-    models: "Model maps", nohrsc: "NOHRSC snow" };
+    models: "Model maps", nohrsc: "NOHRSC snow", ndfd: "NWS forecasts (NDFD)" };
   const UNIT = { snotel: "stations", asos: "stations", avalanche: "zones" };
   const ago = (iso) => {
     if (!iso) return "";
@@ -579,7 +584,8 @@
       const unit = (n, u) => (n === 1 && /s$/.test(u) ? u.slice(0, -1) : u);
       const what = s.ok ? [s.count !== undefined ? `${s.count} ${unit(s.count, s.unit || UNIT[name] || "")}`.trim() : "",
         (s.detail || "").replace(/^1 (ski areas|offices|alerts|stations|layers|models) /, (m, u) => `1 ${u.slice(0, -1)} `)]
-        .filter(Boolean).join(" · ") : `failed (${esc(s.error)})`;
+        .filter(Boolean).join(" · ") : s.stale ? `stale: last observed ${Math.max(1, Math.round(s.age_h))} h ago`
+        : s.unavailable ? "unavailable (data service down)" : `failed (${esc(s.error)})`;
       const when = s.at ? ` <span class="hint" title="${esc(s.at)}">${ago(s.at)}</span>` : "";
       return `<li class="${s.ok ? "ok" : "bad"}">${esc(label)}: ${esc(what)}${when}</li>`;
     });
@@ -633,6 +639,9 @@
       lastUpdated = meta.generated_at;
       $("updated").textContent = `Updated ${localTime(meta.generated_at)}`;
       drawStatus(meta);
+      snotelInfo = snotelStatus(meta);
+      const note = $("snotel-note");
+      if (snotelInfo.text) { note.textContent = snotelInfo.text; note.hidden = false; }
     } catch (e) {
       $("updated").textContent = "No data yet – run the pipeline (see README).";
     }

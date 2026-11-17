@@ -26,3 +26,13 @@
 - **OG share cards:** 1200×630 per area (name, 72 h expected, snow level); top
   60 areas first.
 - **Performance:** area page LCP < 2.5 s on 4G; obs map Lighthouse mobile ≥ 85.
+
+### W1 cutover checklist (add items as they are found)
+- [ ] **Live origin in config/CI:** set `site.origin` in `config/settings.yml` (or the `SITE_ORIGIN` env/variable in the
+  workflows) to the new domain. It is used by `pipeline restore` (previous good SNOTEL copy + meta.json history, fetched from the
+  live site before each build) and `pipeline.monitor` (live meta.json). While both domains exist, keep restoring from whichever
+  one serves the newest deploy; after the cutover GitHub Pages is only a redirect stub and must NOT be the origin.
+- [ ] First build after the cutover: confirm `restore` logs stations restored (or "no copy" deliberately) and the monitor job
+  reads the new meta.json.
+- [ ] Data origin (R2) vs site origin: if `data/` moves to a data domain, `restore` and `monitor` need that origin instead.
+

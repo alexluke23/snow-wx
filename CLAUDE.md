@@ -175,7 +175,7 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 16 2026)**
+**Current state (Nov 17 2026, overnight run: fix-snotel finished, dev13 in progress; see the uncommitted dev13_report.md)**
 - Branch `dev11` is pushed; the owner opens the PR (no `gh` CLI or token here; branches have no CI, only main/schedule run
   the workflows). Contents: snow charts on native NBM windows ("Snowfall by day" p25–p75 bars, expected running total), NWS
   snowfall colors site-wide (colors.js), no 7/10-day ranges (expected total only), **no composite ranges anywhere** (points
@@ -184,10 +184,14 @@ Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-
 - Archive (docs/verification.md): `nbm_rows` builds det from the 12 h periods and p10/p50/p90 + P(≥X) from the native
   `exceed` windows (24/48/72 h ending 12Z); it never reads `totals` ranges, so composite ranges are not in the monthly CSVs
   (test `test_archive_rows_never_contain_composite_totals_ranges`). M9 needs no exclusion beyond that.
-- **Urgent, not fixed (found Nov 16):** the live site has no SNOTEL data: `meta.json` says `snotel: ok false, "no SNOTEL
-  stations returned"` after 308 s, and `data/snotel.geojson` / `data/snotel/*.json` return 404. The pipeline otherwise runs
-  on schedule (points 13Z/19Z 16 Nov, NDFD, NOHRSC, models all fresh). Fix AWDB fetch/fallback and keep the last good SNOTEL
-  data when a run fails (W5a: failure alert + status page).
+- **NRCS AWDB (SNOTEL) outage since Nov 16 (upstream; whole host returns 502).** Branch `fix-snotel` handles it: fail-fast
+  probe (a down run costs ~2 s), last good copy ≤ 48 h flagged stale then "unavailable", auto-recovery, per-source history in
+  meta.json, status wording in `web/js/snotel-status.js`, PR workflow `.github/workflows/tests.yml`. Owner decisions Nov 17
+  implemented: previous copy restored from the live site (`pipeline restore`, `SITE_ORIGIN`/`site.origin`, W1 checklist in
+  docs/specs/hosting-seo.md), 24/72 h changes hidden when older than their window, per-source data-health issues
+  (`pipeline/monitor.py`, config `monitoring`, `monitor` job after the deploy; check `gh`-created issues are assigned and
+  e-mails reach the owner after the first failure). Open: independent "workflow did not run" check (spec 5.2c, heartbeat
+  service recommended, needs the owner's account/secret).
 - Next (PLAN §8.2 Sprint 1): SNOTEL fix + W5a pipeline monitoring and data-status page, W1 hosting prep (brand name and domain
   not decided; configurable SITE_ORIGIN / DATA_ORIGIN, GitHub URLs as defaults), then W3 daily summaries (before W2), W2, W4.
 - Not started: storm-total tracker (PLAN §8.4), M7, M8 (ECMWF via Herbie `ifs`/`aifs`, attribution "© ECMWF, CC BY 4.0"),

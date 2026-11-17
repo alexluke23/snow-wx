@@ -67,8 +67,13 @@ centers). Full text: `docs/ARCHIVE.md`.
   site-wide, 7/10-day summed ranges removed. Details: `docs/ARCHIVE.md`.
 - **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas,
   Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
-- **Known issues:** **live SNOTEL data missing** (Nov 16: AWDB fetch returned no stations; `snotel.geojson` 404): fix first in
-  Sprint 1 with W5a; other sources are fresh (points 13Z/19Z, NDFD, NOHRSC, models). Obs map Lighthouse mobile 71–88
+- **Known issues:** **NRCS AWDB (SNOTEL) outage.** The whole `wcc.sc.egov.usda.gov` host returns 502 (REST API, WSDL, report
+  generator). **Outage window = between the last confirmed good run and the first failing run:** last good run: the
+  hourly build created ≈ 11:25 UTC Nov 16 (archive SNOTEL asset written 11:27:55 UTC); first failing run seen: 22:07 UTC
+  Nov 16 (live meta.json; GitHub's cron gaps mean runs between those were not inspected); still down Nov 17 02:21 UTC. The
+  archive's last SNOTEL day is 2026-11-16 12Z but it holds only 9 stations (a partial day; 15 Nov 12Z has 820). **M9 must exclude
+  SNOTEL obs from 2026-11-16 12Z (whole day, conservative) until recovery** (end date to be added). Handling (branch
+  fix-snotel): fail-fast probe, last good copy ≤ 48 h flagged stale, then "unavailable"; auto-recovery. Other sources are fresh (points, NDFD, NOHRSC, models). Obs map Lighthouse mobile 71–88
   (bimodal run to run; target: median of ≥ 3 interleaved runs ≥ 85); site ≈ 240 MB (recheck vs §5.10); GitHub's scheduled runs are best-effort.
 
 ---
@@ -101,6 +106,7 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
 | Nov 16 | **Drop the 7/10-day 10–90% ranges** (Finder, My mountains, area tiles): expected total only; keep native 24/48/72 h ranges. |
 | Nov 16 | Partial first day keeps the **hatched grey expected bar**; legend/tooltip/aria: "partial day — expected amount, no range". |
 | Nov 16 | SNOTEL 24 h depth change on the obs map: gains use NWS colors, losses stay brown, legend titled "Snow depth change" (compaction ≠ snowfall). |
+| Nov 17 | **SNOTEL outage handling accepted:** previous good copy from the live site (option A, `SITE_ORIGIN`/`site.origin`, on the W1 cutover checklist); stale ≤ 48 h with original timestamps (never re-stamped), 24/72 h changes hidden when older than their window; data-health GitHub issues per source with limits from each source's real cadence (config `monitoring`), assigned to the owner, monitor can never fail the deploy. Independent "workflow did not run" check proposed in `docs/specs/data-pipeline.md` 5.2c (heartbeat service recommended). |
 | Nov 16 | **Composite ranges are never shown:** where a 24/48/72 h total would add several 6 h percentile windows (fallback cycles), show the expected total only; points JSON marks totals `native: true/false`. Archive columns unchanged (they never carry composite ranges). Lighthouse target: median of ≥ 3 interleaved runs ≥ 85. |
 | Nov 16 | Model-map snowfall colors stay as is for now (backlog §8.4). **Guard:** points JSON and the forecast archive keep their existing fields (p10/p50/p90, P(≥4/8/12″), 24/48/72 h). |
 
