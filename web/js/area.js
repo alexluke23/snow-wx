@@ -574,15 +574,18 @@
     const st = a.nearest?.snotel?.[0];
     if (!st) { el.innerHTML = `<p class="hint">No SNOTEL station within range.</p>`; return; }
     let d;
+    const info = snotelStatus(await getJSON("data/meta.json").catch(() => null));   // outage wording (snotel-status.js)
     try { d = await getJSON(`data/snotel/${st.id.replace(/:/g, "_")}.json`); } catch {
-      el.innerHTML = `<p class="hint">${esc(st.name)}: no recent data.</p>`; return;
+      el.innerHTML = `<p class="hint">${info.state === "unavailable" || info.state === "stale" ? esc(info.text) : `${esc(st.name)}: no recent data.`}</p>`; return;
     }
+    // a stale copy (data service down) keeps its original times: say how old it is, never present it as current
+    const staleNote = info.state === "stale" ? `<p class="snotel-note" role="status">${esc(info.text)}</p>` : "";
     const series = d.SNWD_med3 || d.SNWD;
     const last = (arr) => { for (let i = arr.length - 1; i >= 0; i--) if (arr[i] !== null) return [arr[i], i]; return [null, -1]; };
     const [depth, i] = last(series);
     const prev = i >= 72 ? series[i - 72] : null;
     const chg = depth !== null && prev !== null ? depth - prev : null;
-    el.innerHTML = `<p><strong>${esc(st.name)}</strong> SNOTEL, ${ft(st.elev_ft)}${st.dist_km !== undefined ? ` (${st.dist_km} km away)` : ""}:
+    el.innerHTML = `${staleNote}<p><strong>${esc(st.name)}</strong> SNOTEL, ${ft(st.elev_ft)}${st.dist_km !== undefined ? ` (${st.dist_km} km away)` : ""}:
       snow depth <strong>${depth === null ? "–" : `${Math.round(depth)} in`}</strong>${chg === null ? "" :
       ` (${chg >= 0 ? "+" : ""}${Math.round(chg)} in in 72 h)`}.</p><div class="chart" id="obs-chart" style="height:220px"><p class="hint">Loading chart…</p></div>`;
     // SNOTEL times are the station's local standard time (wall clock already)

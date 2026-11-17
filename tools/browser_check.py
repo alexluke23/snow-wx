@@ -512,7 +512,52 @@ def check_mine(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel}
+base_dir_holder: dict = {}
+
+
+def check_snotel_outage(b: Browser, base: str, log):
+    """fix-snotel: stale SNOTEL is labelled with its age and greyed; unavailable shows "unavailable since";
+    neither breaks the map or the area page. Edits build/data temporarily and restores it."""
+    data = Path(base_dir_holder["path"]) / "data"
+    meta_p, gj_p = data / "meta.json", data / "snotel.geojson"
+    saved = {p: p.read_bytes() for p in (meta_p, gj_p) if p.exists()}
+    try:
+        meta = json.loads(meta_p.read_text(encoding="utf-8"))
+        gj = json.loads(gj_p.read_text(encoding="utf-8"))
+        meta["sources"]["snotel"] = {"ok": False, "error": "x", "stale": True, "age_h": 13.2, "observed_through": "2026-11-16T11:00Z",
+                                     "count": len(gj["features"]), "consecutive_failures": 2, "outage_since": "2026-11-16T12:17:00Z"}
+        for f in gj["features"]:
+            f["properties"]["stale"] = True; f["properties"]["age_h"] = 13.2
+        meta_p.write_text(json.dumps(meta), encoding="utf-8"); gj_p.write_text(json.dumps(gj), encoding="utf-8")
+        b.open(f"{base}/index.html#v=depth_24h&map=6/41/-111", wait=7)
+        st = b.eval("({note: document.getElementById('snotel-note').textContent, hidden: document.getElementById('snotel-note').hidden, ready: window.snowwx.ready,"
+                    " status: document.getElementById('status').textContent})")
+        log(f"  stale: {st}")
+        need(not st["hidden"] and "13 h old" in st["note"] and st["ready"] and "stale" in st["status"], f"stale SNOTEL not labelled: {st}")
+        need(not b.errors, f"JS errors (stale): {b.errors}")
+        b.open(f"{base}/area.html#alta-ski-area", wait=6)
+        txt = b.eval("document.getElementById('obs')?.textContent || ''")
+        need("13 h old" in txt, f"area page does not label stale SNOTEL: {txt[:140]}")
+        meta["sources"]["snotel"] = {"ok": False, "error": "x", "unavailable": True, "last_observed": "2026-11-16T11:00Z"}
+        meta_p.write_text(json.dumps(meta), encoding="utf-8"); gj_p.unlink()
+        (data / "snotel").rename(data / "snotel_bak")           # what the pipeline does when the data are too old
+        b.open(f"{base}/index.html#v=depth_24h&map=6/41/-111", wait=7)
+        st = b.eval("({note: document.getElementById('snotel-note').textContent, ready: window.snowwx.ready})")
+        log(f"  unavailable: {st}")
+        need("unavailable since" in st["note"] and st["ready"], f"unavailable SNOTEL not labelled: {st}")
+        need(not b.errors, f"JS errors (unavailable): {b.errors}")
+        b.open(f"{base}/area.html#alta-ski-area", wait=6)
+        txt = b.eval("document.getElementById('obs')?.textContent || ''")
+        log(f"  area page obs: {txt[:100]}")
+        need("unavailable" in txt, f"area page does not say SNOTEL is unavailable: {txt[:120]}")
+    finally:
+        if (data / "snotel_bak").exists():
+            (data / "snotel_bak").rename(data / "snotel")
+        for p, raw in saved.items():
+            p.write_bytes(raw)
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage}
 
 
 def main(argv=None) -> int:
@@ -527,6 +572,7 @@ def main(argv=None) -> int:
         return 2
     log = print if args.verbose else (lambda *a: None)
     failed = []
+    base_dir_holder["path"] = args.build
     with serve(Path(args.build)) as base:
         b = Browser(chrome)
         try:
