@@ -16,7 +16,7 @@
   const WINDOWS = [["24h", "24 h"], ["72h", "72 h"], ["7d", "7 d"], ["10d", "10 d"]];
   const PWINDOWS = [["24h", "24 h"], ["48h", "48 h"], ["72h", "72 h"]];
   // skier-relevant thresholds (inches) shown as chips when NBM provides them
-  const SKI_THR = { "24h": [4, 6, 8, 12, 18, 24], "48h": [4, 6, 8, 12, 18, 24, 30, 36], "72h": [4, 6, 8, 12, 18, 24, 30, 36, 48] };
+  const SKI_THR = { "24h": [2, 4, 6, 8, 12, 18, 24], "48h": [2, 4, 6, 8, 12, 18, 24, 30, 36], "72h": [4, 6, 8, 12, 18, 24, 30, 36, 48] };   // 2": NBM-native for 24/48 h only
   const SEPARATE = "Chances come from NBM's probabilistic guidance, calibrated separately from NBM's expected amount; " +
     "the two can disagree.";
   const fmt = (v) => (v === null || v === undefined ? "–" : v < 0.5 ? (v < 0.05 ? "0" : "<1") : `${Math.round(v)}`);

@@ -118,7 +118,8 @@
   const plain = (v) => (v === null || v === undefined ? "–" : String(v));
 
   // Chance of at least X inches per 24/48/72-h window (NBM probability fields): heat table
-  const EX_THR = { "24h": [4, 6, 8, 12, 18, 24], "48h": [4, 6, 8, 12, 18, 24, 36], "72h": [4, 6, 8, 12, 18, 24, 36, 48] };
+  // 2" is NBM's own >2" exceedance field for 24 h and 48 h windows only (NBM publishes none for 72 h: never derived)
+  const EX_THR = { "24h": [2, 4, 6, 8, 12, 18, 24], "48h": [2, 4, 6, 8, 12, 18, 24, 36], "72h": [4, 6, 8, 12, 18, 24, 36, 48] };
   let exWin = "24h";
   function exceedTable(el, fc, pt, tz) {
     const ex = fc.points[pt].exceed?.[exWin];
