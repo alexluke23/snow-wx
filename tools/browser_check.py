@@ -350,6 +350,14 @@ def check_charts(b: Browser, base: str, log):
         need(st["days"] >= 8 and st["bars"] == st["days"] and st["ticks"] == 0 and st["legend"] and st["bad"] == 0,
              f"{area}: daily snowfall chart wrong: {st}")
         need(len(st["labels"]) == st["days"], f"{area}: every day needs a low–high label: {st['labels']}")
+        # dev13 item 3: the heat table lists NBM's native >=2" row for 24 h (and not for 72 h)
+        rows = b.eval("""(async () => { const out = {}; for (const w of ['24h', '72h']) {
+          const btn = document.querySelector(`#ex-win [data-w="${w}"]`); if (!btn) continue; btn.click(); await new Promise(r => setTimeout(r, 700));
+          out[w] = [...document.querySelectorAll('#ex-chart tbody th')].map(t => t.textContent.trim()); }
+          document.querySelector('#ex-win [data-w="24h"]')?.click(); return out; })()""")
+        log(f"  charts {area}: heat-table rows {rows}")
+        if rows.get("24h"):
+            need(rows["24h"][0] == '2"' and '2"' not in rows.get("72h", []), f"{area}: 2-inch row: {rows}")
         # Nov 16: no 7/10-day ranges on the tiles; the partial first day is labelled in the legend and summary
         t7 = b.eval("""(() => { const tiles = [...document.querySelectorAll('.tiles .tile')].map(t => [t.querySelector('.label').textContent, t.querySelector('.rng').textContent]);
           const leg = document.querySelector('.snow-legend'); const sum = document.getElementById('period-chart').previousElementSibling;

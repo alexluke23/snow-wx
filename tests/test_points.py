@@ -522,3 +522,16 @@ def test_cleanup_never_touches_layers_or_ndfd_and_matching_is_strict(tmp_path):
     assert [f.name for f in orphan_point_files(pts, set())] == ["alta.json"]
     # pointing --out at the parent by mistake: no summary.json there, nothing is deleted
     assert stale_point_files(data) == [] and orphan_point_files(data, set()) == []
+
+
+def test_nbm_native_2_inch_exceedance_for_24_and_48_h_only():
+    """Item 3 (dev13): NBM has native >2" probabilities for 24 h and 48 h windows (not 72 h): selected by the
+    existing rule, never derived. >0.0508 m = 2 in."""
+    assert inv.threshold_in(">0.0508") == "2"
+    init = datetime(2026, 11, 8, 1, tzinfo=timezone.utc)
+    from pipeline.nbm.run import exceedance
+    data = {35: {"snow24_gt2": np.array([55.0]), "snow24_gt4": np.array([30.0]), "snow48_gt2": np.array([60.0])},
+            59: {"snow48_gt2": np.array([62.0]), "snow48_gt4": np.array([35.0])}}
+    ex = exceedance(data, [35, 59], init, 0)
+    assert ex["24h"]["thr"] == [2.0, 4.0] and ex["24h"]["p"] == [[55, 30]]
+    assert 2.0 in ex["48h"]["thr"] and "72h" not in ex
