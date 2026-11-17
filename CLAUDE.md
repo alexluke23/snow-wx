@@ -13,7 +13,7 @@ alerts backend will add a small one; see docs/specs/alerts-backend.md).
 - Before working on a feature, read ONLY its spec in `docs/specs/` (index in the "Where things live" table in PLAN.md).
 - Read `docs/DESIGN.md` only when building or changing charts, maps legends, colors or layout.
 - Do NOT read `docs/BUSINESS.md` (pricing, legal, go-to-market) or `docs/ARCHIVE.md` (history) unless the task explicitly asks for them.
-- When a milestone lands, tick it in PLAN.md §8; move finished items and stale decisions to `docs/ARCHIVE.md` so PLAN.md stays under ~15 KB.
+- When a milestone lands, tick it in PLAN.md §8; move finished items and stale decisions to `docs/ARCHIVE.md` so PLAN.md stays around ~17 KB.
 - Keep section numbers (§) stable; cross-references rely on them.
 - Keep PLAN.md §2 Status and §3 Decisions log current as work lands.
 - Reference docs (read only for that topic):
@@ -176,10 +176,14 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
 **Current state (Nov 16 2026)**
-- Branch `dev11` is pushed (head: owner-decision commit + docs commits); the PR is opened by the owner (no `gh` CLI or token here;
-  branches have no CI: `update-site.yml`/`models.yml` only run on main/schedule). Contents: snow charts on native NBM
-  windows ("Snowfall by day" p25–p75 bars, expected running total), NWS snowfall colors site-wide (colors.js), 7/10-day
-  summed ranges dropped (expected total only), partial-day labelling, SNOTEL depth-change colors, safer points/ndfd cleanup.
+- Branch `dev11` is pushed; the owner opens the PR (no `gh` CLI or token here; branches have no CI, only main/schedule run
+  the workflows). Contents: snow charts on native NBM windows ("Snowfall by day" p25–p75 bars, expected running total), NWS
+  snowfall colors site-wide (colors.js), no 7/10-day ranges (expected total only), **no composite ranges anywhere** (points
+  JSON `totals[...].native`, summary window `[6]`; front end shows a range only when native), partial-day labelling, SNOTEL
+  depth-change colors, strict points/ndfd cleanup (tests prove `points/layers/` and `ndfd/` are never touched).
+- Archive (docs/verification.md): `nbm_rows` builds det from the 12 h periods and p10/p50/p90 + P(≥X) from the native
+  `exceed` windows (24/48/72 h ending 12Z); it never reads `totals` ranges, so composite ranges are not in the monthly CSVs
+  (test `test_archive_rows_never_contain_composite_totals_ranges`). M9 needs no exclusion beyond that.
 - **Urgent, not fixed (found Nov 16):** the live site has no SNOTEL data: `meta.json` says `snotel: ok false, "no SNOTEL
   stations returned"` after 308 s, and `data/snotel.geojson` / `data/snotel/*.json` return 404. The pipeline otherwise runs
   on schedule (points 13Z/19Z 16 Nov, NDFD, NOHRSC, models all fresh). Fix AWDB fetch/fallback and keep the last good SNOTEL
@@ -192,7 +196,8 @@ Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-
 **Reusable gotchas (earlier session log: docs/ARCHIVE.md)**
 - Lighthouse: `PATH=/c/miniforge3/envs/tools:$PATH npx -y lighthouse@12.6.1 URL --only-categories=performance,accessibility`
   (Node lives in the `tools` conda env), against a gzip server (like Pages) of build/; the plain http.server understates
-  mobile scores. The obs map scores bimodally (71–88, tile-server timing); compare changes with interleaved A/B runs.
+  mobile scores. Target: median of ≥ 3 interleaved runs ≥ 85. The obs map scores bimodally (71–88, tile-server timing);
+  compare changes with interleaved A/B runs (dev vs main with the same data).
 - Browser regression checks: `PYTHONIOENCODING=utf-8 C:/miniforge3/envs/snow-wx/python.exe tools/browser_check.py [-v] [--only ...]`
   (serves build/ itself, real headless Chrome via CDP); copy web/* to build/ first. `Page.navigate` with only a hash change does
   not reload; blocked URLs need cache off + an unvisited view. Element screenshots: CDP clip after scrollIntoView WITHOUT

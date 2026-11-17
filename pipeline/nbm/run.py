@@ -533,6 +533,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
             key = "snow6" if L == 6 else f"snow{L}"
             lo, hi = v(end2, f"{key}_p{qlo}"), v(end2, f"{key}_p{qhi}")
             parts.append(None if lo is None or hi is None else (lo * (pw or 0), hi * (pw or 0)))
+        nbm_cover.tiles = len(tiles)             # 1 = one native window; more = composite (percentiles added)
         return P.rank_sum(parts)
 
     for name, L in (("24h", 24), ("48h", 48), ("72h", 72), ("7d", 168), ("10d", 240)):
@@ -542,7 +543,9 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
             continue
         q = sum(w["qpf"] for w in ws)
         snow = 0.0 if q < P.WET_IN else sum(w["snow"] for w in ws)
+        nbm_cover.tiles = 0
         cover = nbm_cover(t0, end)
+        native = cover is not None and nbm_cover.tiles == 1       # one native NBM window; else percentiles were added
         iqr = nbm_cover(t0, end, 25, 75) if cover is not None else None   # NBM 25-75 ("likely")
         if name not in qblocks:   # 48 h: an accumulated-snow checkpoint; NBM's own windows only
             srng, qrng = cover, None
@@ -563,6 +566,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
                         "qpf_in": _r(q, 2),
                         "qpf_lo": _r(qrng[0], 2) if qrng else None, "qpf_hi": _r(qrng[1], 2) if qrng else None,
                         "p_snow": _r(P.weighted_mean([w["ps"] for w in ws], [w["qpf"] for w in ws]), 2),
+                        "native": native,
                         "extended": cover is None and L > 48,
                         "range": "NBM 10-90" if cover is not None else ("derived 25-75" if srng else None),
                         "from": (init + timedelta(hours=t0)).strftime("%Y-%m-%dT%H:%MZ")}
@@ -604,7 +608,8 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
                 start = x.get("from") or init.strftime("%Y-%m-%dT%H:%MZ")
                 end = (init + timedelta(hours={"24h": 24, "48h": 48, "72h": 72, "7d": 168, "10d": 240}[n])).strftime("%Y-%m-%dT%H:%MZ")
                 pop, sl = P.window_wet(pts["periods"], start, end)
-                out[n] = [x["snow_in"], x["snow_lo"], x["snow_hi"], pop, sl, P.window_snow_type(pts["periods"], start, end)]
+                out[n] = [x["snow_in"], x["snow_lo"], x["snow_hi"], pop, sl, P.window_snow_type(pts["periods"], start, end),
+                         bool(x.get("native"))]          # [6]: range is one native NBM window (else composite: hide)
             return out
         summary.append({
             "id": a["id"], "name": a["name"], "state": a["state"], "region": a["region"],
