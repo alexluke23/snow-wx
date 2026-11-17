@@ -67,8 +67,11 @@ centers). Full text: `docs/ARCHIVE.md`.
   site-wide, 7/10-day summed ranges removed. Details: `docs/ARCHIVE.md`.
 - **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas,
   Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
-- **Known issues:** **live SNOTEL data missing** (Nov 16: AWDB fetch returned no stations; `snotel.geojson` 404): fix first in
-  Sprint 1 with W5a; other sources are fresh (points 13Z/19Z, NDFD, NOHRSC, models). Obs map Lighthouse mobile 71–88
+- **Known issues:** **NRCS AWDB (SNOTEL) outage.** The whole `wcc.sc.egov.usda.gov` host returns 502 (REST API, WSDL, report
+  generator). Last good SNOTEL observations: ≈ Nov 16 11 UTC (archive rows end 2026-11-16 12Z); first failed run seen 22:07 UTC;
+  still down Nov 17 02:21 UTC. **M9 verification must exclude SNOTEL obs from 2026-11-16 12Z until recovery** (end date to be
+  added when it recovers). Handling (branch fix-snotel): fail-fast probe, last good copy ≤ 48 h flagged stale, then
+  "unavailable"; auto-recovery. Other sources are fresh (points, NDFD, NOHRSC, models). Obs map Lighthouse mobile 71–88
   (bimodal run to run; target: median of ≥ 3 interleaved runs ≥ 85); site ≈ 240 MB (recheck vs §5.10); GitHub's scheduled runs are best-effort.
 
 ---

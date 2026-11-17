@@ -41,6 +41,20 @@ grid_x, grid_y}` for base & summit, `nbm_grid {i, j, elev_ft}` for base & summit
 - Output: `data/points/<id>.json` (hourly + period summaries) and
   `data/points/summary.json`. Target < 150 KB per area.
 
+### 5.2b SNOTEL observations and outages (`pipeline/snotel.py`)
+Source: NRCS AWDB **REST** API (`wcc.sc.egov.usda.gov/awdbRestApi/services/v1`; the SOAP web service is being phased out).
+Per run: a one-station health probe (10 s), then stations per state and hourly/daily data in chunks, under a hard time limit
+(`snotel.max_seconds`) with a circuit breaker (`max_consecutive_chunk_failures`). A down service costs seconds per hourly run.
+- **Last good copy:** the previous `snotel.geojson` + `snotel/*.json` in the output folder; stations whose latest observation is
+  younger than `snotel.max_age_hours` (48) are kept with their ORIGINAL timestamps and `stale`/`age_h` flags; older ones are
+  deleted. `meta.json` `sources.snotel` gets `stale`+`age_h`+`observed_through`, or `unavailable`+`last_observed`.
+- **Recovery:** the first successful run replaces everything and clears the flags; no manual step.
+- **UI:** `web/js/snotel-status.js` words it ("SNOTEL observations are X h old", "unavailable since <date>") on the obs map
+  (banner, greyed markers), station panel and area-page "Recent observations". Old values are never shown as current.
+- **Per-source history** (`meta.json`): `last_success_at`, `consecutive_failures`, `outage_since` (history needs the previous
+  meta.json; on a fresh CI runner it restarts until the previous live copy is restored, see PLAN §2).
+- NBM/NDFD forecasts at SNOTEL sites use the committed `data/snotel_points.json`, not AWDB.
+
 ### 5.3 NWS official layer (NDFD + alerts + discussion)
 `api.weather.gov` with our User-Agent; `/points` lookups cached in the catalog.
 Per run: gridpoints raw layers for base & summit (dedupe shared cells). One

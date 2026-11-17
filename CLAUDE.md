@@ -184,10 +184,11 @@ Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-
 - Archive (docs/verification.md): `nbm_rows` builds det from the 12 h periods and p10/p50/p90 + P(≥X) from the native
   `exceed` windows (24/48/72 h ending 12Z); it never reads `totals` ranges, so composite ranges are not in the monthly CSVs
   (test `test_archive_rows_never_contain_composite_totals_ranges`). M9 needs no exclusion beyond that.
-- **Urgent, not fixed (found Nov 16):** the live site has no SNOTEL data: `meta.json` says `snotel: ok false, "no SNOTEL
-  stations returned"` after 308 s, and `data/snotel.geojson` / `data/snotel/*.json` return 404. The pipeline otherwise runs
-  on schedule (points 13Z/19Z 16 Nov, NDFD, NOHRSC, models all fresh). Fix AWDB fetch/fallback and keep the last good SNOTEL
-  data when a run fails (W5a: failure alert + status page).
+- **NRCS AWDB (SNOTEL) outage since Nov 16 (upstream; whole host returns 502).** Branch `fix-snotel` handles it: fail-fast
+  probe (a down run costs ~2 s), last good copy ≤ 48 h flagged stale then "unavailable", auto-recovery, per-source history in
+  meta.json, status wording in `web/js/snotel-status.js`, PR workflow `.github/workflows/tests.yml`. **Pending owner OK:** where
+  the previous good copy comes from on a fresh CI runner (previous live site vs release asset) and the failure notifications
+  (see the PR description). Until the copy is seeded, CI shows "unavailable" (correct, just without the stale option).
 - Next (PLAN §8.2 Sprint 1): SNOTEL fix + W5a pipeline monitoring and data-status page, W1 hosting prep (brand name and domain
   not decided; configurable SITE_ORIGIN / DATA_ORIGIN, GitHub URLs as defaults), then W3 daily summaries (before W2), W2, W4.
 - Not started: storm-total tracker (PLAN §8.4), M7, M8 (ECMWF via Herbie `ifs`/`aifs`, attribution "© ECMWF, CC BY 4.0"),
