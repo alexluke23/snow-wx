@@ -68,7 +68,14 @@ Per run: a one-station health probe (10 s), then stations per state and hourly/d
   `data-health`, assigned to `monitoring.assignee` so GitHub e-mails them). Uses only the workflow's `GITHUB_TOKEN`
   (`issues: write`); no secrets. It cannot fail the deploy: separate job after deploy, `continue-on-error`, script always exits 0.
 - Delivery: GitHub e-mails the assignee (Settings → Notifications → e-mail on); the GitHub mobile app gives push.
-- **Known gap (plan, not built): a check inside the hourly workflow cannot notice that the workflow did not run at all**
+- **Test input:** `update-site.yml` has a manual `simulate_failure=<source>` input (workflow_dispatch only; sets
+  `SIMULATE_FAILURE`): the source fails as if its service were down (SNOTEL goes through the real stale/unavailable path), so
+  the status text, banner and the monitor's issue can be verified live; the next normal run recovers.
+- **Heartbeat (built, inactive until configured):** the `monitor` job's last step pings the URL in the repository secret
+  `HEALTHCHECK_URL` only when the build AND deploy succeeded; no secret = skipped; `continue-on-error`. Setup: create a free
+  Healthchecks.io account → new check "snow-wx hourly", period 1 h, grace 3 h, e-mail alert → copy its ping URL → repo
+  Settings → Secrets and variables → Actions → New repository secret `HEALTHCHECK_URL`.
+- **Known gap (the heartbeat above covers it once configured): a check inside the hourly workflow cannot notice that the workflow did not run at all**
   (GitHub's schedules are best-effort and can pause for hours). Independent options for W5a, in order of recommendation:
   1. **Dead-man's-switch heartbeat (Healthchecks.io free tier, or similar):** the hourly job `curl`s a ping URL at the end;
      the service e-mails the owner when no ping arrives within a grace period (e.g. 3 h). Independent of GitHub, so it also

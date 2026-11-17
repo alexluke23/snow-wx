@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -396,6 +397,8 @@ def run(cfg: dict, session, outdir: Path) -> dict:
     previous = load_previous(outdir)
     usable_prev, _ = split_by_age(previous, now, max_age)
     try:
+        if os.environ.get("SIMULATE_FAILURE") == "snotel":      # workflow_dispatch test input: exercise the stale path
+            raise SnotelUnavailable("simulated outage (SIMULATE_FAILURE)")
         return _fetch_all(cfg, session, outdir, scfg, Deadline(float(scfg.get("max_seconds", 600))), usable_prev, now)
     except SnotelUnavailable as exc:
         raise _fall_back(exc, outdir, previous, usable_prev, now, max_age) from exc

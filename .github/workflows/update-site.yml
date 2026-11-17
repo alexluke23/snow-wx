@@ -10,6 +10,12 @@ on:
   schedule:
     - cron: "17 * * * *"   # every hour at :17 UTC (off the busy top of the hour)
   workflow_dispatch:        # "Run workflow" button; also triggered by models.yml
+    inputs:
+      simulate_failure:
+        description: "TEST ONLY: make this source fail (snotel, asos, alerts, afd, avalanche) to exercise the stale / unavailable and monitoring paths. Blank = normal run."
+        required: false
+        default: ""
+        type: string
   push:
     branches: [main]
 
@@ -70,6 +76,8 @@ jobs:
 
       - name: Build site and fetch data
         shell: bash -el {0}
+        env:
+          SIMULATE_FAILURE: ${{ github.event_name == 'workflow_dispatch' && inputs.simulate_failure || '' }}
         run: python -m pipeline build --out build
 
       - name: Size guard
@@ -127,3 +135,14 @@ jobs:
         run: |
           python3 -m pip install --quiet --user pyyaml || true
           python3 -m pipeline.monitor || true
+      - name: Heartbeat ping (dead-man's switch)
+        # Tells an external service (e.g. Healthchecks.io) that the hourly build AND deploy succeeded; the service
+        # e-mails the owner when the pings stop, which also catches a GitHub scheduler that never starts this
+        # workflow (docs/specs/data-pipeline.md 5.2c). Does nothing unless the repository secret HEALTHCHECK_URL
+        # exists; never fails the job or the deploy.
+        if: ${{ needs.deploy.result == 'success' }}
+        continue-on-error: true
+        env:
+          HC_URL: ${{ secrets.HEALTHCHECK_URL }}
+        run: |
+          if [ -n "$HC_URL" ]; then curl -fsS -m 10 --retry 3 -o /dev/null "$HC_URL" || true; else echo "no HEALTHCHECK_URL secret: heartbeat skipped"; fi

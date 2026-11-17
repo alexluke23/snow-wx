@@ -68,10 +68,12 @@ centers). Full text: `docs/ARCHIVE.md`.
 - **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas,
   Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
 - **Known issues:** **NRCS AWDB (SNOTEL) outage.** The whole `wcc.sc.egov.usda.gov` host returns 502 (REST API, WSDL, report
-  generator). Last good SNOTEL observations: ≈ Nov 16 11 UTC (archive rows end 2026-11-16 12Z); first failed run seen 22:07 UTC;
-  still down Nov 17 02:21 UTC. **M9 verification must exclude SNOTEL obs from 2026-11-16 12Z until recovery** (end date to be
-  added when it recovers). Handling (branch fix-snotel): fail-fast probe, last good copy ≤ 48 h flagged stale, then
-  "unavailable"; auto-recovery. Other sources are fresh (points, NDFD, NOHRSC, models). Obs map Lighthouse mobile 71–88
+  generator). **Outage window = between the last confirmed good run and the first failing run:** last good run: the
+  hourly build created ≈ 11:25 UTC Nov 16 (archive SNOTEL asset written 11:27:55 UTC); first failing run seen: 22:07 UTC
+  Nov 16 (live meta.json; GitHub's cron gaps mean runs between those were not inspected); still down Nov 17 02:21 UTC. The
+  archive's last SNOTEL day is 2026-11-16 12Z but it holds only 9 stations (a partial day; 15 Nov 12Z has 820). **M9 must exclude
+  SNOTEL obs from 2026-11-16 12Z (whole day, conservative) until recovery** (end date to be added). Handling (branch
+  fix-snotel): fail-fast probe, last good copy ≤ 48 h flagged stale, then "unavailable"; auto-recovery. Other sources are fresh (points, NDFD, NOHRSC, models). Obs map Lighthouse mobile 71–88
   (bimodal run to run; target: median of ≥ 3 interleaved runs ≥ 85); site ≈ 240 MB (recheck vs §5.10); GitHub's scheduled runs are best-effort.
 
 ---

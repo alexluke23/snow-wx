@@ -175,7 +175,7 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 16 2026)**
+**Current state (Nov 17 2026, overnight run: fix-snotel finished, dev13 in progress; see the uncommitted dev13_report.md)**
 - Branch `dev11` is pushed; the owner opens the PR (no `gh` CLI or token here; branches have no CI, only main/schedule run
   the workflows). Contents: snow charts on native NBM windows ("Snowfall by day" p25–p75 bars, expected running total), NWS
   snowfall colors site-wide (colors.js), no 7/10-day ranges (expected total only), **no composite ranges anywhere** (points

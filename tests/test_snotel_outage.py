@@ -170,3 +170,17 @@ def test_with_history_counts_and_keeps_last_success():
     f1 = with_history({"ok": False, "at": "2026-11-16T12:17:00Z"}, ok)
     f2 = with_history({"ok": False, "at": "2026-11-16T13:17:00Z"}, f1)
     assert (f2["consecutive_failures"], f2["last_success_at"], f2["outage_since"]) == (2, "2026-11-16T11:17:00Z", "2026-11-16T12:17:00Z")
+
+
+def test_simulate_failure_input_exercises_the_stale_path(cfg, tmp_path, monkeypatch):
+    good_copy(cfg, tmp_path, hours_old=3)
+    monkeypatch.setenv("SIMULATE_FAILURE", "snotel")
+    with pytest.raises(snotel.SnotelUnavailable) as e:
+        snotel.run(cfg, FakeSession(), tmp_path)           # the (healthy) fake service is never called
+    assert e.value.status["stale"] is True and "simulated" in str(e.value)
+    monkeypatch.setenv("SIMULATE_FAILURE", "asos")
+    import pipeline.__main__ as m
+    monkeypatch.setattr(m, "make_session", lambda c: FakeSession())
+    assert m.run_obs(cfg, tmp_path, ["snotel", "asos"]) == 0                      # snotel fine, asos simulated down
+    meta = json.loads((tmp_path / "meta.json").read_text(encoding="utf-8"))["sources"]
+    assert meta["snotel"]["ok"] is True and meta["asos"]["ok"] is False and "simulated" in meta["asos"]["error"]
