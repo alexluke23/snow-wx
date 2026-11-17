@@ -23,6 +23,14 @@ snotel:
   # Hide "% of median SWE" when the median itself is below this (inches).
   # Early-season medians are tiny, so 0.7" vs 0.175" would read as 400%.
   min_median_swe_in: 1.0
+  # Outage handling (the NRCS AWDB service can be down for days): a one-station health probe fails fast,
+  # the whole fetch has a hard time limit, and three failed chunks in a row stop the run. A down source
+  # keeps the previous good copy only while its latest observation is younger than max_age_hours
+  # (ORIGINAL timestamps, flagged stale); older data is removed and shown as "unavailable".
+  probe_timeout_s: 10
+  max_seconds: 600
+  max_consecutive_chunk_failures: 3
+  max_age_hours: 48
 
 asos:
   enabled: true
@@ -46,6 +54,31 @@ cache:
   prune_days: 2
   # Slow lookup caches that are kept (3DEP + api.weather.gov lookups, OpenSkiMap seeds).
   keep: [catalog, openskimap]
+
+site:
+  # Live site origin (override with the SITE_ORIGIN env var). `pipeline restore` reads the previous good SNOTEL copy
+  # from here before every build. CHANGE AT THE W1 DOMAIN CUTOVER (docs/specs/hosting-seo.md).
+  origin: "https://alexluke23.github.io/snow-wx"
+
+monitoring:
+  # Data-health issues (pipeline/monitor.py, update-site.yml `monitor` job): one GitHub issue per source, assigned
+  # below so GitHub e-mails the owner; closed automatically on recovery. Limits come from each source's REAL cadence:
+  #   max_failures   = consecutive failed runs (hourly sources only; products have no failure count)
+  #   max_age_hours  = hours since the last success / product time
+  issue_label: data-health
+  assignee: alexluke23
+  sources:
+    # obs sources: fetched by every hourly build
+    alerts:    {max_failures: 3, max_age_hours: 6}
+    afd:       {max_failures: 3, max_age_hours: 6}
+    avalanche: {max_failures: 3, max_age_hours: 6}
+    asos:      {max_failures: 3, max_age_hours: 6}
+    snotel:    {max_failures: 3, max_age_hours: 6}     # NRCS updates hourly; outages are usually upstream
+    # products made by models.yml jobs and merged at build time (age = the product's own generated_at)
+    points:    {max_age_hours: 14}    # NBM points run 02/08/14/20 UTC (every 6 h) after a ~1.7 h model lag; two missed runs = 14 h
+    ndfd:      {max_age_hours: 10}    # job every 3 h; NDFD itself updates hourly
+    models:    {max_age_hours: 10}    # every 3 h (HRRR hourly cycles; newest model counts)
+    nohrsc:    {max_age_hours: 30}    # snowfall analysis 6-hourly, SNODAS daily and late; unchanged runs keep the old time
 
 archive:
   # Forecast archive for verification (docs/verification.md): monthly CSVs on this release.
