@@ -66,6 +66,12 @@ def product_status(outdir: Path) -> dict:
                          "at": js.get("generated_at"), **({"quality": q} if q else {})}
     except (OSError, ValueError, KeyError):
         out["points"] = {"ok": False, "error": "no NBM point forecasts yet"}
+    nd = outdir / "data" / "ndfd" / "index.json"
+    try:
+        js = json.loads(nd.read_text(encoding="utf-8"))
+        out["ndfd"] = {"ok": True, "detail": f"NDFD {js['issued'][5:13].replace('T', ' ')}Z", "at": js.get("generated_at")}
+    except (OSError, ValueError, KeyError):
+        out["ndfd"] = {"ok": False, "error": "no NWS (NDFD) forecasts yet"}
     nh = outdir / "data" / "nohrsc" / "index.json"
     try:
         js = json.loads(nh.read_text(encoding="utf-8"))
@@ -216,6 +222,11 @@ def main(argv=None) -> int:
     p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("restore", help="restore the previous good SNOTEL copy from the live site (CI, before the build)")
+    p.add_argument("--out", default="build/data")
+    p.add_argument("--origin", default=None, help="live site origin (default: SITE_ORIGIN env or config site.origin)")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("archive", help="append forecasts + SNOTEL obs to the verification archive (CI)")
     p.add_argument("--data", default="build/data", help="site data folder (points/, ndfd/, snotel/)")
     p.add_argument("--release", default=None, help="GitHub release tag (default: config archive.release)")
@@ -253,6 +264,11 @@ def main(argv=None) -> int:
     cfg = load_config(args.config)
     from .cache import housekeeping
     housekeeping(REPO_ROOT, cfg)                 # prune data_cache (> 2 days), log disk use
+    if args.cmd == "restore":
+        from . import restore
+        info = restore.restore_previous(cfg, make_session(cfg), Path(args.out), args.origin)
+        print(f"restore: {info}")
+        return 0                                   # never fails the build
     if args.cmd == "archive":
         import tempfile
         from . import archive
