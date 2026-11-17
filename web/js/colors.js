@@ -83,15 +83,59 @@ const expectedInfo = () => `<a class="info" href="about.html#nbm" title="${EXPEC
 // NAADS danger colors (match pipeline/avalanche.py)
 const DANGER_TEXT = { 0: "#333", 1: "#fff", 2: "#333", 3: "#111", 4: "#fff", 5: "#fff" };
 
-// Forecast snowfall (in): same bins/colors as the model maps (pipeline/models/plot.py
-// SNOW, NWS-style). Shared by the area page, Powder Finder and legends (PLAN.md §6).
+// Snowfall (in): the NWS snowfall colour table (owner S11), one definition for the whole site: area-page
+// bars and tiles, Powder Finder markers and swatches, My mountains, the forecast and observed (NOHRSC)
+// snowfall overlays and every legend. Colours and class limits exactly as the legend of NOAA/NWS NOHRSC's
+// National Snowfall Analysis maps (sampled 9 Nov 2026 from
+// https://www.nohrsc.noaa.gov/snowfall_v2/data/202611/sfav2_CONUS_72h_2026110900.png): 0 white, trace
+// (under 0.1 in), 0.1, 1, 2, 3, 4, 6, 8, 12, 18, 24, 30, 36, 48, 60, 72, 96, 120+ in.
+// (The model maps in pipeline/models/plot.py still use their own older NWS-style table.)
 const SNOWFALL = {
   label: "Snowfall (in)",
-  bins: [0.1, 1, 2, 3, 4, 6, 8, 12, 18, 24, 30, 36, 48],
-  colors: ["#f4f6f8", "#bdd7e7", "#6baed6", "#3182bd", "#08519c", "#082694", "#ffff96", "#ffc400",
-           "#ff8700", "#db1400", "#9e0000", "#690000", "#ccccff", "#9f8ccd"],
+  source: "NWS snowfall colours (NOAA/NWS NOHRSC National Snowfall Analysis)",
+  bins: [0.01, 0.1, 1, 2, 3, 4, 6, 8, 12, 18, 24, 30, 36, 48, 60, 72, 96, 120],
+  colors: ["#ffffff", "#e3edf4", "#bcd6e6", "#6badd5", "#3182bd", "#08519c", "#082694", "#fffe95", "#ffc400",
+           "#ff8700", "#db1400", "#9e0000", "#690000", "#360000", "#ccccff", "#9f8cd8", "#7c52a5", "#561c72", "#2d0033"],
+  legend: ["0", "T", "0.1", "1", "2", "3", "4", "6", "8", "12", "18", "24", "30", "36", "48", "60", "72", "96", "120+"],
   digits: 0,
 };
+
+// Legend of the NWS snowfall colours: the classes from `from` inches up to the class holding `maxIn`
+// (at least through `minTop`), each swatch labelled with its lower limit; pale swatches outlined.
+function snowLegendHtml(maxIn, { from = 0.1, minTop = 12, cls = "", partial = false } = {}) {
+  const S = SNOWFALL;
+  const first = Math.max(1, S.bins.findIndex((b) => b >= from) + 1);
+  let last = S.bins.findIndex((b) => b > Math.max(maxIn || 0, minTop));
+  last = last < 0 ? S.colors.length - 1 : last;
+  const items = [];
+  for (let k = first; k <= last; k++) {
+    const c = S.colors[k];
+    items.push(`<span class="sw${snowPale(c) ? " pale" : ""}" style="background:${c};color:${textOn(c)}">${S.legend[k]}</span>`);
+  }
+  return `<div class="snow-legend${cls ? ` ${cls}` : ""}" role="img" aria-label="Snowfall colours in inches (NWS colour table): ${S.legend.slice(first, last + 1).join(", ")}${partial ? "; hatched grey: partial day — expected amount, no range" : ""}">` +
+    `<span class="lab">in</span>${items.join("")}` +
+    (partial ? `<span class="sw partial" title="Partial day — expected amount, no range">partial day — expected amount, no range</span>` : "") + `</div>`;
+}
+
+// Swatches this light disappear on the white page: draw them with an outline (WCAG non-text contrast).
+function snowPale(hex) {
+  const n = parseInt(String(hex).slice(1, 7), 16);
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return 1.05 / (L + 0.05) < 1.6;          // contrast against white below 1.6:1
+}
+
+// SNOTEL depth change (24 h / 72 h): gains use the NWS snowfall colours (same classes, from 1 in), losses stay brown.
+// A depth change includes compaction, so it is NOT snowfall (owner Nov 16): the legend says "Snow depth change".
+(function depthChangeColors() {
+  const k = SNOWFALL.bins.indexOf(1), last = SNOWFALL.bins.indexOf(36);
+  const bins = [-2, ...SNOWFALL.bins.slice(k, last + 1)];             // -2, 1, 2, 3, 4, 6, 8, 12, 18, 24, 30, 36
+  const colors = ["#a6761d", "#f0f0f0", ...SNOWFALL.colors.slice(k + 1, last + 2)];
+  for (const key of ["depth_24h", "depth_72h"]) {
+    SNOTEL_VARS[key].bins = bins; SNOTEL_VARS[key].colors = colors;
+    SNOTEL_VARS[key].legendTitle = "Snow depth change (in); includes compaction, not snowfall";
+  }
+})();
 
 // Chance of at least X inches (%): sequential, shared by Powder Finder table/map and area charts.
 const PROB = {

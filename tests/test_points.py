@@ -395,3 +395,76 @@ def test_snow_type_thresholds_and_window_main_type():
     per = [{"start": "a1", "end": "a2", "snow_in": 1.0, "snow_type": {"type": "wet"}},
            {"start": "a2", "end": "a3", "snow_in": 4.0, "snow_type": {"type": "dry"}}]
     assert P.window_snow_type(per, "a0", "a9") == "dry" and P.window_snow_type(per, "b", "c") is None
+
+
+def test_day_spans_and_native_windows():
+    """Snowfall by day (owner S11): 12Z-12Z days; ranges only from one native NBM window."""
+    utc = timezone.utc
+    hours = list(range(1, 265))
+    assert P.day_spans(datetime(2026, 11, 8, 19, tzinfo=utc), hours)[:2] == [(0, 17), (17, 41)]
+    assert P.day_spans(datetime(2026, 11, 8, 13, tzinfo=utc), hours)[0] == (0, 23)
+    assert P.day_spans(datetime(2026, 11, 8, 12, tzinfo=utc), hours)[0] == (0, 24)
+    have = lambda key, e: (key, e) in {("snow24", 41), ("snow6", 5)}  # noqa: E731
+    assert P.native_window(17, 41, have) == "snow24"
+    assert P.native_window(-1, 5, have) == "snow6"                 # short first day = one 6-h window
+    assert P.native_window(-1, 17, have) is None                   # 18 h: no window, never a sum
+    assert P.native_window(17, 41, lambda k, e: False) is None
+    lab = P.day_label(datetime(2026, 11, 8, 19, tzinfo=utc), 17, 41, ZoneInfo("America/Denver"))
+    assert lab["label"] == "Mon 9" and lab["local"] == "Mon 5 AM – Tue 5 AM MST"
+
+
+def test_point_forecast_days_use_native_24h_percentiles():
+    init = datetime(2026, 11, 7, 18, tzinfo=timezone.utc)            # first day 18Z-12Z: 18 h, no native window
+    hours = list(range(1, 67))
+    data = {}
+    for h in hours:
+        d = _fake_hour(h if (18 + h) % 6 == 0 else 1)                 # 6-h fields at valid 00/06/12/18Z
+        if (18 + h) % 6 != 0:
+            for k in [k for k in d if k.startswith(("qpf6", "snow6", "pop6", "qpf12"))]:
+                del d[k]
+        if (18 + h) % 24 == 12 and h >= 42:
+            d.update(snow24_p25=np.full(2, 4.0), snow24_p50=np.full(2, 8.0), snow24_p75=np.full(2, 14.0))
+        data[h] = d
+    fc = point_forecast(data, hours, init, 0, elev_ft=9000, grid_ft=8000, tz=ZoneInfo("America/Denver"))
+    first, second = fc["days"][0], fc["days"][1]
+    assert first["partial"] and first["hours"] == 18 and first["snow_p25"] is None and first["range_window"] is None
+    assert first["snow_in"] == 9.0                                   # 3 x 3 in (6-h deterministic windows)
+    assert second["hours"] == 24 and not second["partial"] and second["range_window"] == "snow24"
+    assert (second["snow_p25"], second["snow_p50"], second["snow_p75"]) == (4.0, 8.0, 14.0)
+    assert second["snow_in"] == 12.0 and second["label"] == "Sun 8"
+
+
+def test_stale_point_files_only_touches_previous_points_output(tmp_path):
+    from pipeline.common import stale_point_files
+    import json as _json
+    (tmp_path / "meta.json").write_text("{}")
+    (tmp_path / "alta.json").write_text("{}")
+    assert stale_point_files(tmp_path) == []                       # no points summary: delete nothing
+    (tmp_path / "summary.json").write_text(_json.dumps({"cycle": "2026110819", "areas": [{"id": "alta"}]}))
+    (tmp_path / "snotel-1000-OR-SNTL.json").write_text("{}")
+    got = sorted(f.name for f in stale_point_files(tmp_path))
+    assert got == ["alta.json", "snotel-1000-OR-SNTL.json", "summary.json"]   # meta.json survives
+
+
+def test_cleanup_on_fresh_runner_and_dropped_areas(tmp_path):
+    """B6: a fresh CI runner has no previous summary.json (nothing to delete); areas dropped from the catalog
+    are removed by the old summary (normal) or as orphans (interrupted run); nothing foreign is ever touched."""
+    import json as _json
+    from pipeline.common import orphan_point_files, stale_point_files
+    def doc(i):
+        return _json.dumps({"id": i, "points": {"summit": {}}, "issued": "2026-11-16T01:00Z", "source": "x"})
+    # fresh runner: empty folder, and a folder of foreign files without summary.json
+    assert stale_point_files(tmp_path) == []
+    (tmp_path / "meta.json").write_text("{}")
+    (tmp_path / "alta.json").write_text(doc("alta"))
+    assert stale_point_files(tmp_path) == []
+    # a leftover point file (area dropped from the catalog, no old summary lists it) is an orphan; the rest is untouched
+    (tmp_path / "gone-area.json").write_text(doc("gone-area"))
+    (tmp_path / "map_points.json").write_text(_json.dumps({"id": "map_points", "areas": []}))   # no "points"/"issued"
+    (tmp_path / "other.json").write_text(doc("not-the-stem"))                                   # id != stem
+    (tmp_path / "broken.json").write_text("{not json")
+    orph = sorted(f.name for f in orphan_point_files(tmp_path, {"alta.json"}))
+    assert orph == ["gone-area.json"]
+    # an old summary that lists a dropped area deletes it up front
+    (tmp_path / "summary.json").write_text(_json.dumps({"cycle": "1", "areas": [{"id": "gone-area"}]}))
+    assert "gone-area.json" in {f.name for f in stale_point_files(tmp_path)} and "meta.json" not in {f.name for f in stale_point_files(tmp_path)}

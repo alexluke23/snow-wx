@@ -333,6 +333,49 @@ def check_charts(b: Browser, base: str, log):
         if st["wetPeriods"]:
             need(st["wetLine"] > 0, f"{area}: {st['wetPeriods']} wet periods but the snow-level line is dry everywhere")
             need("Little precipitation" not in st["sum"], f"{area}: summary says little precipitation: {st['sum']}")
+        # S11: "Snowfall by day" = one bar per 12Z-12Z day from NBM's native 24-h p25/p75 (never summed),
+        # labelled "low–high", no expected tick, NWS-colour legend under the chart
+        st = b.eval("""(async () => {
+          const d = await (await fetch('data/points/%s.json')).json();
+          const days = d.points.summit.days || [];
+          const el = document.getElementById('period-chart');
+          const tr = el && el.data ? el.data : [];
+          const ticks = tr.filter(t => t.marker && t.marker.symbol === 'line-ew').length;
+          const bars = tr[0] ? tr[0].x.length : 0;
+          const bad = days.filter(x => x.snow_p25 !== null && x.range_window === null).length;
+          const legend = !!el.parentElement.querySelector('.snow-legend');
+          const labels = [...el.querySelectorAll('.annotation-text')].map(a => a.textContent).filter(t => /″/.test(t));
+          return {days: days.length, bars, ticks, bad, legend, labels: labels.slice(0, 11)}; })()""" % area)
+        log(f"  charts {area}: snowfall by day {st}")
+        need(st["days"] >= 8 and st["bars"] == st["days"] and st["ticks"] == 0 and st["legend"] and st["bad"] == 0,
+             f"{area}: daily snowfall chart wrong: {st}")
+        need(len(st["labels"]) == st["days"], f"{area}: every day needs a low–high label: {st['labels']}")
+        # Nov 16: no 7/10-day ranges on the tiles; the partial first day is labelled in the legend and summary
+        t7 = b.eval("""(() => { const tiles = [...document.querySelectorAll('.tiles .tile')].map(t => [t.querySelector('.label').textContent, t.querySelector('.rng').textContent]);
+          const leg = document.querySelector('.snow-legend'); const sum = document.getElementById('period-chart').previousElementSibling;
+          return {tiles, partialLegend: !!(leg && /partial day — expected amount, no range/.test(leg.getAttribute('aria-label') || '')),
+                  sum: sum ? sum.textContent : ''}; })()""")
+        log(f"  charts {area}: tiles {t7['tiles']} partial legend {t7['partialLegend']}")
+        need(all("expected total only" in r if "7 days" in l or "10 days" in l else "–" in r for l, r in t7["tiles"]), f"{area}: 7/10-day tiles still show a range: {t7['tiles']}")
+        # S11 step 4: accumulated = expected running total by day, no probability bars; ends at the 10-day total
+        acc = b.eval("""(async () => {
+          const d = await (await fetch('data/points/%s.json')).json();
+          const el = document.getElementById('acc-chart'); const t = el && el.data ? el.data : [];
+          const T = d.points.summit.totals; const tot = (T['10d'] || T['7d'] || T['72h'] || {}).snow_in;
+          const y = t[0] ? t[0].y : [];
+          return {traces: t.length, shapes: (el.layout.shapes || []).length, last: y[y.length - 1], tot,
+                  mono: y.every((v, i) => i === 0 || v >= y[i - 1] - 0.05)}; })()""" % area)
+        log(f"  charts {area}: accumulated {acc}")
+        need(acc["traces"] == 1 and acc["shapes"] == 0 and acc["mono"] and abs((acc["last"] or 0) - (acc["tot"] or 0)) <= 0.11,
+             f"{area}: accumulated snow chart: {acc}")
+        nws = b.eval("""(async () => { const btn = document.querySelector('[data-src=nws]'); if (!btn) return null;
+          btn.click(); await new Promise(r => setTimeout(r, 2500));
+          const sec = document.getElementById('period-chart').parentElement;
+          const out = {toggles: sec.querySelectorAll('.chart-table').length, legends: sec.querySelectorAll('.snow-legend').length};
+          document.querySelector('[data-src=nbm]').click(); await new Promise(r => setTimeout(r, 1500));
+          out.back = sec.querySelectorAll('.chart-table').length; return out; })()""")
+        log(f"  charts {area}: NBM -> NWS -> NBM table toggles/legends {nws}")
+        need(nws is None or (nws["toggles"] == 1 and nws["legends"] == 1 and nws["back"] == 1), f"{area}: duplicate toggles/legends: {nws}")
         # fix 6: end labels (right of the plot) never overlap; fix 7: SNOTEL panels start at 0
         st = b.eval("""(() => {
           const overlaps = [];
@@ -418,6 +461,12 @@ def check_forecast_overlays(b: Browser, base: str, log):
           return [clear, n]; })()""")
         log(f"  {lid}: clear pixels {clear[0]}/{clear[1]}")
         need(clear[0] > 0, f"{lid}: no transparent (dry) pixels at all")
+    # S11: snowfall overlays use the shared NWS snowfall colours + legend (one definition in colors.js)
+    leg = b.eval("""(() => { const s = document.querySelector('#overlay-select'); s.value = 'nbm72'; s.dispatchEvent(new Event('change'));
+      const l = document.querySelector('#overlays .snow-legend');
+      return {legend: !!l, first: l ? l.querySelector('.sw').textContent : null, nws: SNOWFALL.colors[7] === '#fffe95' && SNOWFALL.bins[6] === 6}; })()""")
+    log(f"  snowfall overlay legend: {leg}")
+    need(leg["legend"] and leg["first"] == "0.1" and leg["nws"], f"snowfall overlay legend / NWS colours: {leg}")
     need(not b.errors, f"JS errors: {b.errors}")
 
 
