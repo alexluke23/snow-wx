@@ -60,21 +60,55 @@
   const asosLayer = points.toggleLayer("asos");
   const skiLayer = points.toggleLayer("ski");
   const spLayer = points.toggleLayer("snopark");      // Sno-Parks / winter recreation (rec_points.json)
-  avyLayer.addTo(map);
+  // NWS winter hazards (hazards.js): official polygons, loaded after the first paint; config hazards.enabled -> data/hazards.json
+  const hazards = SnowHazards(map, { dataBase: DATA, onStatus: (s) => drawHazards(s) });
+  const hazardsLayer = hazards.group;
+  window.snowwx.hazards = hazards;
+
+  // ---- layer defaults, memory and URL override (dev13 item 2)
+  // Defaults ON: roads/towns/peaks, ski areas, Sno-Parks, avalanche danger, NWS winter hazards. OFF: SNOTEL, ASOS (and the
+  // NOHRSC overlay, which is "None" until picked). Order of precedence: URL hash (ly=...) > the visitor's last choice
+  // (localStorage) > defaults. A hash that names a station switches that station's layer on.
+  const LAYER_KEY = "snowwx.layers";
+  const LAYER_DEFAULTS = ["ref", "ski", "sp", "avy", "haz"];
+  const ALL_LAYERS = { ref: basemaps.overlays["Roads, towns & peaks"], ski: skiLayer, sp: spLayer, avy: avyLayer, haz: hazardsLayer,
+    snotel: snotelLayer, asos: asosLayer };
+  const layerOrder = Object.keys(ALL_LAYERS);
+  function wantedLayers(hash) {
+    let list = null;
+    if (hash.ly !== null && hash.ly !== undefined) list = hash.ly.split(",").filter((k) => layerOrder.includes(k));
+    else { try { const v = JSON.parse(localStorage.getItem(LAYER_KEY)); if (Array.isArray(v)) list = v.filter((k) => layerOrder.includes(k)); } catch { /* private mode */ } }
+    const on = new Set(list ?? LAYER_DEFAULTS);
+    const s = hash.s || "";
+    if (s.startsWith("asos:")) on.add("asos"); else if (s.startsWith("area:")) on.add("ski"); else if (s.startsWith("sp:")) on.add("sp");
+    else if (s) on.add("snotel");
+    return on;
+  }
+  const currentLayers = () => layerOrder.filter((k) => map.hasLayer(ALL_LAYERS[k]));
+  const isDefault = (list) => list.length === LAYER_DEFAULTS.length && LAYER_DEFAULTS.every((k) => list.includes(k));
+  let layersReady = false;
+  function persistLayers() {
+    if (!layersReady) return;
+    try { localStorage.setItem(LAYER_KEY, JSON.stringify(currentLayers())); } catch { /* private mode */ }
+    writeHash();
+  }
+
+  const initialLayers = wantedLayers((() => { const q = new URLSearchParams(location.hash.replace(/^#/, "")); return { ly: q.get("ly"), s: q.get("s") }; })());
   points.addTo(map);
-  snotelLayer.addTo(map);
-  asosLayer.addTo(map);
-  skiLayer.addTo(map);
-  spLayer.addTo(map);
+  for (const k of layerOrder) if (k !== "ref" && initialLayers.has(k)) ALL_LAYERS[k].addTo(map);
+  basemaps.setReferenceWanted?.(initialLayers.has("ref"));
 
   L.control.layers(baseLayers, {
-    ...basemaps.overlays,                       // roads, towns & peaks over the relief (basemap-ref.js)
+    "Roads, towns & peaks": ALL_LAYERS.ref,     // over the relief (basemap-ref.js)
     "Ski areas": skiLayer,
     "Sno-Parks": spLayer,
     "Avalanche danger": avyLayer,
+    "NWS winter hazards": hazardsLayer,
     "SNOTEL": snotelLayer,
     "ASOS / AWOS (wind, temp)": asosLayer,
   }, { collapsed: window.innerWidth < 800 }).addTo(map);
+  map.on("overlayadd overlayremove", persistLayers);
+  layersReady = true;
   L.control.scale({ imperial: true, metric: true }).addTo(map);
 
   const setZoomClass = () =>
@@ -191,10 +225,7 @@
         ctx.lineJoin = "round";
         ctx.lineWidth = 4; ctx.strokeStyle = OUTLINE; ctx.stroke();       // dark rim outside the white edge
         ctx.lineWidth = 1.8; ctx.strokeStyle = "#fff"; ctx.fill(); ctx.stroke();
-        if (areaAlerts[a.id]?.length) {          // NWS alert: red ring
-          ctx.beginPath(); ctx.arc(x, y + 1, size * 0.85, 0, 2 * Math.PI);
-          ctx.strokeStyle = "#b42318"; ctx.lineWidth = 2.2; ctx.stroke();
-        }
+        // (the red ring for NWS alerts was removed in dev13: alerts are shown by the NWS winter hazards layer)
       },
       onClick: () => openSki(it),
     };
@@ -217,9 +248,6 @@
         ctx.lineWidth = 1.6; ctx.strokeStyle = "#fff"; ctx.fill(); ctx.stroke();
         if (size >= 10) { ctx.fillStyle = "#fff"; ctx.font = "700 8px system-ui, sans-serif"; ctx.textAlign = "center";
           ctx.textBaseline = "middle"; ctx.fillText("P", x, y + 0.5); }
-        if (areaAlerts[a.id]?.length) {
-          ctx.beginPath(); ctx.arc(x, y, size * 0.95, 0, 2 * Math.PI); ctx.strokeStyle = "#b42318"; ctx.lineWidth = 2; ctx.stroke();
-        }
       },
       onClick: () => openSp(it),
     };
@@ -272,7 +300,7 @@
   // s is a SNOTEL triplet (766:UT:SNTL), asos:<id> (asos:SLC) or area:<id> (area:alta-ski-area).
   function readHash() {
     const q = new URLSearchParams(location.hash.replace(/^#/, ""));
-    const out = { v: q.get("v"), s: q.get("s"), o: q.get("o") };
+    const out = { v: q.get("v"), s: q.get("s"), o: q.get("o"), ly: q.get("ly") };
     const m = (q.get("map") || "").split("/").map(Number);
     if (m.length === 3 && m.every(Number.isFinite)) out.view = { zoom: m[0], center: [m[1], m[2]] };
     return out;
@@ -287,6 +315,8 @@
       `map=${map.getZoom()}/${c.lat.toFixed(4)}/${c.lng.toFixed(4)}`];
     if (selected) parts.push(`s=${encodeURIComponent(selected).replace(/%3A/gi, ":")}`);
     if (overlays.current()) parts.push(`o=${encodeURIComponent(overlays.current())}`);
+    const ly = currentLayers();
+    if (!isDefault(ly)) parts.push(`ly=${ly.join(",")}`);          // only when the layers differ from the defaults
     const h = `#${parts.join("&")}`;
     if (h !== location.hash) history.replaceState(null, "", h);
   }
@@ -395,6 +425,7 @@
     .map(([k, s]) => `<option value="${k}">${esc(s.label)}</option>`).join("");
   $("var-select").value = currentVar;
   $("var-select").addEventListener("change", (e) => {
+    if (!map.hasLayer(snotelLayer)) snotelLayer.addTo(map);                 // picking a SNOTEL variable = you want SNOTEL
     currentVar = e.target.value; drawSnotel(); writeHash();
   });
 
@@ -468,6 +499,44 @@
     points.setGroup("ski", items, { order: 2 });
     if (cat?.attribution) map.attributionControl.addAttribution(`Ski areas ${esc(cat.attribution)}`);
   }
+
+  // ---------------------------------------------------------------- NWS winter hazards panel + reset (dev13 item 2)
+  function drawHazards(s) {
+    const box = document.getElementById("hazards");
+    if (!box) return;
+    box.hidden = !map.hasLayer(hazardsLayer);
+    const lv = { warning: "Warning", watch: "Watch", advisory: "Advisory" };
+    let html = `<p class="hz-title">NWS winter hazards</p>`;
+    if (s.status === "loading") html += `<p class="hint">Loading the NWS hazards…</p>`;
+    else if (s.status === "ok" && s.active.length) {
+      html += `<ul class="hz-legend">${s.active.map((p) => `<li><i class="hz-sw ${esc(p.level)}" style="background:${esc(p.color)}"></i>
+        ${esc(p.name)} <span class="hint">(${p.n})</span></li>`).join("")}</ul>
+        <p class="hint">Outline: heavy = warning, dashed = watch, thin = advisory. Tap a shaded area for details.</p>`;
+    } else if (s.status === "ok") {
+      html += `<p>No active NWS winter watches, warnings or advisories in the West right now.</p>`;
+    } else if (s.status === "fallback") {
+      html += `<p class="snotel-note" role="status">The NWS hazard map is not showing: ${esc(s.reason)}. Active winter alerts from our alert index (NWS, api.weather.gov), by number of ski areas affected:</p>
+        ${s.fallback && s.fallback.length ? `<ul class="hz-legend">${s.fallback.map(([e, n]) => `<li>${esc(e)} <span class="hint">(${n})</span></li>`).join("")}</ul>`
+          : `<p class="hint">No winter alerts affecting ski areas in our index either.</p>`}
+        <p class="hint">See <a href="https://www.weather.gov/" target="_blank" rel="noopener">weather.gov</a> for the official maps.</p>`;
+    }
+    html += `<p class="hint">Source: NOAA/NWS watches, warnings and advisories${s.at ? ` · checked ${esc(localTime(s.at))}` : ""}.</p>`;
+    box.innerHTML = html;
+  }
+  hazardsLayer.on("add remove", () => drawHazards(hazards.state));
+  document.getElementById("reset-layers")?.addEventListener("click", () => {
+    try { localStorage.removeItem(LAYER_KEY); } catch { /* private mode */ }
+    layersReady = false;
+    for (const k of layerOrder) {
+      if (k === "ref") continue;
+      const on = LAYER_DEFAULTS.includes(k), has = map.hasLayer(ALL_LAYERS[k]);
+      if (on && !has) ALL_LAYERS[k].addTo(map); else if (!on && has) map.removeLayer(ALL_LAYERS[k]);
+    }
+    basemaps.setReferenceWanted?.(true);
+    overlays.set(null);
+    layersReady = true;
+    writeHash();
+  });
 
   // ---------------------------------------------------------------- search
   // One list of ski areas + SNOTEL + ASOS stations, matched on name or ID.
@@ -663,6 +732,7 @@
     writeHash();
     window.snowwx.ready = true;
     basemaps.loadReference();                   // roads/towns layer after the markers (basemap.js)
+    hazards.start();                            // NWS hazards after the first paint (hazards.js)
     // Warm the chart library once the map is idle, so the first station click is quick
     // without Plotly blocking the initial load.
     // Only after the first interaction (or 15 s): an idle-time prefetch competed with the base-map

@@ -40,7 +40,7 @@
       <a href="https://avalanche.org/" target="_blank" rel="noopener">avalanche center</a> before heading out.</p>
 
     <nav class="toc" aria-label="On this page">
-      <a href="#nbm">NBM forecasts</a> · <a href="#daily-snow">Snowfall by day</a> · <a href="#accumulated">Accumulated snow</a> · <a href="#snow-colors">Snowfall colours</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#forecast-map">Forecast map</a> · <a href="#powder-quality">Powder quality</a> ·
+      <a href="#nbm">NBM forecasts</a> · <a href="#daily-snow">Snowfall by day</a> · <a href="#accumulated">Accumulated snow</a> · <a href="#snow-colors">Snowfall colours</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#winter-hazards">Winter hazards layer</a> · <a href="#forecast-map">Forecast map</a> · <a href="#powder-quality">Powder quality</a> ·
       <a href="#snow-level">Snow level</a> · <a href="#elevation">Elevation</a> · <a href="#nws">NWS forecast</a> ·
 <a href="#snoparks">Sno-Parks</a> · <a href="#afd">Forecaster discussion</a> ·
       <a href="#sources">Data sources</a> · <a href="#disclaimer">Disclaimer</a>
@@ -148,6 +148,22 @@
       <p id="snow-type"><b>"Type" in Powder Finder and My mountains</b> uses a finer four-step version of the same idea
         (Wet/heavy below 8:1, Average 8–12, Dry/light 12–18, Very dry/blower 18 and up, from the 12-hour periods with at least
         half an inch of snow) and is also a heuristic; its thresholds live in the site configuration.</p>
+    </section>
+
+    <section id="winter-hazards">
+      <h3>NWS winter hazards layer and map defaults</h3>
+      <p>The obs map opens with the layers most useful in winter switched on: roads/towns/peaks, ski areas, Sno-Parks, avalanche
+        danger and the <b>NWS winter hazards</b>. SNOTEL, airport stations (ASOS) and the snow overlays are off until you turn them
+        on; your choices are remembered in this browser, a link can carry them, and "Reset map layers to defaults" restores the
+        opening view.</p>
+      <p>The hazards layer draws the <b>official NWS watch, warning and advisory areas</b> straight from NOAA/NWS's public map
+        service (mapservices.weather.noaa.gov), filtered to winter products: winter storm, winter weather, blizzard, ice storm,
+        snow squall, lake-effect snow, extreme cold / cold weather, freezing fog, high wind and wind advisories, and avalanche
+        watches, warnings and advisories. The list of products comes from the service's current product names. Outlines are
+        heavy for warnings, dashed for watches and thin for advisories; tap an area for the product, its expiry time and the issuing
+        NWS office. If the service does not respond (or answers with nothing while our own alert list has winter alerts) the map
+        says so and lists the active winter alerts from our alert index instead of showing a blank. Always check weather.gov and
+        your local avalanche center for the full, current information. Source: NOAA/NWS.</p>
     </section>
 
     <section id="forecast-map">

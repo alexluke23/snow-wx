@@ -73,12 +73,25 @@ monitoring:
     afd:       {max_failures: 3, max_age_hours: 6}
     avalanche: {max_failures: 3, max_age_hours: 6}
     asos:      {max_failures: 3, max_age_hours: 6}
+    hazards:   {max_failures: 3, max_age_hours: 6}
     snotel:    {max_failures: 3, max_age_hours: 6}     # NRCS updates hourly; outages are usually upstream
     # products made by models.yml jobs and merged at build time (age = the product's own generated_at)
     points:    {max_age_hours: 14}    # NBM points run 02/08/14/20 UTC (every 6 h) after a ~1.7 h model lag; two missed runs = 14 h
     ndfd:      {max_age_hours: 10}    # job every 3 h; NDFD itself updates hourly
     models:    {max_age_hours: 10}    # every 3 h (HRRR hourly cycles; newest model counts)
     nohrsc:    {max_age_hours: 30}    # snowfall analysis 6-hourly, SNODAS daily and late; unchanged runs keep the old time
+
+hazards:
+  # NWS winter hazards layer on the obs map (dev13 item 2). enabled: false removes the layer (reversible). The product LIST
+  # is built from the service's current product names (pipeline/hazards.py -> data/hazards.json) with these patterns; the
+  # browser draws the live official polygons and falls back to our own alerts index (with a notice) if the service fails.
+  enabled: true
+  service: "https://mapservices.weather.noaa.gov/eventdriven/rest/services/WWA/watch_warn_adv/MapServer"
+  layer: 1
+  include: ["winter storm", "winter weather", "blizzard", "ice storm", "freezing rain", "freezing drizzle", "snow squall",
+            "lake effect snow", "heavy snow", "wind chill", "extreme cold", "cold weather", "freezing fog", "high wind",
+            "wind advisory", "brisk wind", "lake wind", "avalanche"]
+  exclude: ["marine", "gale", "^storm warning", "hurricane", "freezing spray", "surf", "extreme wind"]
 
 archive:
   # Forecast archive for verification (docs/verification.md): monthly CSVs on this release.
