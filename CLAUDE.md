@@ -175,32 +175,17 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 17 2026, overnight run: fix-snotel finished, dev13 in progress; see the uncommitted dev13_report.md)**
-- dev13 item 3 done: NBM-native P(>=2") row in the area heat table + Finder chips for 24/48 h (none for 72 h, never derived).
-- dev13 item 4 done: one snow-ratio + powder-quality panel (Dense<10/Medium 10-15/Blower>=15 heuristic bands, wind marker); strip removed.
-- dev13 item 1 done: Finder state/region menus are linked with counts (disabled when empty), regions N->S, sort direction button + hash `dir`.
-- dev13 item 2 done: obs-map layer defaults/memory/`ly=` hash/Reset; NWS winter hazards layer (hazards.js + pipeline/hazards.py -> data/hazards.json; live official WWA polygons, fallback to alerts index, config hazards.enabled); red alert rings removed.
-- dev13 B1 (W3) partly done: pipeline/summary.py + config/summary_rules.yml + tests; `summary` in points JSON; area-card display. TODO: Finder rows, My mountains, meta description/OG, alert rule (needs summaries after alerts).
-- Branch `dev11` is pushed; the owner opens the PR (no `gh` CLI or token here; branches have no CI, only main/schedule run
-  the workflows). Contents: snow charts on native NBM windows ("Snowfall by day" p25–p75 bars, expected running total), NWS
-  snowfall colors site-wide (colors.js), no 7/10-day ranges (expected total only), **no composite ranges anywhere** (points
-  JSON `totals[...].native`, summary window `[6]`; front end shows a range only when native), partial-day labelling, SNOTEL
-  depth-change colors, strict points/ndfd cleanup (tests prove `points/layers/` and `ndfd/` are never touched).
-- Archive (docs/verification.md): `nbm_rows` builds det from the 12 h periods and p10/p50/p90 + P(≥X) from the native
-  `exceed` windows (24/48/72 h ending 12Z); it never reads `totals` ranges, so composite ranges are not in the monthly CSVs
-  (test `test_archive_rows_never_contain_composite_totals_ranges`). M9 needs no exclusion beyond that.
-- **NRCS AWDB (SNOTEL) outage since Nov 16 (upstream; whole host returns 502).** Branch `fix-snotel` handles it: fail-fast
-  probe (a down run costs ~2 s), last good copy ≤ 48 h flagged stale then "unavailable", auto-recovery, per-source history in
-  meta.json, status wording in `web/js/snotel-status.js`, PR workflow `.github/workflows/tests.yml`. Owner decisions Nov 17
-  implemented: previous copy restored from the live site (`pipeline restore`, `SITE_ORIGIN`/`site.origin`, W1 checklist in
-  docs/specs/hosting-seo.md), 24/72 h changes hidden when older than their window, per-source data-health issues
-  (`pipeline/monitor.py`, config `monitoring`, `monitor` job after the deploy; check `gh`-created issues are assigned and
-  e-mails reach the owner after the first failure). Open: independent "workflow did not run" check (spec 5.2c, heartbeat
-  service recommended, needs the owner's account/secret).
-- Next (PLAN §8.2 Sprint 1): SNOTEL fix + W5a pipeline monitoring and data-status page, W1 hosting prep (brand name and domain
-  not decided; configurable SITE_ORIGIN / DATA_ORIGIN, GitHub URLs as defaults), then W3 daily summaries (before W2), W2, W4.
-- Not started: storm-total tracker (PLAN §8.4), M7, M8 (ECMWF via Herbie `ifs`/`aifs`, attribution "© ECMWF, CC BY 4.0"),
-  M6, model-map NWS colors (§8.4), self-hosted PMTiles backup (§8.4).
+**Current state (Nov 17 2026, end of the overnight run; the uncommitted dev13_report.md has the full briefing)**
+- Branches pushed, not merged: `fix-snotel` (SNOTEL outage handling: fail-fast probe, last good copy ≤ 48 h flagged stale restored from the
+  live site via `pipeline restore`/`SITE_ORIGIN`, per-source history in meta.json, data-health GitHub issues via `pipeline/monitor.py`
+  and a `monitor` job, `simulate_failure` dispatch input, guarded heartbeat ping, `tests.yml` PR workflow) and `dev13` (on top of
+  fix-snotel: NBM-native P(≥2″) row, combined snow-ratio + powder-quality panel, linked Finder menus with counts, obs-map layer
+  defaults/memory/`ly=` hash + NWS winter hazards layer (`hazards.js`, `pipeline/hazards.py`, config `hazards.enabled`), W3 daily
+  summaries v1 (`pipeline/summary.py`, `config/summary_rules.yml`, area card only)).
+- NRCS AWDB (SNOTEL) outage since Nov 16 is upstream (whole host 502); the site shows stale/unavailable labels (PLAN §2 records the window).
+- Open: W3 summaries on Finder rows / My mountains / meta description; heartbeat secret `HEALTHCHECK_URL` (owner account needed);
+  "Blower" means ≥ 15:1 in the powder panel but ≥ 18:1 in the Finder "Type" column; Next per PLAN §8.2 (W5a analytics, W1 hosting prep, W2, W4).
+- Not started: storm-total tracker, M7, M8, M6, model-map NWS colors, PMTiles backup, resort-reported snowfall (licence), webcams (links first).
 
 **Reusable gotchas (earlier session log: docs/ARCHIVE.md)**
 - Lighthouse: `PATH=/c/miniforge3/envs/tools:$PATH npx -y lighthouse@12.6.1 URL --only-categories=performance,accessibility`
