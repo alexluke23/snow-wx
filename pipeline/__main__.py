@@ -90,9 +90,22 @@ def product_status(outdir: Path) -> dict:
     return out
 
 
+def with_history(entry: dict, prev: dict | None) -> dict:
+    """Per-source history for meta.json (W5a): last_success_at, consecutive_failures, outage_since. `prev` is
+    the source's previous meta entry (None on a fresh runner: history then restarts, see PLAN §2)."""
+    prev = prev or {}
+    at = entry.get("at")
+    if entry.get("ok"):
+        return {**entry, "last_success_at": at, "consecutive_failures": 0}
+    return {**entry, "last_success_at": prev.get("last_success_at"),
+            "consecutive_failures": int(prev.get("consecutive_failures") or 0) + 1,
+            "outage_since": prev.get("outage_since") or at}
+
+
 def run_obs(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
     session = make_session(cfg)
     status = {}
+    prev_sources = read_meta(outdir).get("sources") or {}
     for name, func in SOURCES.items():
         if only and name not in only:
             continue
@@ -104,9 +117,11 @@ def run_obs(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
             status[name] = {"ok": True, **info}
         except Exception as exc:
             logging.getLogger("snow-wx").exception("%s failed", name)
-            status[name] = {"ok": False, "error": str(exc)[:300]}
+            # a source may attach details (SNOTEL: stale / unavailable, ages) to its exception
+            status[name] = {"ok": False, "error": str(exc)[:300], **(getattr(exc, "status", None) or {})}
         status[name]["seconds"] = round(time.time() - t0, 1)
         status[name]["at"] = utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        status[name] = with_history(status[name], prev_sources.get(name))
 
     write_meta(cfg, outdir, status)
     ok = [n for n, s in status.items() if s["ok"]]
