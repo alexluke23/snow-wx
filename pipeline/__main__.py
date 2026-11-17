@@ -119,6 +119,8 @@ def run_obs(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
             continue
         t0 = time.time()
         try:
+            if os.environ.get("SIMULATE_FAILURE") == name and name != "snotel":      # workflow_dispatch test input
+                raise RuntimeError("simulated failure (SIMULATE_FAILURE)")
             info = func(cfg, session, outdir)
             status[name] = {"ok": True, **info}
         except Exception as exc:
