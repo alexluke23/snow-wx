@@ -177,6 +177,7 @@ Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-
 
 **Current state (Nov 17 2026, overnight run: fix-snotel finished, dev13 in progress; see the uncommitted dev13_report.md)**
 - dev13 item 3 done: NBM-native P(>=2") row in the area heat table + Finder chips for 24/48 h (none for 72 h, never derived).
+- dev13 item 4 done: one snow-ratio + powder-quality panel (Dense<10/Medium 10-15/Blower>=15 heuristic bands, wind marker); strip removed.
 - Branch `dev11` is pushed; the owner opens the PR (no `gh` CLI or token here; branches have no CI, only main/schedule run
   the workflows). Contents: snow charts on native NBM windows ("Snowfall by day" p25–p75 bars, expected running total), NWS
   snowfall colors site-wide (colors.js), no 7/10-day ranges (expected total only), **no composite ranges anywhere** (points

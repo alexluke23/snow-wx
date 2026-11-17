@@ -350,6 +350,18 @@ def check_charts(b: Browser, base: str, log):
         need(st["days"] >= 8 and st["bars"] == st["days"] and st["ticks"] == 0 and st["legend"] and st["bad"] == 0,
              f"{area}: daily snowfall chart wrong: {st}")
         need(len(st["labels"]) == st["days"], f"{area}: every day needs a low–high label: {st['labels']}")
+        # dev13 item 4: ONE snow-ratio + powder-quality panel (>= 260 px), no strip, powder bands + labels, p50 line only when snowing
+        pq = b.eval("""(() => { const el = document.getElementById('slr-chart'); const L = el.layout || {};
+          const anns = (L.annotations || []).map(a => a.text || '');
+          return {h: el.getBoundingClientRect().height, strip: !!document.getElementById('snow-type-strip'),
+                  bands: (L.shapes || []).filter(s => s.fillcolor && s.xref === 'paper').length,
+                  labels: ['Dense', 'Medium', 'Blower'].every(n => anns.some(t => t.includes(n))),
+                  slider: !!(L.xaxis && L.xaxis.rangeslider && L.xaxis.rangeslider.visible),
+                  summary: (el.previousElementSibling || {}).textContent || '', table: !!document.querySelector('#slr-chart + .chart-table')}; })()""")
+        log(f"  charts {area}: powder panel {pq}")
+        need(pq["h"] >= 260 and not pq["strip"] and pq["bands"] == 3 and pq["labels"] and not pq["slider"] and pq["table"],
+             f"{area}: combined snow-ratio/powder panel: {pq}")
+        need("heuristic" in pq["summary"] or "No snow" in pq["summary"], f"{area}: powder summary must say heuristic: {pq['summary'][:100]}")
         # dev13 item 3: the heat table lists NBM's native >=2" row for 24 h (and not for 72 h)
         rows = b.eval("""(async () => { const out = {}; for (const w of ['24h', '72h']) {
           const btn = document.querySelector(`#ex-win [data-w="${w}"]`); if (!btn) continue; btn.click(); await new Promise(r => setTimeout(r, 700));
