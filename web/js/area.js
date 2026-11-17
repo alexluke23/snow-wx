@@ -88,13 +88,15 @@
   function tiles(fc, pt, elev) {
     const P = fc.points[pt];
     const cell = (name, label) => {
-      const t = P.totals[name];
+      let t = P.totals[name];
       if (!t) return "";
       const c = colorFor(SNOWFALL, t.snow_in) || "#f4f6f8";
+      const long = name === "7d" || name === "10d";        // no range beyond 72 h (owner Nov 16): expected total only
+      if (long) { t = { ...t, snow_lo: null, snow_hi: null }; }
       const note = outside(t) ? ` <a class="info" href="about.html#nbm" title="${esc(SEPARATE)}" aria-label="Why the ranges can disagree">ⓘ</a>` : "";
       return `<div class="tile${t.extended ? " ext" : ""}"><span class="label">${label}</span>
-        <span class="swatch" style="background:${c}"></span><strong>${inches(t.snow_in)}<small> in</small></strong>
-        <span class="rng">${t.snow_hi === null || t.snow_hi === undefined ? "NWS: no range" : `${rangeName(t)}: ${range(t.snow_lo, t.snow_hi)}${note}`}</span>
+        <span class="swatch${snowPale(c) ? " pale" : ""}" style="background:${c}"></span><strong>${inches(t.snow_in)}<small> in</small></strong>
+        <span class="rng">${long ? "expected total only" : t.snow_hi === null || t.snow_hi === undefined ? "NWS: no range" : `${rangeName(t)}: ${range(t.snow_lo, t.snow_hi)}${note}`}</span>
         <span class="rng liquid">${(t.qpf_in ?? 0).toFixed(2)} in liquid</span></div>`;
     };
     const head = P.raw
@@ -144,128 +146,146 @@
     el.removeAttribute("role");               // a real table: keep its own semantics
   }
 
-  /** The day/night chart's one-sentence summary: data only, so it can be shown before Plotly loads. */
-  function periodSummary(fc, pt) {
-    const per = fc.points[pt].periods;
-    const tot = fc.points[pt].totals["10d"] || fc.points[pt].totals["7d"] || fc.points[pt].totals["72h"];
-    const big = per.reduce((b, p) => ((p.snow_in ?? 0) > (b?.snow_in ?? 0) ? p : b), null);
-    return big && big.snow_in >= 0.5
-      ? `Snowiest period: ${big.label} (${big.local}), expected ${inches(big.snow_in)} in${big.snow_hi !== null && big.snow_hi !== undefined ? ` (${range(big.snow_lo, big.snow_hi)})` : ""}. Total over ${per.length / 2} days: ${inches(tot?.snow_in)} in.`
-      : `Little or no snow in any day or night period of the next ${Math.round(per.length / 2)} days.`;
+  // ---- Snowfall by day (owner S11) ----
+  // 12Z-12Z days (~4-5 AM local). NBM view: a floating bar from NBM's own 25th to 75th percentile for
+  // that 24-h window (the "likely" middle half), coloured by its median with the NWS snowfall colours,
+  // labelled "low–high″". Percentiles come only from one native NBM window, never added together, so
+  // a short first day or a day past the percentile data shows the expected amount instead (hatched
+  // grey). NWS view: NDFD's amounts, one solid bar per day.
+  const hasV = (v) => v !== null && v !== undefined;
+  const MUTED_IN = 0.5;                     // likely high below ~0.5 in: muted, no colour
+  function dayRange(d) {                    // "6–12″", "1–3″", "<1″", "4″"
+    const lo = Math.round(d.snow_p25), hi = Math.round(d.snow_p75);
+    if (d.snow_p75 < MUTED_IN) return "0″";
+    if (hi <= 1 && lo === 0) return "<1″";
+    return lo === hi ? `${hi}″` : `${lo}–${hi}″`;
   }
-
-  // Plain-language range text (owner S10): "expected 2 in, likely 1–3, could reach 8"
-  function rangeWords(t) {
-    const has = (v) => v !== null && v !== undefined;
-    if (!has(t?.snow_in)) return "no forecast";
-    if ((t.snow_hi ?? t.snow_in) < 0.5) return "little or no snow expected";
-    let s = `expected ${inches(t.snow_in)} in`;
-    if (has(t.snow_q1) && has(t.snow_q3)) s += `, likely ${range(t.snow_q1, t.snow_q3).replace(" in", "")}`;
-    if (has(t.snow_hi) && t.snow_hi >= 0.5) s += `, could reach ${Math.round(t.snow_hi)}`;
-    return `${s} in`;
+  const dayAmount = (v) => (!hasV(v) ? "–" : v < 0.5 ? (v < 0.05 ? "0″" : "<1″") : `${Math.round(v)}″`);
+  function dayWords(d, nws) {
+    if (nws) return hasV(d.snow_in) ? `NWS forecast: ${d.snow_in < 0.05 ? "no snow" : `${plain(d.snow_in)} in`}` : "no forecast";
+    if (hasV(d.snow_p25) && hasV(d.snow_p75)) {
+      return d.snow_p75 < MUTED_IN ? "Little or no snow likely (NBM's middle half of outcomes is under ½ in)"
+        : `Likely ${dayRange(d).replace("″", "")} in — the middle half of NBM's outcomes`;
+    }
+    return d.partial ? `Partial day (${d.hours} h) — expected amount, no range: ${plain(d.snow_in)} in`
+      : `No NBM range for this day — expected amount: ${plain(d.snow_in)} in`;
   }
-  const RANGE_LIGHT = "#cfe0f3", RANGE_MID = "#7fa9d6", EXP_TICK = "#0b2a55";
-
-  function periodChart(el, fc, pt, tz) {
-    const per = fc.points[pt].periods;
-    const x = per.map((p, i) => i);
-    const y = per.map((p) => p.snow_in ?? 0);
-    const has = (v) => v !== null && v !== undefined;
-    // two-tone range bars (owner S10): 10-90 % light, 25-75 % ("likely") darker, expected = bold tick.
-    // The range is NBM's probabilistic guidance, the tick NBM's deterministic amount: calibrated
-    // separately, so a tick may sit outside its bar (owner S3).
-    const lo = per.map((p) => (has(p.snow_lo) && has(p.snow_hi) ? p.snow_lo : null));
-    const hi = per.map((p) => (has(p.snow_lo) && has(p.snow_hi) ? p.snow_hi : null));
-    const q1 = per.map((p) => (has(p.snow_q1) && has(p.snow_q3) ? p.snow_q1 : null));
-    const q3 = per.map((p) => (has(p.snow_q1) && has(p.snow_q3) ? p.snow_q3 : null));
-    const ticks = per.map((p, i) => [i, p]).filter(([, p]) => p.is_day);
-    const hover = per.map((p) =>
-      `<b>${esc(p.label)}</b> (${esc(p.local)})<br>${esc(rangeWords(p))}` +
-      (outside(p) ? `<br><i>${SEPARATE.replace("so the", "<br>so the")}</i>` : "") +
-      `<br>Liquid ${p.qpf_in ?? "–"} in${has(p.pop) ? ` · chance of precip ${Math.round(p.pop * 100)}%` : ""}` +
-      (p.type ? `<br>${TYPE_LABEL[p.type] || p.type}` : "") +
-      (p.snow_type ? `<br>Snow type: ${esc(p.snow_type.label)}${p.snow_type.wind ? ", wind-affected" : ""}` : "") +
-      (p.snowlvl_min_ft ? `<br>Snow level down to ${ft(p.snowlvl_min_ft)}` : "") +
-      (p.extended ? "<br><i>Extended outlook (hatched): derived range</i>" : ""));
-    const firstExt = per.findIndex((p) => p.extended);
-    const shapes = firstExt >= 0 ? [{ type: "rect", xref: "x", yref: "paper", x0: firstExt - 0.5, x1: per.length - 0.5,
-      y0: 0, y1: 1, fillcolor: "rgba(120,130,150,0.07)", line: { width: 0 }, layer: "below" }] : [];
-    const labels = per.map((p, i) => (y[i] >= 0.5 ? { x: i, y: Math.max(y[i], hi[i] ?? 0), yanchor: "bottom",
-      yshift: 3, text: inches(y[i]), showarrow: false, font: C.font(12, C.INK) } : null)).filter(Boolean);
-    const annotations = [C.axisTitle("Snow (in)"), ...labels,
-      ...(firstExt >= 0 ? [{ xref: "x", yref: "paper", x: firstExt - 0.4, y: 1, xanchor: "left", yanchor: "bottom", yshift: 4,
-        text: "Extended outlook (hatched)", showarrow: false, font: C.font(12, C.MUTED) }] : [])];
-    const top = Math.max(1, ...per.map((p, i) => Math.max(y[i], hi[i] ?? 0)));
-    const two = C.narrow(el.clientWidth - C.MARGIN.l - C.MARGIN.r, ticks.length);
-    const op = per.map((p) => (p.is_day ? 1 : 0.7));
+  function daySummary(fc, pt, nws) {
+    const days = fc.points[pt].days || [];
+    const tot = fc.points[pt].totals || {};
+    const total = tot["10d"] || tot["7d"] || tot["72h"];
+    const key = (d) => (nws || !hasV(d.snow_p75) ? d.snow_in ?? 0 : d.snow_p75);
+    const big = days.reduce((b, d) => (key(d) > (b ? key(b) : 0) ? d : b), null);
+    const span = tot["10d"] ? "10 days" : tot["7d"] ? "7 days" : "72 hours";
+    const part = !nws && days.length && days[0].partial && !hasV(days[0].snow_p75) ? ` First day: partial day — expected amount ${dayAmount(days[0].snow_in)}, no range.` : "";
+    const totTxt = total && hasV(total.snow_in) ? ` ${nws ? "NWS total" : "Expected total"} over ${span}: ${inches(total.snow_in)} in.` : "";
+    if (!big || key(big) < MUTED_IN) return `Little or no snow on any day in the next ${days.length} days.${totTxt}${part}`;
+    return `Snowiest day: ${big.label} (${big.local}) — ${nws ? `${inches(big.snow_in)} in (NWS)` : hasV(big.snow_p75)
+      ? `likely ${dayRange(big).replace("″", "")} in` : `expected ${inches(big.snow_in)} in`}.${totTxt}${part}`;
+  }
+  function periodChart(el, fc, pt, tz, nws = false) {
+    const days = fc.points[pt].days || [];
+    if (!days.length) { el.innerHTML = `<p class="hint">No daily snowfall data in this forecast file yet.</p>`; return false; }
+    const x = days.map((d, i) => i);
+    const ranged = days.map((d) => !nws && hasV(d.snow_p25) && hasV(d.snow_p75));
+    const muted = days.map((d, i) => (ranged[i] ? d.snow_p75 < MUTED_IN : (d.snow_in ?? 0) < MUTED_IN));
+    // bar geometry: NBM = p25..p75 (at least 0.25 in tall so a narrow range stays visible); NWS and
+    // days without a native range = 0..amount
+    const minH = 0.25;
+    const base = days.map((d, i) => (muted[i] ? null : ranged[i] ? d.snow_p25 : 0));
+    const top = days.map((d, i) => (muted[i] ? null : ranged[i] ? Math.max(d.snow_p75, d.snow_p25 + minH) : d.snow_in));
+    const colorOf = (d, i) => (!ranged[i] && !nws ? "#c9ced6"
+      : colorFor(SNOWFALL, ranged[i] ? (hasV(d.snow_p50) ? d.snow_p50 : (d.snow_p25 + d.snow_p75) / 2) : d.snow_in) || "#ffffff");
+    const colors = days.map(colorOf);
+    const text = days.map((d, i) => (ranged[i] ? dayRange(d) : (nws || muted[i]) ? dayAmount(d.snow_in) : `~${dayAmount(d.snow_in)}`));
+    const hover = days.map((d, i) => `<b>${esc(d.label)}</b> (${esc(d.local)})<br>${esc(dayWords(d, nws))}` +
+      (ranged[i] && hasV(d.snow_p50) && !muted[i] ? `<br>Median ${plain(d.snow_p50)} in` : "") +
+      `<br>Liquid ${d.qpf_in ?? "–"} in${hasV(d.pop) ? ` · chance of precip ${Math.round(d.pop * 100)}%` : ""}`);
+    const ymax = Math.max(1, ...top.map((v) => v ?? 0));
+    const labels = days.map((d, i) => ({ x: i, y: muted[i] ? 0 : top[i], yanchor: "bottom", yshift: 3, text: text[i], showarrow: false,
+      font: C.font(12, muted[i] || (!ranged[i] && !nws) ? C.MUTED : C.INK) }));
+    const two = C.narrow(el.clientWidth - C.MARGIN.l - C.MARGIN.r, days.length);
     C.plot(el, [
-      { type: "bar", x, base: lo, y: hi.map((h, i) => (h === null ? null : h - lo[i])), width: 0.66, hoverinfo: "skip",
-        marker: { color: RANGE_LIGHT, opacity: op, line: { color: "#8aa6c8", width: 0.8 },
-          pattern: { shape: per.map((p) => (p.extended ? "/" : "")), fgcolor: "rgba(30,40,60,0.5)", size: 6, solidity: 0.25 } } },
-      { type: "bar", x, base: q1, y: q3.map((h, i) => (h === null ? null : h - q1[i])), width: 0.66, hoverinfo: "skip",
-        marker: { color: RANGE_MID, opacity: op, line: { width: 0 } } },
-      { type: "scatter", mode: "markers", x, y, hovertext: hover, hoverinfo: "text",
-        marker: { symbol: "line-ew", size: 22, line: { width: 4, color: EXP_TICK }, color: EXP_TICK } },
-    ], C.layout(260, { hovermode: "closest", barmode: "overlay", bargap: 0.2, shapes, annotations, margin: { b: two ? 46 : C.MARGIN.b },
-      yaxis: C.yaxis({ rangemode: "tozero", range: [0, top * 1.18] }),
-      xaxis: { fixedrange: true, tickfont: C.font(C.tick()), tickvals: ticks.map(([i]) => i), tickangle: 0, ticks: "", range: [-0.6, per.length - 0.4],
-               ticktext: ticks.map(([, p]) => C.dayName(C.wall(p.start, tz).slice(0, 10), two)) } }));
-    C.summary(el, periodSummary(fc, pt));
-    C.tableToggle(el, `Snowfall by day and night (${POINT_LABEL[pt].toLowerCase()})`,
-      ["Period", "Local time", "Expected (in)", "Likely (25–75%)", "Range (10–90%)", "Snow type", "Chance of precip"],
-      per.map((p) => [p.label, p.local, plain(p.snow_in), has(p.snow_q1) ? range(p.snow_q1, p.snow_q3) : "–",
-        has(p.snow_hi) ? range(p.snow_lo, p.snow_hi) : "–", p.snow_type ? `${p.snow_type.label}${p.snow_type.wind ? " (wind)" : ""}` : "–",
-        has(p.pop) ? `${Math.round(p.pop * 100)}%` : "–"]));
-    return firstExt >= 0;
+      { type: "bar", x, base, y: top.map((t, i) => (t === null ? null : t - base[i])), width: 0.62, hovertext: hover, hoverinfo: "text",
+        marker: { color: colors, line: { color: "rgba(20,32,46,0.55)", width: 1 },
+          pattern: { shape: days.map((d, i) => (!ranged[i] && !nws ? "/" : "")), fgcolor: "rgba(30,40,60,0.45)", size: 6, solidity: 0.2 } } },
+      // invisible full-height hover targets so muted days still answer a tap
+      { type: "bar", x, y: days.map(() => ymax * 1.1), width: 0.9, marker: { color: "rgba(0,0,0,0)" }, hovertext: hover, hoverinfo: "text" },
+    ], C.layout(260, { hovermode: "closest", barmode: "overlay", bargap: 0.2, margin: { b: two ? 46 : C.MARGIN.b },
+      annotations: [C.axisTitle(nws ? "Snow (in), NWS" : "Likely snow (in), 25–75%"), ...labels],
+      yaxis: C.yaxis({ rangemode: "tozero", range: [0, ymax * 1.22] }),
+      xaxis: { fixedrange: true, tickfont: C.font(C.tick()), tickvals: x, tickangle: 0, ticks: "", range: [-0.6, days.length - 0.4],
+               ticktext: days.map((d) => C.dayName(C.wall(d.start, tz).slice(0, 10), two)) } }));
+    C.summary(el, daySummary(fc, pt, nws));
+    el.parentElement.querySelector(".snow-legend")?.remove();      // so tableToggle finds its own toggle again
+    C.tableToggle(el, `Snowfall by day (${POINT_LABEL[pt].toLowerCase()})`,
+      nws ? ["Day", "Local time", "NWS snow (in)", "Liquid (in)"]
+        : ["Day", "Local time", "Likely (25–75%)", "Median (in)", "Expected (in)", "Chance of precip"],
+      days.map((d, i) => (nws ? [d.label, d.local, plain(d.snow_in), d.qpf_in ?? "–"]
+        : [d.label, d.local, ranged[i] ? dayRange(d) : "–", ranged[i] ? plain(d.snow_p50) : "–", plain(d.snow_in),
+          hasV(d.pop) ? `${Math.round(d.pop * 100)}%` : "–"])));
+    // colour legend directly under the chart (before the table toggle)
+    el.insertAdjacentHTML("afterend", snowLegendHtml(ymax, { minTop: 18, cls: "chart-legend", partial: !nws && days.some((d, i) => !ranged[i] && d.partial) }));
+    return days.some((d, i) => !ranged[i] && !nws);
   }
 
-  /** Accumulated snow (owner S10): cumulative expected snowfall over the forecast, with uncertainty
-   *  only where it is defensible: NBM's own 24/48/72-h ranges and our 7/10-day totals as
-   *  checkpoint range bars. Period percentiles are never summed into a running band. */
-  function accumChart(el, fc, pt, tz) {
-    const P = fc.points[pt], pr = P.precip, T = P.totals || {};
-    const has = (v) => v !== null && v !== undefined;
-    // the running total of the day/night periods (the bars above), so it agrees with the totals
-    const per = P.periods || [];
-    const t0 = new Date(per.length ? per[0].start : pr.end[0]).getTime();
+  /** Accumulated snow (owner S11): NBM's expected snowfall piling up, one bar per day on the same
+   *  12Z-12Z days as "Snowfall by day", each labelled with the running total. No probabilistic
+   *  ranges here. The chart ends exactly at the 10-day total's horizon (a short last step when that
+   *  falls mid-day), so its last bar equals the "Next 10 days" amount. NWS view: NDFD's days (72 h). */
+  function accumSteps(fc, pt) {
+    const P = fc.points[pt], days = P.days || [], T = P.totals || {};
+    const tot = T["10d"] || T["7d"] || T["72h"];
+    const L = T["10d"] ? 240 : T["7d"] ? 168 : 72;
+    const end = tot && tot.from ? new Date(tot.from).getTime() + L * 3.6e6 : Infinity;
+    const steps = [];
     let run = 0;
-    const xs = [C.wall(t0, tz)], ys = [0];
-    per.forEach((p) => { run += p.snow_in ?? 0; xs.push(C.wall(p.end, tz)); ys.push(Math.round(run * 10) / 10); });
-    const ax = C.timeAxis(xs[0], xs[xs.length - 1], el.clientWidth - C.MARGIN.l - 56);
-    const shapes = [...ax.shapes], annotations = [C.axisTitle("Accumulated snow (in)")];
-    const cps = [["24h", 24, "24 h"], ["48h", 48, "48 h"], ["72h", 72, "72 h"], ["7d", 168, "7 d"], ["10d", 240, "10 d"]]
-      .filter(([k]) => T[k] && has(T[k].snow_in));
-    const half = 4 * 3.6e6;
-    let top = Math.max(1, run);
-    const cpx = [], cpy = [], cpText = [];
-    for (const [k, L, lab] of cps) {
-      const t = T[k], from = new Date(t.from || pr.end[0]).getTime(), xm = from + L * 3.6e6;
-      const x0 = C.wall(xm - half, tz), x1 = C.wall(xm + half, tz);
-      if (has(t.snow_lo) && has(t.snow_hi)) {
-        shapes.push({ type: "rect", xref: "x", yref: "y", x0, x1, y0: t.snow_lo, y1: t.snow_hi, fillcolor: RANGE_LIGHT, line: { color: "#8aa6c8", width: 0.8 } });
-        top = Math.max(top, t.snow_hi);
-      }
-      if (has(t.snow_q1) && has(t.snow_q3)) shapes.push({ type: "rect", xref: "x", yref: "y", x0, x1, y0: t.snow_q1, y1: t.snow_q3, fillcolor: RANGE_MID, line: { width: 0 } });
-      cpx.push(C.wall(xm, tz)); cpy.push(t.snow_in);
-      cpText.push(`<b>Next ${lab}</b>: ${esc(rangeWords(t))}${k === "7d" || k === "10d" ? "<br><i>Range built from NBM windows added rank by rank (slightly too wide)</i>" : ""}`);
-      if (!(k === "48h" && C.small())) {       // phones: 24 h and 72 h are too close for a third label
-        annotations.push({ x: C.wall(xm, tz), y: Math.max(t.snow_in, t.snow_hi ?? 0), xref: "x", yref: "y", yanchor: "bottom", yshift: 2,
-          text: lab, showarrow: false, font: C.font(12, C.MUTED) });
+    for (const d of days) {
+      const e = new Date(d.end).getTime();
+      if (e <= end) {
+        run += d.snow_in ?? 0;
+        steps.push({ d, add: d.snow_in ?? 0, run, end: d.end, cut: false });
+      } else if (tot && hasV(tot.snow_in) && new Date(d.start).getTime() < end) {
+        steps.push({ d, add: Math.max(0, tot.snow_in - run), run: tot.snow_in, end: new Date(end).toISOString(), cut: true });
+        run = tot.snow_in;
+        break;
       }
     }
+    return { steps, tot, span: T["10d"] ? "10 days" : T["7d"] ? "7 days" : "72 hours" };
+  }
+  function accumSummary(fc, pt, nws) {
+    const { steps, tot, span } = accumSteps(fc, pt);
+    const final = tot && hasV(tot.snow_in) ? tot.snow_in : steps.length ? steps[steps.length - 1].run : 0;
+    if (final < 0.5) return `Little or no snow expected over the next ${span}.`;
+    const big = steps.reduce((b, x) => (x.add > (b ? b.add : 0) ? x : b), null);
+    return `${nws ? "NWS total" : "Expected total"} over the next ${span}: ${inches(final)} in` +
+      (big && big.add >= 0.5 ? `, most on ${big.d.label} (+${inches(big.add)} in).` : ".");
+  }
+  function accumChart(el, fc, pt, tz, nws = false) {
+    const { steps } = accumSteps(fc, pt);
+    if (!steps.length) { el.innerHTML = `<p class="hint">No daily snowfall data in this forecast file yet.</p>`; return; }
+    const x = steps.map((s, i) => i);
+    const y = steps.map((s) => Math.round(s.run * 10) / 10);
+    const endTxt = (s) => new Date(s.end).toLocaleString([], { weekday: "short", hour: "numeric", timeZone: tz });
+    const hover = steps.map((s) => `<b>By ${esc(endTxt(s))}</b>: ${plain(s.run)} in ${nws ? "(NWS)" : "expected"}` +
+      `<br>${esc(s.d.label)}${s.cut ? ` (to ${esc(endTxt(s))}, end of the ${nws ? "forecast" : "10-day total"})` : ""}: +${plain(s.add)} in`);
+    const ymax = Math.max(1, ...y);
+    const labels = steps.map((s, i) => ({ x: i, y: y[i], yanchor: "bottom", yshift: 3, showarrow: false,
+      text: y[i] < 0.5 ? "0″" : `${Math.round(y[i])}″`, font: C.font(12, y[i] < 0.5 ? C.MUTED : C.INK) }));
+    const two = C.narrow(el.clientWidth - C.MARGIN.l - C.MARGIN.r, steps.length);
+    const colors = y.map((v) => colorFor(SNOWFALL, v) || "#ffffff");
     C.plot(el, [
-      { x: xs, y: ys, mode: "lines", line: { color: EXP_TICK, width: 2.4 }, name: "Expected",
-        hovertemplate: "%{y:.1f} in expected by then<extra></extra>" },
-      { x: cpx, y: cpy, mode: "markers", marker: { symbol: "line-ew", size: 18, line: { width: 4, color: EXP_TICK } },
-        hovertext: cpText, hoverinfo: "text" },
-    ], C.layout(240, { margin: { r: 56, b: ax.b }, shapes, annotations, xaxis: ax.axis, hovermode: "closest",
-      yaxis: C.yaxis({ range: [0, top * 1.15] }) }));
-    const t72 = T["72h"], t10 = T["10d"] || T["7d"];
-    C.summary(el, run < 0.5 ? `Little or no snow expected over the next ${Math.round(per.length / 2)} days.`
-      : `${t72 ? `Next 72 h: ${rangeWords(t72)}. ` : ""}${t10 ? `${T["10d"] ? "10 days" : "7 days"}: ${rangeWords(t10)}.` : ""}`);
-    C.tableToggle(el, "Accumulated snow checkpoints", ["Window", "Expected (in)", "Likely (25–75%)", "Range (10–90%)"],
-      cps.map(([k, , lab]) => [`Next ${lab}`, plain(T[k].snow_in), has(T[k].snow_q1) ? range(T[k].snow_q1, T[k].snow_q3) : "–",
-        has(T[k].snow_hi) ? range(T[k].snow_lo, T[k].snow_hi) : "–"]));
+      { type: "bar", x, y, width: steps.map((s) => (s.cut ? 0.36 : 0.62)), hovertext: hover, hoverinfo: "text",
+        marker: { color: colors, line: { color: "rgba(20,32,46,0.55)", width: 1 } } },
+    ], C.layout(240, { hovermode: "closest", bargap: 0.2, margin: { b: two ? 46 : C.MARGIN.b },
+      annotations: [C.axisTitle(nws ? "Running total (in), NWS" : "Expected running total (in)"), ...labels],
+      yaxis: C.yaxis({ rangemode: "tozero", range: [0, ymax * 1.2] }),
+      xaxis: { fixedrange: true, tickfont: C.font(C.tick()), tickvals: x, tickangle: 0, ticks: "", range: [-0.6, steps.length - 0.4],
+               ticktext: steps.map((s) => C.dayName(C.wall(s.d.start, tz).slice(0, 10), two) + (s.cut && !two ? "*" : "")) } }));
+    C.summary(el, accumSummary(fc, pt, nws));
+    C.tableToggle(el, `Accumulated snow (${POINT_LABEL[pt].toLowerCase()})`,
+      ["Day", "Until", `That day (in)`, `Running total (in)`],
+      steps.map((s) => [s.d.label, endTxt(s), plain(s.add), plain(s.run)]));
   }
 
   /** Snow ratio (owner S10): NBM snow-to-liquid ratio with its 10-90 % band, solid where
@@ -752,13 +772,12 @@
       <p class="fresh" id="fresh"></p>
       <div class="sec-head seg-row">${srcSeg}<span id="elev-seg"></span></div>
       <div id="tiles"></div>
-      <section><h3>Snowfall by day and night</h3>
+      <section><h3>Snowfall by day</h3>
         <div class="chart" id="period-chart" style="height:260px"><p class="hint">Loading chart…</p></div>
         <p class="note" id="period-note"></p></section>
       <section><h3>Accumulated snow</h3>
         <div class="chart" id="acc-chart" style="height:240px"><p class="hint">Loading chart…</p></div>
-        <p class="note">The line is the expected snow piling up over time. Bars at 24 h, 48 h and 72 h are NBM's own ranges for
-          those windows (dark = likely, 25–75%; light = 10–90%); the 7- and 10-day bars add NBM windows together and run a little wide.</p></section>
+        <p class="note" id="acc-note"></p></section>
       <section><h3>Snow ratio and snow type <a class="info" href="about.html#snow-type" title="A simple heuristic from NBM's snow-to-liquid ratio: Wet/heavy below 8:1, Average 8–12, Dry/light 12–18, Very dry/blower 18 and up; wind-affected when summit gusts are high while it snows. Not a measurement." aria-label="How the snow type works">ⓘ</a></h3>
         <div class="chart" id="slr-chart" style="height:220px"><p class="hint">Loading chart…</p></div>
         <ul class="snow-type-strip" id="snow-type-strip" aria-label="Snow type by period"></ul>
@@ -836,10 +855,17 @@
           pt = btn.dataset.pt; drawNumbers(); drawCharts();
         }));
         $("tiles").innerHTML = tiles(d, pt, d.points[pt].elev_ft);
-        const dayLocal = d.points[pt].periods.find((p) => p.is_day)?.local || "about 5 AM–5 PM";
-        $("period-note").textContent = src === "nws"
-          ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), shown as issued: snowfall to 72 h already includes the forecasters' rain/snow decisions. Days are 12Z–00Z (${dayLocal}).`
-          : `Bold ticks: expected snowfall (NBM's deterministic forecast, an average of possible outcomes; they add up to the totals). Bars: NBM's own snowfall range — dark = likely (25–75%), light = 10–90%. Only when the newest NBM run lacks them does a "derived range (fallback)" appear (25–75% of precipitation × snow ratio × chance of snow). NBM calibrates these separately, so a tick can sit outside its bar. Days are 12Z–00Z (${dayLocal}); night bars are lighter and unlabelled.${d.points[pt].periods.some((p) => p.extended) ? " Hatched bars = extended outlook (derived range)." : ""}`;
+        // "4 AM PST": when the 12Z-12Z days start locally (from the first whole day's label)
+        const dayLocal = ((d.points[pt].days || []).find((x) => !x.partial)?.local || "Mon 5 AM").split(" – ")[0].replace(/^\S+ /, "")
+          + ` ${tzName(tz)}`;
+        $("period-note").innerHTML = src === "nws"
+          ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), shown as issued (snowfall to 72 h): one bar per day, coloured with the NWS snowfall colours. Days run from about ${dayLocal} to ${dayLocal}.`
+          : `Each bar is NBM's <b>likely range</b> for that day: the middle half (25th–75th percentile) of its possible outcomes for the 24 hours from about ${dayLocal}, coloured by the median with the NWS snowfall colours. Greyed days: little or no snow likely. NBM gives these percentiles only for whole 24-hour windows, so a short first day${(d.points[pt].days || []).some((x) => !x.partial && x.snow_p25 === null) ? " and days past NBM's percentile data show" : " shows"} the expected amount instead (hatched grey). <a href="about.html#daily-snow">How it works →</a>`;
+        if ($("acc-note")) $("acc-note").textContent = src === "nws"
+          ? "The NWS forecast's snowfall added up day by day (to 72 hours), same days as the chart above."
+          : "NBM's expected snowfall added up day by day, on the same days as the chart above; the label on each bar is the running total. "
+            + "It ends where the 10-day total ends (a narrower last bar when that falls mid-day, marked *), so the last bar matches \"Next 10 days\". "
+            + "Expected amounts only: NBM has no range for a running total.";
         $("ex-sec").hidden = src === "nws" || !d.points[pt].exceed || !Object.keys(d.points[pt].exceed).length;
         $("ex-note").innerHTML = `NBM's own chance of at least each amount for the 2.5 km grid cell around the ${POINT_LABEL[pt].toLowerCase()}, in ${exWin.replace("h", " h")} windows from about 5 AM (12Z); columns are labelled with the day the window starts (hover for exact times). Separate from the expected-amount bars, so they can disagree. NBM only. <a href="about.html#probabilities">How they work →</a>`;
         $("hbh-sub").textContent = `hourly ${Math.round(HOURS_DETAIL / 24 * 2) / 2} days, then 6-hourly · times ${tzName(tz)}`;
@@ -854,9 +880,12 @@
         const d = doc(), keys = keysOf(d);
         const withPlotly = (f) => () => loadPlotly().then(() => f());
         // explanation only: the numbers live in the wind panel's summary (one source, fix 5)
-        C.summary($("period-chart"), periodSummary(d, pt));     // text first (LCP), chart when near view
-        C.lazy($("period-chart"), withPlotly(() => periodChart($("period-chart"), d, pt, tz)));
-        if ($("acc-chart")) C.lazy($("acc-chart"), withPlotly(() => accumChart($("acc-chart"), d, pt, tz)));
+        C.summary($("period-chart"), daySummary(d, pt, src === "nws"));     // text first (LCP), chart when near view
+        C.lazy($("period-chart"), withPlotly(() => periodChart($("period-chart"), d, pt, tz, src === "nws")));
+        if ($("acc-chart")) {
+          C.summary($("acc-chart"), accumSummary(d, pt, src === "nws"));
+          C.lazy($("acc-chart"), withPlotly(() => accumChart($("acc-chart"), d, pt, tz, src === "nws")));
+        }
         if ($("slr-chart")) C.lazy($("slr-chart"), withPlotly(() => slrChart($("slr-chart"), d, pt, tz)));
         if (!$("ex-sec").hidden) C.lazy($("ex-chart"), () => exceedTable($("ex-chart"), d, pt, tz));
         C.lazy($("sl-chart"), withPlotly(() => snowLevelChart($("sl-chart"), d, keys, tz)));

@@ -317,7 +317,7 @@
       const txt = lo === null ? `< ${hi}` : hi === null ? `≥ ${lo}` : `${lo}`;
       return `<div class="sw" style="background:${c};color:${textOn(c)}">${txt}</div>`;
     });
-    $("legend").innerHTML = items.join("");
+    $("legend").innerHTML = (spec.legendTitle ? `<div class="legend-title">${esc(spec.legendTitle)}</div>` : "") + items.join("");
   }
 
   async function showStation(p) {

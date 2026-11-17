@@ -40,7 +40,7 @@
       <a href="https://avalanche.org/" target="_blank" rel="noopener">avalanche center</a> before heading out.</p>
 
     <nav class="toc" aria-label="On this page">
-      <a href="#nbm">NBM forecasts</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#forecast-map">Forecast map</a> · <a href="#snow-type">Snow type</a> ·
+      <a href="#nbm">NBM forecasts</a> · <a href="#daily-snow">Snowfall by day</a> · <a href="#accumulated">Accumulated snow</a> · <a href="#snow-colors">Snowfall colours</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#forecast-map">Forecast map</a> · <a href="#snow-type">Snow type</a> ·
       <a href="#snow-level">Snow level</a> · <a href="#elevation">Elevation</a> · <a href="#nws">NWS forecast</a> ·
 <a href="#snoparks">Sno-Parks</a> · <a href="#afd">Forecaster discussion</a> ·
       <a href="#sources">Data sources</a> · <a href="#disclaimer">Disclaimer</a>
@@ -53,9 +53,8 @@
         separate kinds of guidance:</p>
       <ul>
         <li><b>Deterministic</b> fields — one best estimate per hour. We call these <b>"Expected"</b>: NBM's forecast amount, an average of possible
-          outcomes. You typically have about a 1-in-3 chance of reaching it; the 10–90% range shows what's typical. The bars on the
-          area pages and the Powder Finder amounts are these values, added up over 12-hour day and night periods, so
-          the bars add up to the totals.</li>
+          outcomes. You typically have about a 1-in-3 chance of reaching it. The Powder Finder amounts, the totals and the
+          <a href="#accumulated">accumulated-snow</a> line are these values, added up over 6-hour steps, so they add up.</li>
         <li><b>Probabilistic</b> fields — percentiles (for example "10% chance of less than 2 inches, 90% chance of
           less than 9 inches") and exceedance probabilities ("40% chance of at least 6 inches"), built from the
           ensemble members.</li>
@@ -70,13 +69,55 @@
         "most likely"; that was misleading and was renamed "Expected" in November 2026.)</p>
     </section>
 
+    <section id="daily-snow">
+      <h3>Snowfall by day</h3>
+      <p>The area-page snowfall chart has one bar per day. Days run from 12 UTC to 12 UTC, about 4–5 AM to 4–5 AM in the
+        West, because that is how NBM publishes its 24-hour snowfall percentiles.</p>
+      <ul>
+        <li><b>The bar</b> spans NBM's 25th to 75th percentile for that 24-hour window: the <b>likely range</b>, the middle
+          half of NBM's possible outcomes. The label above it reads "low–high" in inches ("6–12″"; "&lt;1″" when even the
+          high end rounds to an inch or less). A day whose 75th percentile is under about ½ inch is greyed: little or no
+          snow is likely.</li>
+        <li><b>The colour</b> is the day's median (50th percentile) in the <a href="#snow-colors">NWS snowfall colours</a>.</li>
+        <li><b>No adding of percentiles.</b> Percentiles of shorter windows cannot be added into percentiles of a longer
+          one (the 75th percentile of a day is not the sum of two 12-hour 75th percentiles), and NBM publishes no 12-hour
+          snowfall percentiles. That is why the chart shows whole days rather than day and night. A short first day (the
+          hours from the run's start to the first 4–5 AM) has no NBM window of its own unless it is exactly 6 or 24 hours,
+          so it shows NBM's expected amount instead, hatched grey.</li>
+        <li><b>NWS view:</b> the NWS forecast has no ranges, so each day is one bar of the forecasters' amount (to 72
+          hours), in the same colours.</li>
+      </ul>
+      <p>Values are adjusted to the summit or base the same way as the expected amounts: NBM's 2.5-km grid values times
+        the chance that the snow level is below that elevation.</p>
+    </section>
+
+    <section id="accumulated">
+      <h3>Accumulated snow</h3>
+      <p>The accumulated-snow chart adds up NBM's <b>expected</b> snowfall day by day, on the same 4–5 AM to 4–5 AM days as
+        the daily chart, and labels each bar with the running total. It ends exactly where the "Next 10 days" total ends
+        (a narrower last bar when that falls in the middle of a day), so its last bar matches that number. It shows no
+        range: a range for a running total would need NBM percentiles for each total, and percentiles of separate days
+        cannot be added up.</p>
+    </section>
+
+    <section id="snow-colors">
+      <h3>Snowfall colours</h3>
+      <p>Every snowfall amount on the site (area-page bars and tiles, Powder Finder, My mountains, the forecast and
+        observed snowfall layers on the map, and their legends) uses one colour table: the <b>NWS snowfall colours</b> as
+        drawn on NOAA/NWS NOHRSC's <a href="https://www.nohrsc.noaa.gov/snowfall/" target="_blank" rel="noopener">National
+        Snowfall Analysis</a> maps. Classes (inches): trace, 0.1, 1, 2, 3, 4, 6, 8, 12, 18, 24, 30, 36, 48, 60, 72, 96 and 120+;
+        blues up to 6 inches, yellow to red from 6 to 36, purples above 48. Colour is never the only carrier: every bar,
+        tile and swatch also shows its number. The model maps still use their own, older version of this table.</p>
+    </section>
+
     <section id="probabilities">
       <h3>Snowfall ranges and chances</h3>
-      <p><b>Ranges (range bars: dark = likely, 25–75%; light = 10–90%)</b> are NBM's own snowfall percentiles. The 01, 07, 13 and 19 UTC
-        NBM runs carry 24-, 48- and 72-hour snowfall percentiles out to about 11 days; we use those runs whenever
-        they are available. A range for a period is built from the 10th and 90th percentiles of the windows that
-        cover it. Adding windows rank by rank (10th + 10th, 90th + 90th) makes the range slightly too wide, so
-        treat it as an honest outer envelope.</p>
+      <p><b>Ranges</b> are NBM's own snowfall percentiles. The 01, 07, 13 and 19 UTC NBM runs carry 6-, 24-, 48- and
+        72-hour snowfall percentiles out to about 11 days; we use those runs whenever they are available. The daily bars
+        use the 24-hour windows only (see <a href="#daily-snow">Snowfall by day</a>). Powder Finder, My mountains and the area
+        tiles show 10–90% ranges for the next 24, 48 and 72 hours from NBM's own windows. Beyond 72 hours (7 and 10
+        days) they show the expected total only: a longer range would need percentiles added together, which is not
+        valid.</p>
       <p>If only an older 00/06/12/18 UTC run is available, ranges after 48 hours are not in NBM's data. We then
         show a <b>"derived range (fallback)"</b>: the 25th–75th percentiles of liquid precipitation × NBM's snow
         ratio × the chance of snow at that elevation. It is clearly labelled and narrower than the NBM range.</p>

@@ -34,7 +34,7 @@ import numpy as np
 
 from . import points as P
 from .catalog import lcc_ij
-from .common import REPO_ROOT, utcnow, write_json
+from .common import REPO_ROOT, orphan_point_files, stale_point_files, utcnow, write_json
 from .nbm.run import flat_index
 
 log = logging.getLogger("snow-wx.ndfd")
@@ -272,8 +272,27 @@ def point_doc(data: dict, k: int, elev_ft: float | None, tz) -> tuple[list[str],
             snow = sum(w["snow"] for w in ws)
             totals[name] = {"snow_in": _r(snow, 1), "snow_lo": None, "snow_hi": None, "qpf_in": _r(q, 2),
                             "qpf_lo": None, "qpf_hi": None, "p_snow": None, "extended": False, "range": None}
+    # Snowfall by day (owner S11): 12Z-12Z days, the forecasters' 6-h amounts added up (deterministic,
+    # no range). The first day starts with NDFD's first window and may be partial.
+    days = []
+    if W:
+        t_first = min(t - timedelta(hours=w["hours"]) for t, w in W.items())
+        t_last = max(W)
+        e = t_first.replace(minute=0, second=0, microsecond=0)
+        e = e.replace(hour=12) if e.hour < 12 else (e + timedelta(days=1)).replace(hour=12)
+        while e <= t_last:
+            s0 = max(e - timedelta(hours=24), t_first)
+            ws = [w for t, w in W.items() if s0 < t <= e]
+            hrs = sum(w["hours"] for w in ws)
+            if ws and hrs >= (e - s0).total_seconds() / 3600:
+                h0 = int((s0 - t_first).total_seconds() // 3600)
+                lab = P.day_label(t_first, h0, h0 + hrs, tz)
+                days.append({**lab, "hours": hrs, "partial": hrs < 24, "snow_in": _r(sum(w["snow"] for w in ws), 1),
+                             "snow_p25": None, "snow_p50": None, "snow_p75": None, "range_window": None,
+                             "qpf_in": _r(sum(w["qpf"] for w in ws), 2), "p_snow": None, "pop": None})
+            e += timedelta(hours=24)
     return [t.strftime("%Y-%m-%dT%H:%MZ") for t in times], {"series": series, "precip": precip,
-                                                            "periods": out_periods, "totals": totals}
+                                                            "periods": out_periods, "days": days, "totals": totals}
 
 
 def summary_row(aid: str, doc: dict) -> dict:
@@ -341,7 +360,7 @@ def run(cfg: dict, session, out: Path, *, published: str | None = None, github_o
     log.info("NDFD %s: %d elements, %d points, fetch+decode %.0f s", key, len(data), len(flat), time.time() - t0)
     col = {(pid, k): n for n, (pid, k, _, _) in enumerate(flat)}
     out.mkdir(parents=True, exist_ok=True)
-    for old in out.glob("*.json"):
+    for old in stale_point_files(out):        # only files a previous NDFD run wrote (common.py)
         old.unlink()
     generated = utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     sizes, summary = [], []
@@ -363,6 +382,9 @@ def run(cfg: dict, session, out: Path, *, published: str | None = None, github_o
                                       "generated_at": generated, "areas": summary})
     write_json(out / "index.json", {"key": key, "issued": issued.strftime("%Y-%m-%dT%H:%MZ"),
                                     "generated_at": generated, "source": SOURCE, "count": len(pts)})
+    for old in orphan_point_files(out, {f"{f['id']}.json" for f in pts}):    # dropped areas / interrupted runs
+        old.unlink()
+        log.info("NDFD: removed orphan point file %s", old.name)
     log.info("NDFD %s: wrote %d files (max %.0f KB, total %.1f MB)", key, len(sizes), max(sizes) / 1024, sum(sizes) / 1e6)
     emit(new="true", cycle=tag)
     return 0

@@ -6,7 +6,7 @@
 // decodes it once, colourizes it with the site palettes and reads exact values
 // under the cursor.
 
-/* global L, colorFor, SNOWFALL, PROB, SNOTEL_VARS */
+/* global L, colorFor, SNOWFALL, PROB, SNOTEL_VARS, snowLegendHtml, textOn */
 // eslint-disable-next-line no-unused-vars
 function SnowOverlays(map, { panel, onChange, sources = [
   { base: "data/nohrsc/", group: "Observed" },
@@ -112,6 +112,7 @@ function SnowOverlays(map, { panel, onChange, sources = [
 
   function legend(l) {
     const spec = palette(l.palette);
+    if (spec === SNOWFALL) return snowLegendHtml(l.max ?? 24, { from: l.clear_below ?? 0.1, minTop: 12 });   // NWS colours
     const items = spec.colors.map((c, i) => {
       const lo = i === 0 ? null : spec.bins[i - 1], hi = i < spec.bins.length ? spec.bins[i] : null;
       const txt = lo === null ? `< ${hi}` : hi === null ? `≥ ${lo}` : `${lo}`;

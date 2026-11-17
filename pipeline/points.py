@@ -152,6 +152,36 @@ def periods(init: datetime, hours: list[int], length_h: int = 12) -> list[tuple[
     return out
 
 
+def day_spans(init: datetime, hours: list[int]) -> list[tuple[int, int]]:
+    """(start_h, end_h) days ending at 12Z (~4-5 AM in the West), the unit of the "Snowfall by day"
+    chart (owner S11). The first day runs from the run start to the first 12Z and may be partial."""
+    if not hours:
+        return []
+    last = max(hours)
+    first_end = (12 - init.hour) % 24 or 24
+    out, s, e = [], 0, first_end
+    while e <= last:
+        out.append((s, e))
+        s, e = e, e + 24
+    return out
+
+
+def native_window(start_h: int, end_h: int, have) -> str | None:
+    """Which NBM snowfall-percentile window exactly covers (start_h, end_h]: "snow24" or "snow6",
+    or None. `have(key, end_h)` says whether that window's percentiles exist. NBM percentiles are
+    never added together (owner S11), so a span with no single native window has no range."""
+    L = end_h - start_h
+    key = {24: "snow24", 6: "snow6"}.get(L)
+    return key if key and have(key, end_h) else None
+
+
+def day_label(init: datetime, start_h: int, end_h: int, tz) -> dict:
+    t0, t1 = init + timedelta(hours=start_h), init + timedelta(hours=end_h)
+    l0, l1 = t0.astimezone(tz), t1.astimezone(tz)
+    return {"start": t0.strftime("%Y-%m-%dT%H:%MZ"), "end": t1.strftime("%Y-%m-%dT%H:%MZ"),
+            "label": f"{l0:%a} {l0.day}", "local": f"{l0:%a} {_hour(l0)} – {l1:%a} {_hour(l1)} {l1:%Z}"}
+
+
 def _hour(t: datetime) -> str:
     return t.strftime("%I %p").lstrip("0")
 
