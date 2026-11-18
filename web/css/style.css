@@ -543,3 +543,5 @@ main.status { max-width: 980px; width: 100%; box-sizing: border-box; } .status .
 /* status page: reserve the table's height so the content below does not jump when meta.json arrives (CLS) */
 .status #st-table { min-height: 480px; }
 @media (max-width: 640px) { .status #st-table { min-height: 1500px; } }
+/* model-map viewer transport buttons: DESIGN §6 tap targets >= 40 px (were 31) */
+#prev, #play, #next { min-height: 40px; min-width: 44px; }

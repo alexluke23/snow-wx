@@ -42,6 +42,6 @@ confidence signal powder chasers want.
   Labelled "inches assume NBM SLR".
 - **Agreement badge (heuristic until verified):** longest window H in {72, 48, 36, 24, 12, 6} h after the common start that >= 3 sources reach; median of their liquid totals; a source agrees if within
   +-25% of the median (or 0.10 in when small); >= 75% High, >= 50% Medium, else Low; all totals < 0.10 in = "High (all dry)". Always from liquid, so the toggle never changes it. about.html#model-agreement.
-- **Budget (Nov 17, 3 models):** a full run is ~99 frames x 160 areas: ~130 KB for the whole `multimodel.json` (~0.8 KB per area; gzip far less); sampling cost ~16 ms per frame plus a one-time
+- **Budget (Nov 17, 3 models):** measured on a full HRRR run (29 frames) 27.6 KB for 160 areas (172 B per area); three models ~95 KB for the whole `multimodel.json` (~0.6 KB per area; gzip far less); sampling cost ~16 ms per frame plus a one-time
   ~0.9 s KD-tree nearest-cell index per model run on a 1000x1400 grid (the models.yml renders take 100-180 s), so under +1% runtime. Neither breaks a budget: enabled.
 - ECMWF (M8) is not part of this step.

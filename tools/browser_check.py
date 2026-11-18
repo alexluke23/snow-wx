@@ -935,6 +935,9 @@ def check_snopark_finder_mobile(b: Browser, base: str, log):
     b.open(f"{base}/area.html#{area}", width=375, wait=6)
     pg = b.eval("""(() => ({txt: document.getElementById('area').textContent, hscroll: document.documentElement.scrollWidth > innerWidth + 2}))()""")
     need(("USDA Forest Service" in pg["txt"] or "OpenStreetMap" in pg["txt"]) and not pg["hscroll"], "Sno-Park page lacks its source/attribution or scrolls sideways")
+    time.sleep(1.0)
+    ex = b.eval("""(() => ({summary: !!document.querySelector('.summary-line'), avy: !!document.querySelector('.rec-key .rk-avy, #area a[href*="avalanche"], #area a[href^="http"]')}))()""")
+    need(ex["summary"], "Sno-Park page has no daily summary (the W3 rules apply to every point)")
     need(not b.errors, f"JS errors: {b.errors}")
 
 
@@ -984,7 +987,27 @@ def check_multimodel(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel}
+def check_mobile_sweep(b: Browser, base: str, log):
+    """dev16: every page at 375 px: no sideways scroll, no JS errors, primary buttons tappable (>= 36 px), nothing wider than the viewport."""
+    pages = ["index.html", "finder.html", "mine.html", "about.html", "status.html", "models.html", "area.html#alta-ski-area", "area.html#sp-wing-mountain", "area.html#snotel-1000-OR-SNTL"]
+    bad = []
+    for pg in pages:
+        b.open(f"{base}/{pg}", width=375, wait=6)
+        _draw_all(b)
+        time.sleep(1.0)
+        r = b.eval("""(() => { const vw = innerWidth, wide = [...document.querySelectorAll('body *')].filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > vw + 2 && !e.closest('.leaflet-container, .tbl-wrap, .chart, .js-plotly-plot, pre, .hz-popup, [hidden]') && getComputedStyle(e).position !== 'fixed'; }).slice(0, 3).map(e => e.tagName + '.' + e.className + ':' + Math.round(e.getBoundingClientRect().right));
+          const small = [...document.querySelectorAll('button:not([hidden])')].filter(x => { const r = x.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.height < 36 && !x.closest('.leaflet-container, .leaflet-control, .js-plotly-plot'); }).map(x => (x.id || x.textContent.trim().slice(0, 16)) + ':' + Math.round(x.getBoundingClientRect().height)).slice(0, 5);
+          return {scroll: document.documentElement.scrollWidth, vw, wide, small}; })()""")
+        log(f"  375px {pg}: {r}")
+        if r["scroll"] > r["vw"] + 2 or r["wide"]:
+            bad.append((pg, r["scroll"], r["wide"]))
+        if r["small"]:
+            log(f"    small tap targets on {pg}: {r['small']}")
+    need(not bad, f"sideways overflow at 375 px: {bad}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "mobile": check_mobile_sweep}
 
 
 def main(argv=None) -> int:
