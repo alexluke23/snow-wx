@@ -873,13 +873,17 @@ def check_hazard_popup(b: Browser, base: str, log):
     idx = {"alerts": {key: {"event": "Winter Storm Warning", "headline": "Winter Storm Warning issued by <b>NWS Salt Lake City</b>", "sender": "NWS Salt Lake City UT",
            "effective": "2026-11-17T12:00:00-07:00", "expires": "2026-11-19T05:00:00-07:00", "area": "Wasatch Mountains; <img src=x onerror=alert(1)>"}}}
     det = {key: {"description": "* WHAT...Heavy snow.\n  Totals 12 to 24 inches.\n<script>window.__pwned = 1</script>", "instruction": "Slow down.\nCarry a shovel."}}
+    # dev17: alerts that touch no ski area/SNOTEL site come from hazard_text.json (compact keys) with no live fetch
+    hid = "urn:oid:2.49.0.1.840.0.fixture.hazardtext"
+    ht = {"alerts": {hashlib.sha1(hid.encode()).hexdigest()[:10]: {"e": "Wind Advisory", "h": "Wind Advisory until 5 PM", "o": "NWS Rapid City SD",
+          "f": "2026-11-18T01:00:00-07:00", "x": "2026-11-18T17:00:00-07:00", "a": "Black Hills <b>x</b>", "d": "Gusts to 55 mph.\nSecure loose objects.", "i": "Use caution."}}}
     for width in (1280, 375):
         b.open(f"{base}/index.html", width=width, wait=6)
-        b.eval(f"window.snowwx.hazards.injectAlertFiles({json.dumps(idx)}, {json.dumps(det)}); 1")
+        b.eval(f"window.snowwx.hazards.injectAlertFiles({json.dumps(idx)}, {json.dumps(det)}, {json.dumps(ht)}); 1")
         res = b.eval("""(async () => {
           const mkf = (url) => ({properties: {prod_type: 'Winter Storm Warning', wfo: 'KSLC', expiration: '2026-11-19T12:00:00Z', url}});
           const out = {};
-          for (const [name, url] of [['known', 'https://api.weather.gov/alerts/%s'], ['unknown', 'https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.nothing.999']]) {
+          for (const [name, url] of [['known', 'https://api.weather.gov/alerts/%s'], ['hazardtext', 'https://api.weather.gov/alerts/%s'], ['unknown', 'https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.nothing.999']]) {
             const host = document.createElement('div'); host.className = 'leaflet-popup-content'; host.style.cssText = 'position:fixed;top:60px;left:8px;width:300px;background:#fff;z-index:99999';
             const dom = window.snowwx.hazards.popupFor(mkf(url)); host.append(dom); document.body.append(host);
             await new Promise(r => setTimeout(r, name === 'unknown' ? 6000 : 800));
@@ -890,9 +894,11 @@ def check_hazard_popup(b: Browser, base: str, log):
             if (name === 'known') host.id = 'hz-fixture'; else host.remove();
           }
           out.pwned = !!window.__pwned;
-          return out; })()""" % aid)
+          return out; })()""" % (aid, hid))
         log(f"  hazard popup {width}px: {json.dumps(res)[:700]}")
-        k, u = res["known"], res["unknown"]
+        k, u, h = res["known"], res["unknown"], res["hazardtext"]
+        need("Gusts to 55 mph." in h["text"] and "NWS Rapid City SD" in h["text"] and "Black Hills <b>x</b>" in h["text"] and "<b>" not in h["html"],
+             f"hazard_text.json lookup failed or was not escaped: {h['text'][:200]}")
         need("Totals 12 to 24 inches." in k["text"] and "Slow down." in k["text"] and "NWS Salt Lake City UT" in k["text"] and "Wasatch Mountains" in k["text"], f"readable text missing: {k['text'][:200]}")
         need("<script>" in k["text"] and "&lt;script&gt;" in k["html"] and k["scripts"] == 0 and not res["pwned"], f"alert text was not escaped: {k['html'][:300]}")
         need(k["links"] == ["https://www.weather.gov/slc/"] and k["pre"] == "pre-wrap" and k["maxH"] != "none", f"links/layout: {k['links']} {k['pre']} {k['maxH']}")
@@ -938,6 +944,68 @@ def check_snopark_finder_mobile(b: Browser, base: str, log):
     time.sleep(1.0)
     ex = b.eval("""(() => ({summary: !!document.querySelector('.summary-line'), avy: !!document.querySelector('.rec-key .rk-avy, #area a[href*="avalanche"], #area a[href^="http"]')}))()""")
     need(ex["summary"], "Sno-Park page has no daily summary (the W3 rules apply to every point)")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_finder_show_all(b: Browser, base: str, log):
+    """dev17 Part 0c: with the Sno-Park list capped at 200 rows, sorting, the state filter, favorites and the header search all act on the FULL list
+    (447), not on the 200 drawn rows. 375 px."""
+    b.open(f"{base}/about.html", wait=1.5)
+    b.eval("localStorage.clear(); sessionStorage.clear(); 1")
+    b.open(f"{base}/finder.html#t=ski", width=375, wait=6)
+    b.eval("[...document.querySelectorAll('#type button')].find(x => x.textContent.trim() === 'Sno-Parks').click(); 1")
+    time.sleep(1.0)
+    names = "[...document.querySelectorAll('#rows .frow .who > a')].map(a => a.textContent)"
+    # 1. sort by name, ascending (A-Z): the capped list is exactly the first 200 of the full A-Z list
+    b.eval("""(() => { const s = document.getElementById('sort'); s.value = 'name'; s.dispatchEvent(new Event('change')); return 1; })()""")
+    time.sleep(0.6)
+    if b.eval("document.getElementById('sort-dir').textContent.trim()") == "↓":        # make sure it is A-Z (ascending)
+        b.eval("document.getElementById('sort-dir').click(); 1"); time.sleep(0.5)
+    capped = b.eval(names)
+    need(len(capped) == 200, f"expected the 200-row cap, got {len(capped)}")
+    b.eval("document.getElementById('show-all').click(); 1"); time.sleep(0.8)
+    full = b.eval(names)
+    need(len(full) == 447 and full[:200] == capped, "the capped list must be the first 200 rows of the full sorted list")
+    # 2. reversing the sort puts the LAST name of the full list on top of the capped view (it was beyond row 200)
+    b.eval("document.getElementById('sort-dir').click(); 1"); time.sleep(0.8)
+    rev = b.eval(names)
+    need(rev[0] == full[-1] and rev[:200] == full[::-1][:200], f"reverse sort must start with the last name of the full list {full[-1]!r}, got {rev[0]!r}")
+    log(f"  sort acts on the full list: A-Z first {full[0]!r}, Z-A first {rev[0]!r} (was row {len(full)})")
+    # 3. state filter: the state of a row beyond 200 is selectable, counts add up to 447, and its rows are all reachable
+    b.open(f"{base}/finder.html#t=ski", width=375, wait=5)
+    b.eval("[...document.querySelectorAll('#type button')].find(x => x.textContent.trim() === 'Sno-Parks').click(); 1"); time.sleep(0.8)
+    opts = b.eval("[...document.querySelectorAll('#state option')].map(o => [o.value, o.textContent])")
+    counts = {v: int(t.split("(")[1].rstrip(")").replace(",", "")) for v, t in opts if v and "(" in t}
+    total = int(opts[0][1].split("(")[1].rstrip(")"))
+    need(total == 447 and sum(counts.values()) == 447, f"state counts do not add up to the full list: {total} vs {sum(counts.values())}")
+    st = max(counts, key=lambda k: counts[k])
+    b.eval(f"""(() => {{ const s = document.getElementById('state'); s.value = {json.dumps(st)}; s.dispatchEvent(new Event('change')); return 1; }})()""")
+    time.sleep(0.8)
+    n = b.eval("document.querySelectorAll('#rows .frow').length")
+    need(n == min(200, counts[st]), f"state {st}: {n} rows drawn, expected {min(200, counts[st])} of {counts[st]}")
+    if counts[st] > 200:
+        need("Show all" in b.eval("(document.getElementById('show-all') || {textContent: ''}).textContent"), "filtered list over the cap needs its own Show all")
+        b.eval("document.getElementById('show-all').click(); 1"); time.sleep(0.6)
+        need(b.eval("document.querySelectorAll('#rows .frow').length") == counts[st], "Show all on a filtered list must draw all its rows")
+    b.eval("""(() => { const s = document.getElementById('state'); s.value = ''; s.dispatchEvent(new Event('change')); return 1; })()"""); time.sleep(0.5)
+    # 4. favorite a Sno-Park beyond row 200, then Favorites only shows exactly it
+    b.eval("document.getElementById('show-all') && document.getElementById('show-all').click(); 1"); time.sleep(0.6)
+    far = b.eval("""(() => { const r = [...document.querySelectorAll('#rows .frow')]; const x = r[r.length - 1];
+        x.querySelector('.star').click(); return x.querySelector('.who > a').textContent; })()""")
+    time.sleep(0.6)
+    b.eval("""(() => { const c = document.getElementById('favonly'); c.checked = true; c.dispatchEvent(new Event('change')); return 1; })()""")
+    time.sleep(0.8)
+    favs = b.eval(names)
+    need(favs == [far], f"favorites only must show the row starred beyond row 200 ({far!r}): {favs}")
+    # 5. header search finds a Sno-Park that is beyond row 200 of the list, at 375 px (search button first)
+    target = full[300]
+    b.open(f"{base}/finder.html#t=ski", width=375, wait=4)
+    b.eval("document.querySelector('.site-search .ss-toggle') && document.querySelector('.site-search .ss-toggle').click(); 1"); time.sleep(0.4)
+    b.eval(f"""(() => {{ const i = document.querySelector('.site-search input'); i.value = {json.dumps(target)}; i.dispatchEvent(new Event('input', {{bubbles: true}})); return 1; }})()""")
+    time.sleep(1.2)
+    hits = b.eval("[...document.querySelectorAll('#ss-list li')].map(li => li.textContent)")
+    need(any(h.startswith(target) for h in hits), f"header search did not find {target!r} (row 300 of the list): {hits[:5]}")
+    log(f"  search finds {target!r}; favorites-only shows {far!r}; state {st} {counts[st]} rows")
     need(not b.errors, f"JS errors: {b.errors}")
 
 
@@ -1007,7 +1075,7 @@ def check_mobile_sweep(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "mobile": check_mobile_sweep}
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "mobile": check_mobile_sweep}
 
 
 def main(argv=None) -> int:

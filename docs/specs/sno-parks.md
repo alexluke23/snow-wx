@@ -31,3 +31,12 @@
 - Budgets (Nov 17): 447 point files avg 57.6 KB, max 59.8 KB (< 150 KB), 26.4 MB; whole build 5,559 files, 217 MB, largest file 1.4 MB (limits 20,000 / 25 MiB).
   Enabled: no budget is exceeded, so no `sno_parks.enabled` flag.
 - Finder Type filter checked at 375 px (`tools/browser_check.py --only spmobile`): buttons 40 px tall, no sideways scroll, state menu follows the type with counts.
+
+### Owner decisions in the review CSV (dev17)
+`data/rec_points_review.csv` has three optional owner-filled columns: `decision` (`keep` | `drop` | `merge`, case-insensitive), `merge_into` (the id to keep,
+required for `merge`) and `note`. `python -m pipeline catalog --rec` applies them (`rec.read_decisions` / `rec.apply_decisions`, pure and tested) after the points are built:
+`drop` removes the point; `merge` removes it and lists its id in the target's `merged_ids`; `keep` changes nothing (it records that the flag was reviewed). A blank or
+unknown decision is ignored, so **with no decisions nothing changes**. A merge without a valid, undropped target keeps the point and logs a warning. Ids are slugs assigned
+before decisions are applied, so removing a point never renames the others. Regenerating the CSV keeps every decision and carries dropped / merged rows forward (they are no longer
+in `rec_points.json` but are removed again on every build). Favorites saved for a dropped id simply stop matching. The CSV is owner-only: `build_site` copies only
+`ski_areas.json` and `rec_points.json` from `data/` (test: `test_review_csv_is_never_published`), so it is not part of the published site.
