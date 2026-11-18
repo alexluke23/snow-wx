@@ -59,6 +59,8 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 - `tests/` — pytest; extend `tests/fakes.py` with canned responses for new sources.
 - `pipeline/search.py` — header search index (data/search.json); `web/js/search.js` (header + shared ranking).
 - `tools/browser_check.py` — headless-Chrome regression checks (basemap, fallback, layout, search, charts).
+- `pipeline/ecmwf.py` (ECMWF HRES + ENS plume, off), `pipeline/wind_exposure.py` (W7 flag, off), `pipeline/alerts_backend.py` (W6 offline skeleton, off), `docs/workflow_snippets/` (workflow text for
+  the OWNER to add; dev sessions never edit .github/), `docs/sources_resort_snowfall.md` (licensing research, no scraping).
 - `pipeline/archive.py` — forecast archive for verification (docs/verification.md);
   `pipeline/cache.py` — data_cache pruning at the start of every run.
 - `config/models.yml` + `pipeline/models/` — model maps (see below); `web/models.html`
