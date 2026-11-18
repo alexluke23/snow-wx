@@ -1,5 +1,8 @@
 """Sno-Park / winter recreation catalog helpers (pipeline/rec.py)."""
 
+import json
+from pathlib import Path
+
 import numpy as np
 
 from pipeline import rec as R
@@ -83,3 +86,70 @@ def test_review_flags_tolerates_a_record_without_a_base():
     from pipeline.rec import review_flags
     odd = {"id": "x", "name": "No Base", "source": "osm", "nws": {}}
     assert "osm_only" in review_flags(odd, SKI, [odd, _rec("a", "Other", 41.5, -112.5)])["reasons"]
+
+
+# ---- dev17 Part 0d: owner decisions (keep / drop / merge) in data/rec_points_review.csv
+def _csv(tmp_path, rows, header="id,name,decision,merge_into,note"):
+    p = tmp_path / "review.csv"
+    p.write_text(header + "\n" + "\n".join(rows) + "\n", encoding="utf-8")
+    return p
+
+
+def test_no_decisions_changes_nothing(tmp_path):
+    from pipeline.rec import apply_decisions, read_decisions
+    recs = [_rec("a", "A", 41.5, -112.5), _rec("b", "B", 41.6, -112.6)]
+    assert read_decisions(tmp_path / "missing.csv") == {}
+    p = _csv(tmp_path, ["a,A,,,", "b,B,  ,,just a note"])          # empty / blank decision cells
+    assert read_decisions(p) == {}
+    out, rep = apply_decisions(recs, read_decisions(p))
+    assert out == recs and rep["drop"] == [] and rep["warnings"] == []
+    assert out is recs or out == recs
+
+
+def test_drop_keep_and_merge_are_applied_case_insensitively(tmp_path):
+    from pipeline.rec import apply_decisions, read_decisions
+    recs = [_rec(i, i.upper(), 41.5, -112.5) for i in "abcdef"]
+    p = _csv(tmp_path, ["a,A,DROP,,duplicate of a resort", "b,B, Keep ,,fine", "c,C,merge,d,same lot", "e,E,maybe,,unknown value is ignored"])
+    d = read_decisions(p)
+    assert sorted(d) == ["a", "b", "c"] and d["c"]["merge_into"] == "d"
+    out, rep = apply_decisions(recs, d)
+    assert [r["id"] for r in out] == ["b", "d", "e", "f"] and rep["drop"] == ["a"] and rep["keep"] == ["b"] and rep["merge"] == [("c", "d")]
+    assert next(r for r in out if r["id"] == "d")["merged_ids"] == ["c"] and "merged_ids" not in out[0]
+    assert recs[0]["id"] == "a"                                       # input list untouched
+
+
+def test_bad_merges_are_kept_with_a_warning():
+    from pipeline.rec import apply_decisions
+    recs = [_rec(i, i.upper(), 41.5, -112.5) for i in "abc"]
+    dec = {"a": {"decision": "merge", "merge_into": "", "note": ""}, "b": {"decision": "merge", "merge_into": "c", "note": ""},
+           "c": {"decision": "drop", "merge_into": "", "note": ""}, "zzz": {"decision": "drop", "merge_into": "", "note": ""}}
+    out, rep = apply_decisions(recs, dec)
+    assert [r["id"] for r in out] == ["a", "b"]                       # a (no target) and b (target dropped) stay; c dropped
+    assert len(rep["warnings"]) == 3 and any("unknown id zzz" in w for w in rep["warnings"])
+
+
+def test_regenerating_the_review_csv_keeps_decisions_and_dropped_rows(tmp_path):
+    import csv
+    from pipeline import rec as R
+    ski = tmp_path / "ski.json"
+    ski.write_text(json.dumps({"areas": SKI}), encoding="utf-8")
+    recp = tmp_path / "rec_points.json"
+    recp.write_text(json.dumps({"areas": [_rec("c", "Gap", 41.6, -112.6, source="osm")]}), encoding="utf-8")      # 'x' was dropped earlier
+    out = tmp_path / "rec_points_review.csv"
+    out.write_text("id,name,state,source,subtype,reasons,near_ski_area,near_ski_km,elev_ft,cell_elev_ft,lat,lon,decision,merge_into,note\n"
+                   "c,Gap,UT,osm,snopark,osm_only,,,6000,6200,41.6,-112.6,keep,,ok by owner\n"
+                   "x,Old,UT,osm,snopark,osm_only,,,6000,6200,41.5,-112.5,drop,,not a Sno-Park\n", encoding="utf-8")
+    rows = R.write_review(recp, ski, out)
+    got = {r["id"]: r for r in csv.DictReader(open(out, encoding="utf-8", newline=""))}
+    assert got["c"]["decision"] == "keep" and got["c"]["note"] == "ok by owner" and got["x"]["decision"] == "drop"
+    assert [r["id"] for r in rows] == ["c", "x"] or [r["id"] for r in rows] == ["c"]
+
+
+def test_review_csv_is_never_published():
+    """the owner CSV lives in data/ and must not reach the site: build_site copies only the two JSON catalogs, web/ holds no csv"""
+    root = Path(__file__).resolve().parents[1]
+    src = (root / "pipeline" / "__main__.py").read_text(encoding="utf-8")
+    assert 'for name in ("ski_areas.json", "rec_points.json"):' in src
+    assert not list((root / "web").rglob("*review*.csv")) and not list((root / "web").rglob("rec_points*"))
+    for wf in (root / ".github" / "workflows").glob("*.yml"):
+        assert "rec_points_review" not in wf.read_text(encoding="utf-8")
