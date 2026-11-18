@@ -485,3 +485,28 @@ body.mine-page > main { min-height: 100vh; min-height: 100dvh; }
 .summary-tag { display: inline-block; margin-right: 4px; color: #0b2a55; }
 .summary-bullets { margin: 2px 0 4px 18px; padding: 0; font-size: 14px; }
 .summary-note { margin: 4px 0 0; }
+
+/* W3 summaries on Finder rows and My mountains (dev14) */
+.frow .who .sm { display: block; margin-top: 1px; color: #0b2a55; font-size: 12px; font-weight: 600; }
+.frow .who .sm.alert, .summary-tag.alert { color: #8a1c10; }
+.mtags .msum { flex-basis: 100%; margin: 0 0 6px; font-size: 14px; line-height: 1.35; }
+.mtags .msum .hint { white-space: nowrap; margin-left: 4px; }
+.summary-note a { white-space: nowrap; }
+
+/* data-status page (dev14) */
+.status .st-tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.status .st-tbl th, .status .st-tbl td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e3e8ef; vertical-align: top; }
+.status .st-tbl thead th { font-size: 12px; color: var(--muted); }
+.status .st-badge { white-space: nowrap; }
+.status .st-ok .st-badge { color: #0a5f37; } .status .st-late .st-badge { color: #8a1c10; } .status .st-late { background: #fff4f1; }
+.status .st-none .st-badge, .status .st-nolimit .st-badge { color: #4a5666; }
+main.status { max-width: 980px; width: 100%; box-sizing: border-box; } .status .tbl-wrap { overflow-x: auto; }
+@media (max-width: 640px) {            /* stacked cards instead of a wide table */
+  .status .tbl-wrap { border: 0; max-height: none; }
+  .status .st-tbl, .status .st-tbl tbody, .status .st-tbl tr, .status .st-tbl th, .status .st-tbl td { display: block; width: auto; text-align: left; white-space: normal; }
+  .status .st-tbl thead { position: absolute; left: -9999px; }
+  .status .st-tbl tr { border: 1px solid #e3e8ef; border-radius: 6px; margin: 0 0 8px; padding: 4px 0; background: #fff; }
+  .status .st-tbl th[scope="row"] { border: 0; font-size: 15px; padding: 4px 10px; }
+  .status .st-tbl td { border: 0; padding: 1px 10px; }
+  .status .st-tbl td::before { content: attr(data-label) ": "; color: var(--muted); font-size: 12px; }
+}

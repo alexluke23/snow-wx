@@ -59,6 +59,18 @@ site:
   # Live site origin (override with the SITE_ORIGIN env var). `pipeline restore` reads the previous good SNOTEL copy
   # from here before every build. CHANGE AT THE W1 DOMAIN CUTOVER (docs/specs/hosting-seo.md).
   origin: "https://alexluke23.github.io/snow-wx"
+  # The ONE place the public feedback address lives (owner Nov 17): the footer "Send feedback" link, "Report a bad summary" and
+  # "Report a bust" all read it via data/meta.json -> web/js/site-config.js. No address is hard-coded in any page or script.
+  # Empty = those links are hidden (no default address). Value = what the footer used before this change.
+  # Folder the site is served from ("" = root; "/snow-wx" on GitHub Pages today). Pages emit scripts as "<base_path>/js/...", and
+  # web/js/site-config.js loads data/meta.json relative to its own location, so nested pages (W2) work. Used by pages.py (W2).
+  base_path: ""
+  feedback_email: "alexluke2323@gmail.com"
+
+pages:
+  # W2 prerendered area pages (pipeline/pages.py, `python -m pipeline pages`). OFF until the domain/base path is decided and the
+  # workflow runs the step after the points tar is unpacked; a partial state cannot change the live site while this is false.
+  enabled: false
 
 monitoring:
   # Data-health issues (pipeline/monitor.py, update-site.yml `monitor` job): one GitHub issue per source, assigned
@@ -97,11 +109,11 @@ archive:
   # Forecast archive for verification (docs/verification.md): monthly CSVs on this release.
   release: verification
 
-snow_type:
-  # Heuristic snow type from NBM's snow-to-liquid ratio (SLR), shown per day/night period
-  # on forecast pages, My mountains and Powder Finder (owner S10). Labelled as a heuristic.
-  wet_max: 8          # SLR < 8:1 -> Wet/heavy
-  average_max: 12     # 8-12 -> Average
-  dry_max: 18         # 12-18 -> Dry/light; >= 18 -> Very dry/blower
+powder_quality:
+  # THE one powder-quality definition (owner Nov 17), a documented heuristic on NBM's snow-to-liquid ratio (SLR). Used by the
+  # pipeline, the SLR/powder panel, the Finder and My mountains "Type", the Daily summary rules and about.html.
+  # web/js/colors.js POWDER_Q must equal these two numbers (tests/test_points.py checks).
+  dense_below: 10     # SLR < 10:1 -> Dense
+  blower_at: 15       # SLR >= 15:1 -> Blower; between -> Medium
   wind_gust_mph: 30   # summit gusts during snowfall at/above this -> "wind-affected"
-  min_snow_in: 0.5    # no type for periods with less snow than this
+  min_snow_in: 0.5    # no quality for periods with less snow than this

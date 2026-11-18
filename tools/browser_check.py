@@ -359,13 +359,22 @@ def check_charts(b: Browser, base: str, log):
         pq = b.eval("""(() => { const el = document.getElementById('slr-chart'); const L = el.layout || {};
           const anns = (L.annotations || []).map(a => a.text || '');
           return {h: el.getBoundingClientRect().height, strip: !!document.getElementById('snow-type-strip'),
-                  bands: (L.shapes || []).filter(s => s.fillcolor && s.xref === 'paper').length,
+                  bands: (L.shapes || []).filter(s => s.fillcolor && s.xref === 'paper' && s.type === 'rect' && s.y0 !== 0).length,
+                  dashed: (L.shapes || []).filter(s => s.type === 'line' && s.line && s.line.dash === 'dash' && s.xref === 'paper').length,
+                  nTraces: (el.data || []).length, bandTrace: (el.data || []).some(t => t.fill === 'tonexty'),
+                  median: ((el.data || []).find(t => t.mode === 'lines' && t.line && t.line.dash === 'dot') || {y: []}).y.filter(v => v !== null).length,
+                  head: (document.querySelector('#slr-chart + .chart-table th') || {textContent: ''}).textContent,
                   labels: ['Dense', 'Medium', 'Blower'].every(n => anns.some(t => t.includes(n))),
                   slider: !!(L.xaxis && L.xaxis.rangeslider && L.xaxis.rangeslider.visible),
-                  summary: (el.previousElementSibling || {}).textContent || '', table: !!document.querySelector('#slr-chart + .chart-table')}; })()""")
+                  summary: (el.previousElementSibling || {}).textContent || '', table: !!document.querySelector('#slr-chart + .chart-table'),
+                  tableHead: (() => { const d = document.querySelector('#slr-chart + .chart-table'); d.open = true; d._build && d._build();
+                    const h = [...d.querySelectorAll('th[scope=col]')].map(t => t.textContent).join('|'); d.open = false; return h; })()}; })()""")
         log(f"  charts {area}: powder panel {pq}")
-        need(pq["h"] >= 260 and not pq["strip"] and pq["bands"] == 3 and pq["labels"] and not pq["slider"] and pq["table"],
-             f"{area}: combined snow-ratio/powder panel: {pq}")
+        # dev14 F3: thin dashed threshold lines (2), no full-height colour bands, direct labels, median + likely band over the whole run, complete sentence
+        need(pq["h"] >= 260 and not pq["strip"] and pq["bands"] == 0 and pq["dashed"] == 2 and pq["labels"] and not pq["slider"] and pq["table"]
+             and pq["bandTrace"] and pq["median"] > 40, f"{area}: combined snow-ratio/powder panel: {pq}")
+        need(not pq["summary"].rstrip().endswith("…") and pq["summary"].rstrip().endswith("."), f"{area}: powder summary is not a complete sentence: {pq['summary']!r}")
+        need("25" in pq["tableHead"] and "75" in pq["tableHead"], f"{area}: table needs p25/p50/p75 columns: {pq['tableHead']}")
         need("heuristic" in pq["summary"] or "No snow" in pq["summary"], f"{area}: powder summary must say heuristic: {pq['summary'][:100]}")
         # dev13 item 3: the heat table lists NBM's native >=2" row for 24 h (and not for 72 h)
         rows = b.eval("""(async () => { const out = {}; for (const w of ['24h', '72h']) {
@@ -374,7 +383,15 @@ def check_charts(b: Browser, base: str, log):
           document.querySelector('#ex-win [data-w="24h"]')?.click(); return out; })()""")
         log(f"  charts {area}: heat-table rows {rows}")
         if rows.get("24h"):
-            need(rows["24h"][0] == '2"' and '2"' not in rows.get("72h", []), f"{area}: 2-inch row: {rows}")
+            need(rows["24h"][0] == '2"' and rows.get("72h", [''])[0] == '2"', f"{area}: 2-inch row (24 h real, 72 h n/a): {rows}")
+            na = b.eval("""(async () => { document.querySelector('#ex-win [data-w="72h"]').click(); await new Promise(r => setTimeout(r, 600));
+              const r = [...document.querySelectorAll('#ex-chart tbody tr')][0]; const o = {cells: [...r.querySelectorAll('td')].map(t => t.textContent.trim()), tip: (r.querySelector('td') || {}).title || ''};
+              document.querySelector('#ex-win [data-w="24h"]').click(); return o; })()""")
+            need(na["cells"] and all(c == "n/a" for c in na["cells"]) and "24 h and 48 h only" in na["tip"], f"{area}: 72 h 2-inch row must read n/a with a tooltip: {na}")
+        # dev14 F2: ranges read "likely X–Y in" (p25-p75), no inline 10-90 / "NBM 10" anywhere in the headline, tiles or summary
+        txt = b.eval("(document.getElementById('headline').textContent + ' | ' + document.querySelector('.tiles').textContent + ' | ' + (document.getElementById('summary-card') || {textContent: ''}).textContent)")
+        log(f"  charts {area}: wording {txt[:160]!r}")
+        need("likely" in txt and "10–90" not in txt and "10-90" not in txt and "NBM 10" not in txt, f"{area}: inline range wording: {txt[:300]}")
         # Nov 16: no 7/10-day ranges on the tiles; the partial first day is labelled in the legend and summary
         t7 = b.eval("""(() => { const tiles = [...document.querySelectorAll('.tiles .tile')].map(t => [t.querySelector('.label').textContent, t.querySelector('.rng').textContent]);
           const leg = document.querySelector('.snow-legend'); const sum = document.getElementById('period-chart').previousElementSibling;
@@ -383,7 +400,7 @@ def check_charts(b: Browser, base: str, log):
         log(f"  charts {area}: tiles {t7['tiles']} partial legend {t7['partialLegend']}")
         need(all("expected total only" in r if ("7 days" in l or "10 days" in l) else ("–" in r or "expected total only" in r) for l, r in t7["tiles"]),
              f"{area}: 7/10-day tiles still show a range: {t7['tiles']}")
-        need(all("10–90" not in r for l, r in t7["tiles"] if "7 days" in l or "10 days" in l), f"{area}: long-window tile shows a 10–90 range")
+        need(all("likely" not in r for l, r in t7["tiles"] if "7 days" in l or "10 days" in l), f"{area}: long-window tile shows a range")
         # S11 step 4: accumulated = expected running total by day, no probability bars; ends at the 10-day total
         acc = b.eval("""(async () => {
           const d = await (await fetch('data/points/%s.json')).json();
@@ -646,13 +663,28 @@ def check_hazards(b: Browser, base: str, log):
     LAYERS = """(() => Object.fromEntries([...document.querySelectorAll('.leaflet-control-layers-overlays label')]
       .map(l => [l.textContent.trim(), l.querySelector('input').checked])))()"""
     b.open(f"{base}/about.html", wait=2)
-    b.eval("localStorage.removeItem('snowwx.layers'); 1")
+    b.eval("localStorage.removeItem('snowwx.layers'); localStorage.removeItem('snowwx.layers.v'); 1")
     b.open(f"{base}/index.html#map=6/42/-112", wait=10)
     d = b.eval(LAYERS)
     log(f"  defaults: {d}")
     on = {k for k, v in d.items() if v}
-    need({"Roads, towns & peaks", "Ski areas", "Avalanche danger", "NWS winter hazards"} <= on and not ({"SNOTEL", "ASOS / AWOS (wind, temp)"} & on),
-         f"layer defaults wrong: {d}")
+    need(on == {"Roads, towns & peaks", "Ski areas", "NWS winter hazards"}, f"first-load layer defaults wrong (owner Nov 17): {d}")
+    # nothing may be DRAWN from an unchecked layer: items of the canvas groups, and the Leaflet layers, must equal the checked set
+    drawn = b.eval("""(() => { const p = window.snowwx.points, items = p._items(), g = {};
+        for (const it of items) g[it.group] = (g[it.group] || 0) + 1;
+        return {groups: g, layers: window.snowwx.currentLayers(), minor: items.filter(i => i.group === 'ski' && i.area && !i.area.major).length,
+                major: items.filter(i => i.group === 'ski' && i.area && i.area.major).length}; })()""")
+    log(f"  drawn: {drawn}")
+    need(set(drawn["groups"]) <= {"ski"} and drawn["groups"].get("ski", 0) > 0, f"canvas draws unchecked groups (ASOS/SNOTEL/Sno-Park): {drawn}")
+    need(set(drawn["layers"]) == {"ref", "ski", "haz"}, f"Leaflet layer set differs from the checked set: {drawn}")
+    need(drawn["minor"] == 0 and drawn["major"] > 0, f"low zoom must show only major ski areas: {drawn}")
+    # a saved choice from before the defaults changed is ignored once (version key), then remembered again
+    b.open(f"{base}/about.html", wait=2)
+    b.eval("localStorage.setItem('snowwx.layers', JSON.stringify(['ref','ski','sp','avy','haz'])); localStorage.removeItem('snowwx.layers.v'); 1")
+    b.open(f"{base}/index.html#map=6/42/-112", wait=9)
+    need({k for k, v in b.eval(LAYERS).items() if v} == {"Roads, towns & peaks", "Ski areas", "NWS winter hazards"}, "old saved layers must not override the new defaults")
+    b.eval("localStorage.removeItem('snowwx.layers'); localStorage.removeItem('snowwx.layers.v'); 1")
+    b.open(f"{base}/index.html#map=6/42/-112", wait=9)
     hz = b.eval("(() => ({status: window.snowwx.hazards.state.status, count: window.snowwx.hazards.state.count, panel: document.getElementById('hazards').textContent.trim(),"
                 " hidden: document.getElementById('hazards').hidden}))()")
     log(f"  hazards: {hz['status']} {hz['count']} | {hz['panel'][:110]!r}")
@@ -682,7 +714,56 @@ def check_hazards(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards}
+def check_status(b: Browser, base: str, log):
+    """dev14 W5: public data-status page from fixtures: healthy, a late source with an outage, an old file, a missing file; footer link everywhere."""
+    import shutil
+    from datetime import datetime, timedelta, timezone
+    src = Path(base_dir_holder["path"])
+    now = datetime.now(timezone.utc)
+    iso = lambda h: (now - timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731
+    lims = {"snotel": {"max_failures": 3, "max_age_hours": 6}, "points": {"max_age_hours": 14}, "alerts": {"max_failures": 3, "max_age_hours": 6}}
+    fixtures = {
+        "good": {"generated_at": iso(0.2), "sources": {"snotel": {"ok": True, "count": 836, "last_success_at": iso(0.3), "consecutive_failures": 0},
+                 "points": {"ok": True, "count": 160, "unit": "ski areas", "at": iso(3)}, "alerts": {"ok": True, "count": 4, "last_success_at": iso(0.3), "consecutive_failures": 0}},
+                 "monitoring": {"sources": lims}, "site": {"feedback_email": "feedback@example.test"}},
+        "late": {"generated_at": iso(0.2), "sources": {"snotel": {"ok": False, "unavailable": True, "last_observed": iso(60), "last_success_at": iso(60), "consecutive_failures": 7, "outage_since": iso(59)},
+                 "points": {"ok": True, "at": iso(3)}}, "monitoring": {"sources": lims}},
+        "old": {"generated_at": iso(30), "sources": {"alerts": {"ok": True, "last_success_at": iso(30), "consecutive_failures": 0}}, "monitoring": {"sources": lims}},
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        for f in ("status.html", "css", "js"):
+            (shutil.copytree if (src / f).is_dir() else shutil.copy)(src / f, t / f)
+        (t / "data").mkdir()
+        results = {}
+        with serve(t) as tbase:
+            for name in ("good", "late", "old", "missing"):
+                if name != "missing":
+                    (t / "data" / "meta.json").write_text(json.dumps(fixtures[name]), encoding="utf-8")
+                else:
+                    (t / "data" / "meta.json").unlink()
+                b.open(f"{tbase}/status.html", wait=2.5)
+                results[name] = b.eval("""(() => ({rows: [...document.querySelectorAll('#st-table tbody tr')].map(r => r.className + ':' + r.querySelector('th').textContent.slice(0, 12)),
+                    banner: document.getElementById('st-banner').hidden ? '' : document.getElementById('st-banner').textContent, foot: document.getElementById('st-foot').textContent,
+                    msg: (document.querySelector('#st-table .snotel-note') || {}).textContent || '', detail: (document.querySelector('tr.st-late td:last-child') || {}).textContent || '',
+                    fb: [...document.querySelectorAll('a.site-feedback')].map(a => (a.hidden ? 'hidden' : a.getAttribute('href'))).join(),
+                    hscroll: document.documentElement.scrollWidth > innerWidth + 2, h1: document.querySelectorAll('h1,h2').length}))()""")
+    log(f"  status: {json.dumps(results)[:600]}")
+    need(all(r.startswith("st-ok") for r in results["good"]["rows"]) and len(results["good"]["rows"]) == 3 and not results["good"]["banner"], f"healthy fixture: {results['good']}")
+    need(any(r.startswith("st-late:SNOTEL") for r in results["late"]["rows"]) and "unavailable" in results["late"]["detail"] and "since" in results["late"]["detail"], f"late fixture: {results['late']}")
+    need("old" in results["old"]["banner"] and any(r.startswith("st-late") for r in results["old"]["rows"]), f"old fixture: {results['old']}")
+    need("could not be read" in results["missing"]["msg"], f"missing meta.json must say so: {results['missing']}")
+    need(results["good"]["fb"].startswith("mailto:feedback@example.test") and results["late"]["fb"] == "hidden", f"feedback link must come from meta.json site config and hide without it: {results['good']['fb']} / {results['late']['fb']}")
+    need(not any(r["hscroll"] for r in results.values()), f"horizontal scroll on the status page: {results}")
+    for page in ("index", "area", "finder", "mine", "models", "about", "status"):       # linked from every footer
+        html = (src / f"{page}.html").read_text(encoding="utf-8")
+        need('href="status.html"' in html.split("<footer")[1], f"{page}.html footer has no Data status link")
+    b.open(f"{base}/status.html", width=375, wait=3)
+    need(not b.eval("document.documentElement.scrollWidth > innerWidth + 2"), "status page scrolls sideways at 375 px")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status}
 
 
 def main(argv=None) -> int:

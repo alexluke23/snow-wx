@@ -20,7 +20,8 @@
     return r.json();
   };
   const inches = (v) => (v === null || v === undefined ? "–" : v < 0.5 ? (v < 0.05 ? "0" : "<1") : `${Math.round(v)}`);
-  const rng = (t) => (t?.snow_hi === null || t?.snow_hi === undefined || t?.native !== true ? "" : t.snow_hi < 0.5 ? "0–1" : `${Math.round(t.snow_lo ?? 0)}–${Math.max(1, Math.round(t.snow_hi))}`);
+  // "likely" = NBM p25-p75 of one native window (owner Nov 17); never an inline 10-90 %
+  const rng = (t) => (t?.snow_q3 == null || t?.snow_q1 == null || t?.native !== true ? "" : t.snow_q3 < 0.5 ? "0–1" : `${Math.round(t.snow_q1 ?? 0)}–${Math.max(1, Math.round(t.snow_q3))}`);
   const ft = (v) => (v === null || v === undefined ? "–" : `${Math.round(v).toLocaleString()} ft`);
   const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");
   const dayFmt = (iso, tz) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", timeZone: tz });
@@ -69,6 +70,16 @@
     const al = (alerts?.[kind === "snotel" ? "points" : "areas"]?.[id] || []);
     const alHtml = al.filter((x) => x.relevant !== false).map((x) => `<span class="alert-badge ${esc(x.level)}" title="${esc(x.event)}">${esc(x.short || x.event)}</span>`).join(" ")
       + (al.some((x) => x.relevant === false) ? ` <span class="hint">+${al.filter((x) => x.relevant === false).length} other</span>` : "");
+    const smry = SnowSummary.withAlerts(d.summary, al);      // alert tag applied client-side (§5.7); likely wording comes from the pipeline
+    const sumHtml = smry && smry.sentence ? `<p class="msum"><b class="summary-tag${smry.alert ? " alert" : ""}">${esc(smry.tag)}</b> ${esc(smry.sentence)}
+      <span data-mailto-wrap hidden><a class="hint" ${SiteConfig.attrs("Snow-Wx: bad summary", `Place: ${a.name || id}
+Page: ${location.href}
+Tag: ${smry.tag}
+Rules: ${(smry.rule_ids || []).join(", ")}
+Text: ${smry.sentence}
+
+What was wrong (and what happened):
+`)}>Report a bad summary</a></span></p>` : "";
     const z = a.avalanche, r = z && avy ? avy[String(z.zone_id)] : null;
     const avyHtml = kind === "snotel" ? "" : r
       ? `<a class="danger-chip${r.expired ? " expired" : ""}" style="background:${esc(r.color)};color:${textOn(r.color)}" href="${esc(safeUrl(r.link))}" target="_blank" rel="noopener"
@@ -81,7 +92,7 @@
       <div class="mhead"><h3><a href="area.html#${encodeURIComponent(id)}">${esc(a.name)}</a></h3>
         <button type="button" class="unfav" data-id="${esc(id)}" aria-label="Remove ${esc(a.name)} from favorites" title="Remove from favorites">★</button>
         <p class="sub">${sub}</p>
-        <div class="mtags">${st ? `<span class="stype" title="Snow type (heuristic from NBM's snow ratio)">${esc(st.label)}${st.wind ? " · wind-affected" : ""}</span>` : ""}${alHtml}${avyHtml ? ` <span class="avy">Avalanche: ${avyHtml}</span>` : ""}</div></div>
+        <div class="mtags">${sumHtml}${st ? `<span class="stype" title="Snow type (heuristic from NBM's snow ratio)">${esc(st.label)}${st.wind ? " · wind-affected" : ""}</span>` : ""}${alHtml}${avyHtml ? ` <span class="avy">Avalanche: ${avyHtml}</span>` : ""}</div></div>
       <div class="mgrid">
         <div><span class="lab">Next 24 h</span>${sw(t24?.snow_in)}<b>${inches(t24?.snow_in)}"</b><small>${rng(t24)}</small></div>
         <div><span class="lab">Next 72 h</span>${sw(t72?.snow_in)}<b>${inches(t72?.snow_in)}"</b><small>${rng(t72)}</small></div>
@@ -102,7 +113,7 @@
     const ok = docs.map((r, i) => [ids[i], r.status === "fulfilled" ? r.value : null]);
     const issued = ok.find(([, d]) => d)?.[1]?.issued;
     $("fresh").innerHTML = `${ids.length} favorite${ids.length === 1 ? "" : "s"}${issued ? ` · NBM ${new Date(issued).toLocaleString([], { weekday: "short", hour: "numeric", timeZoneName: "short" })} run` : ""}
-      · amounts are <b>expected</b> ${expectedInfo()} with NBM's 10–90% range in small print`;
+      · amounts are <b>expected</b> ${expectedInfo()} with the likely range (the middle half of NBM's outcomes) in small print`;
     $("cards").className = "mcards";
     $("cards").innerHTML = ok.map(([id, d]) => (d ? card(id, d, alerts, avy)
       : `<article class="mcard"><div class="mhead"><h3><a href="area.html#${encodeURIComponent(id)}">${esc(id)}</a></h3>

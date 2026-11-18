@@ -55,12 +55,12 @@
         <li><b>Deterministic</b> fields — one best estimate per hour. We call these <b>"Expected"</b>: NBM's forecast amount, an average of possible
           outcomes. You typically have about a 1-in-3 chance of reaching it. The Powder Finder amounts, the totals and the
           <a href="#accumulated">accumulated-snow</a> line are these values, added up over 6-hour steps, so they add up.</li>
-        <li><b>Probabilistic</b> fields — percentiles (for example "10% chance of less than 2 inches, 90% chance of
+        <li><b>Probabilistic</b> fields — percentiles (for example "25% chance of less than 2 inches, 75% chance of
           less than 9 inches") and exceedance probabilities ("40% chance of at least 6 inches"), built from the
           ensemble members.</li>
       </ul>
       <p>NOAA calibrates the two separately, so they can disagree. The expected amount is not the median and can
-        even fall outside the 10–90% range. This is expected; we show both as published rather than forcing one to
+        even fall outside the likely range. This is expected; we show both as published rather than forcing one to
         fit the other. When they differ a lot, the forecast is uncertain.</p>
       <p>In practice NBM's deterministic snowfall behaves like an <i>expected</i> (average) amount: snowfall outcomes are
         skewed toward a few big totals, so the average sits above the middle outcome. In one full NBM run (8 Nov 2026) it
@@ -112,10 +112,16 @@
 
     <section id="probabilities">
       <h3>Snowfall ranges and chances</h3>
-      <p><b>Ranges</b> are NBM's own snowfall percentiles. The 01, 07, 13 and 19 UTC NBM runs carry 6-, 24-, 48- and
+      <p><b>"Likely" ranges.</b> Every range on the site (snowfall, snow level, snow ratio) shows <b>likely X–Y</b>: the middle half
+        of NBM's outcomes, its 25th to 75th percentile. That is about a 1-in-4 chance of more than the high number and a 1-in-4
+        chance of less than the low number. (An earlier version showed the wider 10th–90th percentile range; the archive and the
+        "chance of at least" fields still carry those, but the page text does not.) Where NBM has no single window for a span,
+        only the expected amount is shown, never a range built by adding percentiles. In the NWS view only amounts are shown:
+        the NWS forecast has no ranges.</p>
+      <p><b>Where the ranges come from.</b> They are NBM's own snowfall percentiles. The 01, 07, 13 and 19 UTC NBM runs carry 6-, 24-, 48- and
         72-hour snowfall percentiles out to about 11 days; we use those runs whenever they are available. The daily bars
         use the 24-hour windows only (see <a href="#daily-snow">Snowfall by day</a>). Powder Finder, My mountains and the area
-        tiles show 10–90% ranges for the next 24, 48 and 72 hours from NBM's own windows. Beyond 72 hours (7 and 10
+        tiles show likely ranges for the next 24, 48 and 72 hours from NBM's own windows. Beyond 72 hours (7 and 10
         days) they show the expected total only: a longer range would need percentiles added together, which is not
         valid.</p>
       <p>If only an older 00/06/12/18 UTC run is available, ranges after 48 hours are not in NBM's data. We then
@@ -134,8 +140,11 @@
     <section id="powder-quality">
       <h3>Snow ratio and powder quality (a documented heuristic)</h3>
       <p>The <b>snow ratio</b> is NBM's forecast snow-to-liquid ratio: how many inches of snow one inch of water makes. The
-        area-page panel draws NBM's median (line) and 10–90% range (shading) only while snow is falling, because NBM's ratio
-        is meaningless in dry hours. Behind it, <b>powder quality</b> is a simple, documented rule of thumb on the median ratio:</p>
+        area-page panel draws NBM's median (line) and the <b>likely range</b> (the middle half of its outcomes, blue shading) over the whole
+        forecast from the same percentile series, solid and darker where precipitation is likely (at least 20% chance) and lighter and dotted
+        elsewhere, like the snow-level chart. NBM gives a snow ratio in dry hours too (what snow would have, if any fell); where
+        it gives none (a few warm, low places) nothing is drawn and the stretch is labelled "no snow forecast". The dashed lines
+        mark <b>powder quality</b>, a simple, documented rule of thumb on the median ratio:</p>
       <ul>
         <li><b>Dense</b>: below 10:1 — heavy, wetter snow.</li>
         <li><b>Medium</b>: 10–15:1.</li>
@@ -145,28 +154,33 @@
         pack snow). This is a heuristic from a forecast, <b>not an accuracy claim, a measurement or an avalanche rating</b>: real
         snow quality also depends on crystal type, settling, sun and the snow already on the ground. The thresholds may be tuned
         once we can verify them. Colours are chosen to be distinct from the snowfall colours; each band is also labelled in text.</p>
-      <p id="snow-type"><b>"Type" in Powder Finder and My mountains</b> uses a finer four-step version of the same idea
-        (Wet/heavy below 8:1, Average 8–12, Dry/light 12–18, Very dry/blower 18 and up, from the 12-hour periods with at least
-        half an inch of snow) and is also a heuristic; its thresholds live in the site configuration.</p>
+      <p id="snow-type"><b>"Type" in Powder Finder and My mountains</b> uses exactly the same three classes and
+        thresholds (Dense below 10:1, Medium 10–15, Blower 15 and up), taken from the 12-hour periods with at least half an inch of
+        snow. There is one definition for the whole site (the Finder, My mountains, the chart and the daily summary); it is a
+        heuristic and its thresholds live in the site configuration.</p>
     </section>
 
     <section id="daily-summary">
       <h3>Daily Snow summary</h3>
       <p>The sentence at the top of each forecast page is written by fixed rules, not by a person or an AI model. The rules and
         thresholds are in the open (<code>config/summary_rules.yml</code> in the project) and use only NBM numbers shown on the page:
-        a deep-powder day needs NBM's own median (24 h) of at least 8 in, at least a 30% chance of 12 in or more, a snow ratio of
-        about 14:1 or higher and calm summit gusts; a storm cycle needs a 72-hour median of at least 18 in and quotes NBM's own 72-hour
-        10–90% range; rain at the base, wind-affected snow and a dry stretch have their own rules. One headline wins by priority
-        (alerts, rain at the base, powder day, storm cycle, wind, dry); the rest are bullets. Rules that use medians or chances only run
+        a deep-powder day needs NBM's own median (24 h) of at least 8 in, at least a 30% chance of 12 in or more, a snow ratio in the
+        Blower class (15:1 or higher) and calm summit gusts; a storm cycle needs a 72-hour median of at least 18 in and quotes NBM's own 72-hour
+        likely range (NBM's 25th–75th percentile); rain at the base, wind-affected snow and a dry stretch have their own rules. One headline wins by priority
+        (alerts, rain at the base, powder day, storm cycle, dry, wind); the rest are bullets. Rules that use medians or chances only run
         when NBM publishes that window directly; otherwise the summary says so and uses the expected amount only. Powder quality and
-        wind-affected are labelled heuristics, never accuracy claims or avalanche ratings.</p>
+        wind-affected are labelled heuristics, never accuracy claims or avalanche ratings. An active NWS winter alert for the place
+        always comes first (it is read live, not stored in the summary). The summary also appears on Powder Finder rows (tag) and in
+        My mountains. Every summary has a <b>"Report a bad summary"</b> link, and the owner reviews ten summaries against the NWS
+        forecast discussion and observed totals each week.</p>
     </section>
 
     <section id="winter-hazards">
       <h3>NWS winter hazards layer and map defaults</h3>
-      <p>The obs map opens with the layers most useful in winter switched on: roads/towns/peaks, ski areas, Sno-Parks, avalanche
-        danger and the <b>NWS winter hazards</b>. SNOTEL, airport stations (ASOS) and the snow overlays are off until you turn them
-        on; your choices are remembered in this browser, a link can carry them, and "Reset map layers to defaults" restores the
+      <p>The obs map opens uncluttered: shaded relief, roads/towns/peaks, ski areas (at low zoom only the larger, hand-checked
+        ones; the rest appear from zoom 8) and the <b>NWS winter hazards</b>. Avalanche danger, Sno-Parks, SNOTEL, airport stations
+        (ASOS) and the snow overlays are one tap away in the layer menu (avalanche danger is also on every forecast page and ski-area
+        popup); your choices are remembered in this browser, a link can carry them, and "Reset map layers to defaults" restores the
         opening view.</p>
       <p>The hazards layer draws the <b>official NWS watch, warning and advisory areas</b> straight from NOAA/NWS's public map
         service (mapservices.weather.noaa.gov), filtered to winter products: winter storm, winter weather, blizzard, ice storm,
@@ -193,8 +207,10 @@
         percentiles. From the 10th, 50th and 90th percentiles we estimate the chance that the snow level is below
         the summit or base (after 48 hours, a ±800 ft ramp around NBM's deterministic snow level is used). Snowfall at
         the point is NBM's snowfall × that chance, so a base below the snow level gets less snow than the summit.
-        The snow-level chart is drawn solid where precipitation is likely (at least 20% chance) and dotted where it
-        is unlikely. Powder Finder shows the lowest snow level while precipitation is likely in the selected window, and
+        The snow-level chart draws NBM's median snow level over the whole forecast, even when no snow is expected, with the
+        <b>likely range</b> (the middle half of NBM's outcomes, its 25th–75th percentile) as the orange band; the line is solid where
+        precipitation is likely (at least 20% chance) and dotted where it is unlikely. A grey, labelled stretch would mean NBM has
+        no snow level there. Powder Finder shows the lowest snow level while precipitation is likely in the selected window, and
         "–" when little precipitation is expected in it.</p>
     </section>
 
@@ -264,8 +280,9 @@
     </section>
   </main>
   <footer>Forecasts: NOAA/NWS. Snowpack: USDA NRCS, NOAA/NWS NOHRSC. Ski areas © OpenStreetMap contributors,
-    OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center. · <a class="site-feedback" href="mailto:alexluke2323@gmail.com?subject=Snow-Wx%20feedback">Send feedback</a>
+    OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center. · <a href="status.html">Data status</a> <span data-mailto-wrap hidden>· <a class="site-feedback" data-mailto data-subject="Snow-Wx feedback" hidden>Send feedback</a></span>
   </footer>
+  <script src="js/site-config.js"></script>
   <script src="js/search.js" defer></script>
 </body>
 </html>

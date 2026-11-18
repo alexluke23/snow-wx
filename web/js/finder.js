@@ -31,8 +31,8 @@
                state: pick("st", ""), region: pick("r", ""), sort: pick("sort", "snow"), fav: pick("fav", "0") === "1",
                pw: pick("pw", "24h"), px: Number(pick("px", "6")), pd: Number(pick("pd", "0")), t: pick("t", "ski"),
                ty: pick("ty", "0") === "1", dir: pick("dir", "") };
-  const TYPE_SHORT = { wet: "Wet", average: "Avg", dry: "Dry", very_dry: "Blower" };
-  const TYPE_LONG = { wet: "Wet/heavy (< 8:1)", average: "Average (8–12:1)", dry: "Dry/light (12–18:1)", very_dry: "Very dry/blower (≥ 18:1)" };
+  const TYPE_SHORT = { dense: "Dense", medium: "Medium", blower: "Blower" };
+  const TYPE_LONG = { dense: `Dense (< ${POWDER_Q.dense_below}:1)`, medium: `Medium (${POWDER_Q.dense_below}–${POWDER_Q.blower_at}:1)`, blower: `Blower (≥ ${POWDER_Q.blower_at}:1)` };
   // Sno-Parks (kind "snopark") reuse the ski-area fields: summit = high terrain, base = trailhead
   const isRec = (a) => a.kind === "snopark";
   const ELEV_LABEL = { ski: ["Summit", "Base"], snopark: ["High terrain", "Trailhead"], all: ["Summit / high terrain", "Base / trailhead"] };
@@ -132,7 +132,8 @@
       // Ranges only from ONE native NBM window (t[6]): 7/10-day ranges and composite ones (percentiles of
       // several windows added) are never shown; expected total only (owner Nov 16)
       const nat = !!(t && t.length > 6 && t[6] === true) && st.w !== "7d" && st.w !== "10d";
-      return { a, snow: t ? t[0] : null, lo: t && nat ? t[1] : null, hi: t && nat ? t[2] : null, pop, stype: t && t.length > 5 ? t[5] : null,
+      return { a, snow: t ? t[0] : null, lo: t && nat && t.length > 8 ? t[7] : null, hi: t && nat && t.length > 8 ? t[8] : null,   // "likely" = native NBM p25/p75 (owner Nov 17)
+               pop, stype: t && t.length > 5 ? t[5] : null, sm: a.sm || null,
                obs: o, sl, slVsBase: sl === null ? null : sl - a.elev.base, gust: src?.gust_max_72h_mph ?? null,
                prob, pmean, alerts: alerts[a.id] || [] };
     });
@@ -197,7 +198,7 @@
     $("rows").innerHTML = list.length ? list.map((r) => {
       const c = prob ? colorFor(PROB, r.prob) || "#f4f6f8" : colorFor(SNOWFALL, r.snow) || "#f4f6f8";
       const main = prob ? `<b>${r.prob === null ? "–" : `${r.prob}%`}</b>${r.pmean === null ? "" : `<small>expected ${fmt(r.pmean)}"</small>`}`
-        : `<b>${fmt(r.snow)}"</b>${r.hi === null || r.hi === undefined ? "" : `<small>${fmt(r.lo)}–${fmt(r.hi)}</small>`}`;
+        : `<b>${fmt(r.snow)}"</b>${r.hi === null || r.hi === undefined ? "" : `<small title="${LIKELY_TIP}">${fmt(r.lo)}–${fmt(r.hi)}</small>`}`;
       // precipitation likely in the window: chance of precip >= 20 %, or (Chance of mode)
       // the selected snowfall chance itself >= 20 %
       const wet = (r.pop !== null && r.pop >= 20) || (r.prob !== null && r.prob >= 20);
@@ -205,12 +206,14 @@
       const slTxt = r.sl === null || dry
         ? `<span class="hint" title="${dry ? "little precipitation expected in this window" : "no snow level while precipitation is likely"}">–</span>`
         : r.slVsBase <= 0 ? `<span class="tobase">to base</span>` : `+${kft(r.slVsBase)}`;
+      const sm = SnowSummary.withAlerts(r.sm ? { tag: r.sm[0], sentence: r.sm[1] } : null, r.alerts);   // client-side alert tag (§5.7)
+      const smHtml = sm ? `<small class="sm${sm.alert ? " alert" : ""}" title="${esc(sm.sentence)}"><b>${esc(sm.tag)}</b></small>` : "";
       const badge = r.alerts.length ? `<span class="alert-badge ${esc(r.alerts[0].level)}" title="${esc(r.alerts.map((x) => x.event).join(", "))}">${esc(r.alerts[0].short || "Alert")}</span>` : "";
       return `<div class="frow" role="listitem">
         <button type="button" class="star${fav.has(r.a.id) ? " on" : ""}" data-id="${esc(r.a.id)}" aria-pressed="${fav.has(r.a.id)}"
           title="Favorite">${fav.has(r.a.id) ? "★" : "☆"}<span class="sr"> favorite ${esc(r.a.name)}</span></button>
         <span class="who">${isRec(r.a) ? `<i class="kind-sp" title="${esc(r.a.type_label || "Sno-Park")}" aria-hidden="true">P</i>` : ""}<a href="area.html#${encodeURIComponent(r.a.id)}">${esc(r.a.name)}</a>${badge}
-          <small>${isRec(r.a) ? `${esc(r.a.type_label || "Sno-Park")} · ` : ""}${esc(r.a.region)}, ${esc(r.a.state)}</small></span>
+          <small>${isRec(r.a) ? `${esc(r.a.type_label || "Sno-Park")} · ` : ""}${esc(r.a.region)}, ${esc(r.a.state)}</small>${smHtml}</span>
         <span class="num snow"><i class="sw" style="background:${c}"></i>${main}</span>
         <span class="details">
           <span class="num" data-label="Obs 24 h">${r.obs === null ? "–" : `${fmt(r.obs)}"`}</span>
@@ -226,7 +229,7 @@
         `probabilistic guidance for the 2.5 km grid cell. ${SEPARATE} Small number: NBM's expected amount in the same window (about a 1-in-3 chance of reaching it). ` +
         `Snow level: lowest while precipitation is likely in that window.`
       : `Expected snowfall at the ${st.e} (${st.src === "nws" ? "NWS forecast, 2.5 km grid cell" : "NBM"})` +
-        `${st.src === "nws" ? "" : (st.w === "7d" || st.w === "10d" ? "; expected total only beyond 72 h (no range)" : "; small numbers: NBM 10–90% where NBM gives it for the whole window")}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest while precipitation is likely in the window, vs the base ` +
+        `${st.src === "nws" ? "" : (st.w === "7d" || st.w === "10d" ? "; expected total only beyond 72 h (no range)" : "; small numbers: the likely range (the middle half of NBM's outcomes: about a 1-in-4 chance of more or less) where NBM gives it for the whole window")}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest while precipitation is likely in the window, vs the base ` +
         `("–" when the chance of precipitation is under 20 %). Gust: highest summit gust in 72 h (NBM). ★ favorites list first.`;
     $("rows").querySelectorAll(".star").forEach((b) => b.addEventListener("click", () => {
       const s = favs(); s.has(b.dataset.id) ? s.delete(b.dataset.id) : s.add(b.dataset.id); saveFavs(s); render();

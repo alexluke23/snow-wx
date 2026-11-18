@@ -66,18 +66,29 @@
   window.snowwx.hazards = hazards;
 
   // ---- layer defaults, memory and URL override (dev13 item 2)
-  // Defaults ON: roads/towns/peaks, ski areas, Sno-Parks, avalanche danger, NWS winter hazards. OFF: SNOTEL, ASOS (and the
-  // NOHRSC overlay, which is "None" until picked). Order of precedence: URL hash (ly=...) > the visitor's last choice
+  // Defaults ON: roads/towns/peaks, ski areas (minor ones from zoom 8), NWS winter hazards. OFF: Sno-Parks, avalanche danger,
+  // SNOTEL, ASOS (and the NOHRSC overlay, which is "None" until picked). Order of precedence: URL hash (ly=...) > the visitor's last choice
   // (localStorage) > defaults. A hash that names a station switches that station's layer on.
   const LAYER_KEY = "snowwx.layers";
-  const LAYER_DEFAULTS = ["ref", "ski", "sp", "avy", "haz"];
+  const LAYER_DEFAULTS = ["ref", "ski", "haz"];
+  // Bumped whenever LAYER_DEFAULTS changes: a visitor whose saved choice predates the new defaults gets them once, then their own
+  // choices are remembered again (owner Nov 17: first load = relief + roads + ski areas + NWS hazards only).
+  const LAYER_DEFAULTS_VERSION = "2";
+  const LAYER_VER_KEY = "snowwx.layers.v";
+  const SKI_MINOR_ZOOM = 8;            // ASSUMED: below this zoom only the ~60 hand-checked "major" ski areas are drawn
   const ALL_LAYERS = { ref: basemaps.overlays["Roads, towns & peaks"], ski: skiLayer, sp: spLayer, avy: avyLayer, haz: hazardsLayer,
     snotel: snotelLayer, asos: asosLayer };
   const layerOrder = Object.keys(ALL_LAYERS);
   function wantedLayers(hash) {
     let list = null;
     if (hash.ly !== null && hash.ly !== undefined) list = hash.ly.split(",").filter((k) => layerOrder.includes(k));
-    else { try { const v = JSON.parse(localStorage.getItem(LAYER_KEY)); if (Array.isArray(v)) list = v.filter((k) => layerOrder.includes(k)); } catch { /* private mode */ } }
+    else {
+      try {
+        if (localStorage.getItem(LAYER_VER_KEY) === LAYER_DEFAULTS_VERSION) {
+          const v = JSON.parse(localStorage.getItem(LAYER_KEY)); if (Array.isArray(v)) list = v.filter((k) => layerOrder.includes(k));
+        }
+      } catch { /* private mode */ }
+    }
     const on = new Set(list ?? LAYER_DEFAULTS);
     const s = hash.s || "";
     if (s.startsWith("asos:")) on.add("asos"); else if (s.startsWith("area:")) on.add("ski"); else if (s.startsWith("sp:")) on.add("sp");
@@ -89,7 +100,7 @@
   let layersReady = false;
   function persistLayers() {
     if (!layersReady) return;
-    try { localStorage.setItem(LAYER_KEY, JSON.stringify(currentLayers())); } catch { /* private mode */ }
+    try { localStorage.setItem(LAYER_KEY, JSON.stringify(currentLayers())); localStorage.setItem(LAYER_VER_KEY, LAYER_DEFAULTS_VERSION); } catch { /* private mode */ }
     writeHash();
   }
 
@@ -108,6 +119,7 @@
     "ASOS / AWOS (wind, temp)": asosLayer,
   }, { collapsed: window.innerWidth < 800 }).addTo(map);
   map.on("overlayadd overlayremove", persistLayers);
+  window.snowwx.points = points; window.snowwx.currentLayers = currentLayers;   // test handles (tools/browser_check.py)
   layersReady = true;
   L.control.scale({ imperial: true, metric: true }).addTo(map);
 
@@ -216,7 +228,7 @@
     const size = a.major ? 16 : 11;
     const it = {
       group: "ski", top: true, lat: a.summit.lat, lon: a.summit.lon, area: a, title: `${a.name} ski area`,
-      labelBox: null, prio: () => 0,
+      labelBox: null, prio: () => 0, minZoom: a.major ? null : SKI_MINOR_ZOOM,
       hit: () => [-size / 2 - 3, -size / 2 - 3, size / 2 + 3, size / 2 + 3],
       draw(ctx, x, y) {
         const h = size * 0.85;
@@ -525,7 +537,7 @@
   }
   hazardsLayer.on("add remove", () => drawHazards(hazards.state));
   document.getElementById("reset-layers")?.addEventListener("click", () => {
-    try { localStorage.removeItem(LAYER_KEY); } catch { /* private mode */ }
+    try { localStorage.removeItem(LAYER_KEY); localStorage.removeItem(LAYER_VER_KEY); } catch { /* private mode */ }
     layersReady = false;
     for (const k of layerOrder) {
       if (k === "ref") continue;
