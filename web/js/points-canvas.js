@@ -24,12 +24,14 @@ const PointsCanvas = L.Layer.extend({
   // ---- data
   setGroup(name, items, { order } = {}) {
     this._groups[name] = items;
-    if (!(name in this._visible)) this._visible[name] = true;
+    if (!(name in this._visible)) this._visible[name] = false;   // shown only when its layer is on the map (toggleLayer.onAdd): data arriving late must not draw an unchecked layer
     if (!this._order.includes(name)) this._order.splice(order ?? this._order.length, 0, name);
     this.invalidate();
   },
   setVisible(name, on) { this._visible[name] = on; this.invalidate(); },
   isVisible(name) { return !!this._visible[name]; },
+  /** names of the groups currently drawn (visible and with items), for the browser regression check */
+  drawnGroups() { return this._order.filter((g) => this._visible[g] && (this._groups[g] || []).some((it) => it.minZoom == null || (this._map && this._map.getZoom() >= it.minZoom))); },
   invalidate() { this._layout.clear(); this.redraw(); },
   redraw() {
     if (!this._map || this._frame) return;
@@ -101,8 +103,8 @@ const PointsCanvas = L.Layer.extend({
     if (it._z !== z) { const p = this._map.project([it.lat, it.lon], z); it._x = p.x; it._y = p.y; it._z = z; }
   },
   _items() {
-    const out = [];
-    for (const g of this._order) if (this._visible[g]) for (const it of this._groups[g] || []) out.push(it);
+    const out = [], z = this._map ? this._map.getZoom() : 99;
+    for (const g of this._order) if (this._visible[g]) for (const it of this._groups[g] || []) if (it.minZoom == null || z >= it.minZoom) out.push(it);
     return out;
   },
   _layoutFor(z) {
