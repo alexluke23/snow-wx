@@ -105,3 +105,25 @@ console.log(JSON.stringify(out));
     assert liquid["ag"] and liquid["ag"]["n"] >= 3 and liquid["ag"]["label"] in ("High", "Medium", "Low")
     assert got["snow"]["labels"] == liquid["labels"] and got["snow"]["ag"] == liquid["ag"]   # the badge always comes from the liquid series
     assert got["none"] == ["NBM"]                                                    # an area without model data still gets the NBM line
+
+
+
+def test_ecmwf_hres_document_flows_through_the_site_merge_and_marks_the_plume(tmp_path):
+    """pipeline/ecmwf.py writes <models>/ecmwf/precip.json in the sampler format; the build's merge adds it as a further source with plume: true"""
+    from pipeline import ecmwf as E
+    s = E.Sampler([POINTS[0]], 50)
+    s.z = np.array([2400.0])
+    for st in (6, 12):
+        for p in ("tp", "sf"):
+            s.add_ens(p, st, {k: np.full((721, 1440), 0.001 * st, np.float32) for k in (1, 2)})
+            s.add_hres(p, st, np.full((721, 1440), 0.002 * st, np.float32))
+    plume, hres = E.area_docs(s, datetime(2026, 11, 18, 0, tzinfo=timezone.utc), [0, 6, 12])
+    models = tmp_path / "models"
+    (models / "ecmwf").mkdir(parents=True)
+    (models / "ecmwf" / "precip.json").write_text(json.dumps(hres), encoding="utf-8")
+    run_model(models, "hrrr", "HRRR", datetime(2026, 11, 18, 6, tzinfo=timezone.utc), [0, 3, 6, 12], [0, 0.1, 0.3, 0.6], 8000.0)
+    doc = mm.merge(models, tmp_path / "multimodel.json")
+    assert [m["model"] for m in doc["models"]] == ["hrrr", "ecmwf"] and doc["models"][1].get("plume") is True and "plume" not in doc["models"][0]
+    q = doc["areas"]["alta"]["ecmwf"]
+    assert q["q"] == [0.0, 0.47, 0.94] and q["z"] == 7874                       # 12 mm = 0.47 in, 24 mm = 0.94 in; terrain in feet
+    assert plume["alta"]["n_members"] == 50 and plume["alta"]["tp"][2][:2] == [120, 120] and plume["alta"]["tp"][2][2] is None   # members 3-50 missing -> null

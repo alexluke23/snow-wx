@@ -109,8 +109,9 @@ def run(cfg: dict, session, outdir: Path) -> dict:
             f = normalize_row(row, coords, now, stale)
             if f:
                 features.append(f)
+    if not features:                                # fail BEFORE writing: an empty answer must not replace the last good file
+        log.warning("ASOS: no usable stations (%d networks failed)", len(failed))
+        raise RuntimeError("ASOS returned no usable data")
     write_json(outdir / "asos.geojson", feature_collection(features))
     log.info("ASOS: wrote %d stations (%d networks failed)", len(features), len(failed))
-    if not features:
-        raise RuntimeError("ASOS returned no usable data")
     return {"count": len(features), "failed_networks": failed}

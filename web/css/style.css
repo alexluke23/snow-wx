@@ -554,3 +554,8 @@ main.status { max-width: 980px; width: 100%; box-sizing: border-box; } .status .
 /* stale forecast overlay note (obs map) */
 .overlay-meta .stale-note { margin: .3rem 0; padding: .35rem .5rem; border-left: 3px solid #c0392b; background: #fbeeed; font-size: .9rem; }
 @media (prefers-color-scheme: dark) { .overlay-meta .stale-note { background: #3a1f1c; } }
+
+/* ECMWF ensemble view toggle (Models / Ensemble): >= 40 px tap targets */
+.seg.mm-view { margin: 0 8px 6px 0; }
+.seg.mm-view button { min-height: 40px; min-width: 88px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

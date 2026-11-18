@@ -151,7 +151,7 @@ function SnowOverlays(map, { panel, onChange, sources = [
           ${legend(l)}
           <p class="hint">${esc(l.units)} · ${esc(when(l))}</p>
           ${isStale(l) ? `<p class="stale-note" role="status"><b>Out of date:</b> this NBM run started ${Math.round(ageH(l))} h ago (limit ${staleHours} h), so the layer is drawn in grey. Check the Data status page.</p>` : ""}
-          ${l._group === "Forecast" ? `<p class="hint">Grid values (2.5 km); site pages adjust for elevation. Below ${l.units === "%" ? "5 %" : "0.1 in"} is left clear so the terrain shows.</p>` : ""}
+          ${l._group === "Forecast" ? `<p class="hint">Grid values (2.5 km); site pages adjust for elevation. Below ${l.units === "%" ? "5 %" : "0.1 in"} is left clear so the terrain shows.${l.id === "nbm7d" ? " The 7-day layer adds NBM's seven native 24 h expected amounts (a total of expected values; no percentile is added)." : ""}</p>` : ""}
           <label class="opacity">Opacity <input id="overlay-opacity" type="range" min="0.2" max="1" step="0.05" value="${opacity}"></label>
           <p id="overlay-readout" class="readout" aria-live="polite">Hover or tap the map for a value.</p>
         </div>` : ""}

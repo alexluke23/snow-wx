@@ -175,15 +175,15 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 17 2026, dev16 run; the uncommitted dev16_report.md has the briefing)**
-- main has fix-snotel, dev13–dev15. Branch `dev16` (PR open): M9 SNOTEL exclusion ends 2026-11-18 00:45Z (`verification.snotel_outage`), hazard popups show NWS text
-  in-page via local alert files or one live single-alert fetch (never an api.weather.gov href; tests/test_hygiene.py + `hazpop` check), Sno-Park owner review CSV
-  (`data/rec_points_review.csv`), M7 precipitation by model (`pipeline/models/multimodel.py` -> `data/multimodel.json`, `web/js/multimodel.js`, models.yml `multi_model.enabled`),
-  M9 scorer `python -m pipeline verify` (+ `docs/verification_first_look.md`).
-- CLI steps behind flags, not wired into workflows (no workflow edits in these runs): `pages` (pages.enabled), `pwa` (pwa.enabled; never before W1).
-- No e-mail address in web/: `site.feedback_email` -> meta.json -> `js/site-config.js`. SNOTEL outage over; recovery time unconfirmed, first confirmed live 00:45Z Nov 18 (PLAN §2).
-- Browser suite: `tools/browser_check.py` has 19 checks (adds pwa, storm, hazpop, spmobile, mmodel, mobile 375 px sweep); `mmodel` needs `build/data/multimodel.json` (run the three models quickly, then `multimodel.merge`).
-- Open: W3 meta description (W2) + Low-confidence rule (now unblocked by M7 agreement); `HEALTHCHECK_URL` secret; W1 then enable pwa/pages; real-device PWA tests; ECMWF (M8).
+**Current state (Nov 18 2026, dev17 run; the uncommitted dev17_report.md has the briefing)**
+- main has dev13-dev16. Branch `dev17`: `alerts/hazard_text.json` (popup text for every layer alert from the one /alerts/active call; live fetch = last resort), Show-all tests,
+  `decision` column in `data/rec_points_review.csv` (keep/drop/merge, applied by `catalog --rec`; never published), agreement badge now >= 80 % High / >= 66 % Medium (4 sources),
+  forecast overlays (config `forecast_overlays`: enabled, stale_hours -> greyed + note, cycle/issue time), PROB palette fixed (monotone lightness).
+- **Built but OFF (never enable from a dev session):** `ecmwf.enabled` (HRES line + ENS plume, `python -m pipeline ecmwf --force --out build/models`; 50 members, no control; owner wires
+  `docs/workflow_snippets/ecmwf.yml`), `wind_exposure.enabled` (W7, reviewer checklist in the spec), `alerts_backend.enabled` (W6 offline skeleton + owner decisions in the spec), plus the earlier `pages`/`pwa`.
+- Browser suite: `tools/browser_check.py` has 21 checks (adds showall, ensemble); `ensemble` needs ECMWF output in `build/models/ecmwf/` + `multimodel.merge` (skips with a note otherwise).
+  Calibrate the badge with `node tools/agreement_calibration.js`.
+- Open: W3 meta description (W2) + Low-confidence rule; `HEALTHCHECK_URL` secret; W1 then enable pwa/pages; real-device PWA tests; M9 verification when the archive grows.
 
 **Reusable gotchas (earlier session log: docs/ARCHIVE.md)**
 - Lighthouse: `PATH=/c/miniforge3/envs/tools:$PATH npx -y lighthouse@12.6.1 URL --only-categories=performance,accessibility`
