@@ -538,3 +538,8 @@ main.status { max-width: 980px; width: 100%; box-sizing: border-box; } .status .
 .mm-badge b { padding: 1px 8px; border-radius: 10px; border: 1px solid currentColor; }
 .mm-badge .mm-high { color: #0a5f37; } .mm-badge .mm-medium { color: #7a5600; } .mm-badge .mm-low { color: #8a1c10; }
 #mm-mode { margin-bottom: 6px; }
+#rows-more { padding: 10px 0 18px; text-align: center; }
+#rows-more button { min-height: 44px; padding: 8px 16px; border: 1px solid #5b7a99; border-radius: 6px; background: #fff; font: inherit; cursor: pointer; }
+/* status page: reserve the table's height so the content below does not jump when meta.json arrives (CLS) */
+.status #st-table { min-height: 480px; }
+@media (max-width: 640px) { .status #st-table { min-height: 1500px; } }

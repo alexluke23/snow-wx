@@ -175,14 +175,15 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 17 2026, dev15 run; the uncommitted dev15_report.md has the briefing)**
-- main has fix-snotel, dev13, dev14. Branch `dev15` (PR open, not merged): monitor bootstrap (stale/unavailable count as failures; data-age and
-  `outage_since` clocks; one decision line per source; tests/test_monitor_bootstrap.py), W4 PWA BUILT BUT OFF (`pwa.enabled=false`, `pipeline/pwa.py` +
-  `pwa_sw.js` + `web/js/pwa.js`, kill switch `pwa.kill`; enable only after W1), obs-map perf (SNOTEL/ASOS/avalanche files lazy; site-config idle + reuses
-  meta.json), storm-total tracker (snotel `depth_48h/7d`, `swe_48h/7d`; area-page window selector; map variables), percentile docs made accurate.
-- `pages` (W2) and `pwa` are CLI steps behind config flags; neither is wired into a workflow (no workflow edits allowed in these runs).
-- No e-mail address in web/: `site.feedback_email` -> meta.json `site` -> `js/site-config.js`. SNOTEL outage over (PLAN §2).
-- Open: W3 meta description (W2) + Low-confidence rule (M7); `HEALTHCHECK_URL` secret; W1 then enable pwa/pages; real iPhone/Android PWA tests (docs/specs/pwa.md).
+**Current state (Nov 17 2026, dev16 run; the uncommitted dev16_report.md has the briefing)**
+- main has fix-snotel, dev13–dev15. Branch `dev16` (PR open): M9 SNOTEL exclusion ends 2026-11-18 00:45Z (`verification.snotel_outage`), hazard popups show NWS text
+  in-page via local alert files or one live single-alert fetch (never an api.weather.gov href; tests/test_hygiene.py + `hazpop` check), Sno-Park owner review CSV
+  (`data/rec_points_review.csv`), M7 precipitation by model (`pipeline/models/multimodel.py` -> `data/multimodel.json`, `web/js/multimodel.js`, models.yml `multi_model.enabled`),
+  M9 scorer `python -m pipeline verify` (+ `docs/verification_first_look.md`).
+- CLI steps behind flags, not wired into workflows (no workflow edits in these runs): `pages` (pages.enabled), `pwa` (pwa.enabled; never before W1).
+- No e-mail address in web/: `site.feedback_email` -> meta.json -> `js/site-config.js`. SNOTEL outage over; recovery time unconfirmed, first confirmed live 00:45Z Nov 18 (PLAN §2).
+- Browser suite: `tools/browser_check.py` has 18 checks (adds pwa, storm, hazpop, spmobile, mmodel); `mmodel` needs `build/data/multimodel.json` (run the three models quickly, then `multimodel.merge`).
+- Open: W3 meta description (W2) + Low-confidence rule (now unblocked by M7 agreement); `HEALTHCHECK_URL` secret; W1 then enable pwa/pages; real-device PWA tests; ECMWF (M8).
 
 **Reusable gotchas (earlier session log: docs/ARCHIVE.md)**
 - Lighthouse: `PATH=/c/miniforge3/envs/tools:$PATH npx -y lighthouse@12.6.1 URL --only-categories=performance,accessibility`
