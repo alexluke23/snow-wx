@@ -141,3 +141,92 @@ def test_run_is_gated_by_the_config_flag(monkeypatch):
 def test_attribution_names_the_source_licence_and_that_the_data_were_adapted():
     assert "ECMWF" in E.ATTRIBUTION and "CC BY 4.0" in E.ATTRIBUTION and "Adapted" in E.ATTRIBUTION and "https://data.ecmwf.int/forecasts/" in E.ATTRIBUTION
     assert E.LICENSE_URL.startswith("https://creativecommons.org/licenses/by/4.0") and "ecmwf.int" in E.TERMS_URL
+
+
+# ---------------------------------------------------------------- the network flow with a fake mirror (decode is replaced by a fake field)
+class _Resp:
+    def __init__(self, text="", content=b"", status=200):
+        self.text, self.content, self.status_code = text, content, status
+
+
+class FakeMirror:
+    """serves .index text and byte-range 'GRIB' blobs; HEAD for the cycle probe. `members_missing` drops member messages at every step."""
+
+    def __init__(self, members=50, missing=0, steps=(0, 6, 12), head_ok=True):
+        self.members, self.missing, self.steps, self.head_ok = members, missing, steps, head_ok
+        self.headers = {}
+        self.gets = []
+
+    def _rows(self, stream, step):
+        rows, off = [], 0
+        if stream == "oper":
+            for p in ("tp", "sf") + (("z",) if step == 0 else ()):
+                rows.append({"type": "fc", "stream": "oper", "levtype": "sfc", "step": str(step), "param": p, "_offset": off, "_length": 10}); off += 10
+        else:
+            for p in ("tp", "sf"):
+                for n in range(1, self.members + 1 - self.missing):
+                    rows.append({"type": "pf", "stream": "enfo", "levtype": "sfc", "number": str(n), "step": str(step), "param": p, "_offset": off, "_length": 10}); off += 10
+        return "\n".join(json.dumps(r) for r in rows)
+
+    def head(self, u, **k):
+        return _Resp(status=200 if self.head_ok else 404)
+
+    def get(self, u, headers=None, timeout=None, **k):
+        self.gets.append(u)
+        step = int(u.split("-")[-3].rstrip("h")) if "-" in u else 0
+        stream = "oper" if "/oper/" in u else "enfo"
+        if u.endswith(".index"):
+            return _Resp(text=self._rows(stream, step))
+        return _Resp(content=b"x" * 10, status=206)
+
+
+def test_newest_cycle_requires_both_last_step_indexes_and_the_release_lag():
+    c = E.configure(None)
+    now = datetime(2026, 11, 18, 20, 30, tzinfo=timezone.utc)
+    assert E.newest_cycle(FakeMirror(), c, now) == datetime(2026, 11, 18, 12, tzinfo=timezone.utc)          # 12Z is 8.5 h old: released
+    now2 = datetime(2026, 11, 18, 18, 0, tzinfo=timezone.utc)
+    assert E.newest_cycle(FakeMirror(), c, now2) == datetime(2026, 11, 18, 0, tzinfo=timezone.utc)          # 12Z is only 6 h old: too early, take 00Z
+    assert E.newest_cycle(FakeMirror(head_ok=False), c, now) is None                                         # nothing complete on the mirror
+
+
+def run_fake(tmp_path, monkeypatch, mirror, **kw):
+    monkeypatch.setattr(E, "decode", lambda blob: np.full((721, 1440), 0.002, dtype="float32"))
+    monkeypatch.setattr(E.time, "sleep", lambda s: None)
+    cfg = {"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 2}}
+    gh = tmp_path / "gh.txt"
+    return E.run(cfg, mirror, tmp_path / "models", cycle=CYC, points=PTS[:1], github_output=str(gh), **kw), gh
+
+
+def test_run_writes_the_plume_the_hres_line_and_the_index_with_a_fake_mirror(tmp_path, monkeypatch):
+    res, gh = run_fake(tmp_path, monkeypatch, FakeMirror(), force=False)
+    out = tmp_path / "models" / "ecmwf"
+    assert res["ok"] and res["areas"] == 1 and res["n_members"] == 50 and res["control_member"] is False and res["missing_member_messages"] == 0
+    d = json.loads((out / "plume" / "alta.json").read_text(encoding="utf-8"))
+    assert d["hours"] == [0, 6, 12] and d["tp"][1][0] == 20 and len(d["tp"][2]) == 50 and d["z_ft"] == 0
+    hres = json.loads((out / "precip.json").read_text(encoding="utf-8"))
+    assert hres["model"] == "ecmwf" and hres["plume"] is True and hres["areas"]["alta"]["q"][0] == 0.0
+    idx = json.loads((out / "index.json").read_text(encoding="utf-8"))
+    assert "CC BY 4.0" in idx["attribution"] and idx["license"] == E.LICENSE_URL and idx["bytes_downloaded"] > 0
+    assert "new=true" in gh.read_text(encoding="utf-8") and "cycle=2026111800-" in gh.read_text(encoding="utf-8")
+
+
+def test_a_cycle_already_published_is_skipped_without_downloading(tmp_path, monkeypatch):
+    from pipeline.version import stamp
+    mirror = FakeMirror()
+    res, gh = run_fake(tmp_path, monkeypatch, mirror, published=stamp("2026111800", "ecmwf"))
+    assert res["skipped"] == "published" and "new=false" in gh.read_text(encoding="utf-8")
+    assert not [g for g in mirror.gets if g.endswith(".grib2")] and not (tmp_path / "models" / "ecmwf").exists()
+
+
+def test_too_many_missing_member_messages_fail_the_run_and_write_nothing(tmp_path, monkeypatch):
+    with pytest.raises(RuntimeError, match="member messages missing"):
+        run_fake(tmp_path, monkeypatch, FakeMirror(missing=11), force=False)                      # 11 of 50 > 20 %
+    assert not (tmp_path / "models" / "ecmwf").exists()
+    res, _ = run_fake(tmp_path, monkeypatch, FakeMirror(missing=4), force=False)                    # 4 of 50 missing: tolerated, counted
+    d = json.loads((tmp_path / "models" / "ecmwf" / "plume" / "alta.json").read_text(encoding="utf-8"))
+    assert res["missing_member_messages"] == 8 and d["tp"][1][49] is None and d["tp"][1][0] is not None
+
+
+def test_disabled_flag_downloads_nothing(tmp_path, monkeypatch):
+    mirror = FakeMirror()
+    assert E.run({}, mirror, tmp_path, points=PTS[:1]) == {"ok": False, "skipped": "disabled"} and mirror.gets == []
