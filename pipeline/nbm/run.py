@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 
 from .. import points as P
+from .. import wind_exposure as WX
 from ..common import REPO_ROOT, orphan_point_files, stale_point_files, utcnow, write_json
 from .inventory import FULL_SUITE_CYCLES, parse_idx, required_keys, sample_hours, select
 
@@ -29,6 +30,7 @@ log = logging.getLogger("snow-wx.nbm")
 BUCKET = "https://noaa-nbm-grib2-pds.s3.amazonaws.com"
 CACHE = REPO_ROOT / "data_cache" / "nbm"
 CATALOG = REPO_ROOT / "data" / "ski_areas.json"
+WIND_EXPOSURE = WX.configure(None)          # replaced by run_points from config `wind_exposure` (enabled: false = no field at all)
 SOURCE = "NOAA/NWS National Blend of Models (NBM) via NOAA Open Data Dissemination (AWS)"
 SELECTION_VERSION = 7          # bump when inventory.selections changes (invalidates the sample cache)
 
@@ -614,6 +616,9 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
         tot = {k: doc["points"][k]["totals"] for k in ("summit", "base")}
         doc["checks"] = P.plausibility(tot["base"], tot["summit"])
         doc["summary"] = daily_summary(doc)
+        wx = WX.for_point_doc(doc, {"wind_exposure": WIND_EXPOSURE})     # W7 Phase A: None while the flag is off (default)
+        if wx:
+            doc["wind_exposure"] = wx
         files[a["id"]] = doc
         per = doc["points"]["summit"]["periods"]
         def brief(k):
@@ -759,6 +764,8 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
     cat = json.loads(Path(catalog).read_text(encoding="utf-8"))
     grid = cat["nbm_grid"]          # grid definition stored with the catalog
     P.configure_powder_quality(cfg)      # powder-quality thresholds (config/settings.yml powder_quality)
+    global WIND_EXPOSURE
+    WIND_EXPOSURE = WX.configure(cfg)    # W7 flag (config/settings.yml wind_exposure; OFF)
     rp = Path(catalog).with_name("rec_points.json")      # Sno-Parks / winter recreation (M4.5), same shape
     if rp.exists():
         cat["areas"] = cat["areas"] + json.loads(rp.read_text(encoding="utf-8"))["areas"]

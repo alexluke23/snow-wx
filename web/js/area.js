@@ -111,6 +111,18 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     return `<span data-mailto-wrap hidden>Forecast missed badly? <a ${SiteConfig.attrs(`Snow-Wx bust report: ${a.name} ${today}`, body)}>Report a bust</a> (busts are published, not hidden).</span>`;
   }
 
+  /** W7 wind-exposure flag (Phase A, docs/specs/wind-exposure.md): INFORMATIONAL, never an avalanche rating. Only drawn when the point file carries
+   *  `wind_exposure`, which the pipeline writes only while config wind_exposure.enabled is true (it is false). All text is escaped. */
+  function windExposure(wx, a, ratings, tz) {
+    if (!wx || !wx.flag) return "";
+    const zone = a?.avalanche ? ratings?.[String(a.avalanche.zone_id)] : null;
+    const link = zone?.link ? `<a href="${esc(safeUrl(zone.link))}" target="_blank" rel="noopener">Read the avalanche forecast for this zone →</a>`
+      : `<a href="https://avalanche.org/" target="_blank" rel="noopener">Find your avalanche center's forecast →</a>`;
+    const when = wx.start && wx.end ? ` <span class="hint">${esc(localDT(wx.start, tz))} to ${esc(localDT(wx.end, tz))}</span>` : "";
+    return `<aside class="wind-flag" aria-label="Wind transport potential"><p><b>${esc(wx.title)}</b>${when}</p><p>${esc(wx.text)}</p>
+      <p class="hint"><b>${esc(wx.disclaimer)}</b> ${esc(wx.caveat)} ${link} <a href="about.html#wind-exposure">How this flag works</a></p></aside>`;
+  }
+
   /** Daily Snow summary (W3: pipeline/summary.py, rules in config/summary_rules.yml): deterministic, hedged, never an LLM. */
   function summaryCard(sm) {
     if (!sm || !sm.sentence) return "";
@@ -1045,7 +1057,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
         if (!keys.includes(pt)) pt = keys[0];
         const stale = (Date.now() - new Date(d.issued)) / 3.6e6 > (src === "nws" ? 12 : 18);
         $("headline").innerHTML = headline(d, keys);
-        $("summary-card").innerHTML = src === "nws" ? "" : summaryCard(SnowSummary.withAlerts(d.summary, alertRefs));
+        $("summary-card").innerHTML = src === "nws" ? "" : summaryCard(SnowSummary.withAlerts(d.summary, alertRefs)) + windExposure(d.wind_exposure, a, avyR.status === "fulfilled" ? avyR.value : null, tz);
         $("bust").innerHTML = bustLink(d, a, keys, tz);
         $("fresh").className = `fresh${stale ? " stale" : ""}`;
         $("fresh").textContent = `${src === "nws" ? "NWS forecast (NDFD) issued" : "NBM"} ${localFmt(d.issued, tz,

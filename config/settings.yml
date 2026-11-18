@@ -79,6 +79,19 @@ pwa:
   kill: false
   version: ""        # salt for the cache version (the version is also a hash of the shell files)
 
+wind_exposure:
+  # W7 Phase A (pipeline/wind_exposure.py, docs/specs/wind-exposure.md): an INFORMATIONAL "wind-affected snow likely" flag, never an avalanche
+  # rating. BUILT BEHIND THIS FLAG; do NOT enable before an avalanche-literate reviewer has signed the checklist in the spec. While false,
+  # no point file carries a `wind_exposure` field and the page renders nothing.
+  enabled: false
+  sustained_mph: 25      # [thresholds to tune after M9]
+  gust_mph: 35
+  min_window_snow_in: 0.2
+  min_episode_snow_in: 0.5
+  after_h: 12
+  min_windy_hours: 2
+  horizon_h: 72
+
 verification:
   # M9 scoring (tools/verify_forecasts.py) excludes SNOTEL observations inside this window (the NRCS AWDB outage; end = first CONFIRMED live
   # recovery, owner Nov 17) and any stale/unavailable observation.
