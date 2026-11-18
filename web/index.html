@@ -55,6 +55,9 @@
 
       <section id="overlays" class="overlays"></section>
 
+      <section id="hazards" class="hazards" aria-live="polite" hidden></section>
+      <p class="layer-reset"><button type="button" id="reset-layers" class="linklike">Reset map layers to defaults</button></p>
+
       <section id="station" class="station">
         <p class="hint">Click a SNOTEL station for its 7-day chart, or an airport (wind barb) or avalanche zone for details.</p>
       </section>
@@ -79,6 +82,7 @@
   <script src="vendor/leaflet-1.9.4/leaflet.js"></script>
   <script src="js/colors.js"></script>
   <script src="js/snotel-status.js"></script>
+  <script src="js/hazards.js"></script>
   <script src="js/basemap.js"></script>
   <script src="js/points-canvas.js"></script>
   <script src="js/overlays.js"></script>
