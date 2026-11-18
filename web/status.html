@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snow-Wx · Data status</title>
+  <meta name="description" content="Is Snow-Wx up to date? Last successful update, age and health of every data source (SNOTEL, ASOS, NWS alerts, NBM point forecasts, NDFD, model maps, hazards).">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="status-page doc-page">
+  <header>
+    <h1>Snow-Wx <span>Western US</span></h1>
+    <nav class="site-nav">
+      <a href="mine.html"><span class="nav-long">★ My mountains</span><span class="nav-short">★ Mine</span></a>
+      <a href="index.html"><span class="nav-long">Obs map</span><span class="nav-short">Map</span></a>
+      <a href="finder.html"><span class="nav-long">Powder Finder</span><span class="nav-short">Finder</span></a>
+      <a href="models.html"><span class="nav-long">Model maps</span><span class="nav-short">Models</span></a>
+      <a href="about.html">About</a>
+    </nav>
+    <form class="site-search" role="search" autocomplete="off">
+      <button type="button" class="ss-toggle" aria-label="Search ski areas and SNOTEL sites" aria-expanded="false" aria-controls="ss-input">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </button>
+      <div class="ss-box">
+        <label class="sr" for="ss-input">Search ski areas and SNOTEL sites</label>
+        <input id="ss-input" type="search" placeholder="Search ski areas, SNOTEL…" role="combobox" aria-autocomplete="list"
+          aria-expanded="false" aria-controls="ss-list" spellcheck="false" enterkeyhint="go">
+        <ul id="ss-list" class="search-results" role="listbox" aria-label="Search results" hidden></ul>
+      </div>
+    </form>
+  </header>
+
+  <main class="about status">
+    <h2>Data status</h2>
+    <p class="lead">When each data source last updated successfully, how old it is, and whether it is inside the limit the site monitors
+      (the same limits that open a data-health issue for the owner). This page reads one small file, <code>data/meta.json</code>,
+      written by every update. No cookies, no tracking.</p>
+    <p id="st-banner" class="snotel-note" role="status" hidden></p>
+    <div id="st-table" aria-live="polite"><p class="hint">Loading status…</p></div>
+    <p class="hint" id="st-foot"></p>
+    <h3>How to read this</h3>
+    <ul>
+      <li><b>OK</b>: updated within its limit. <b>Late</b>: older than its limit or failing repeatedly: the data on the site may be out of
+        date; the cell says since when. <b>Not reported</b>: no status yet (for example right after a deploy).</li>
+      <li><b>SNOTEL</b> is fetched from the USDA NRCS service. When that service is down the site keeps the last good copy for up to
+        48 hours, labelled with its age, and then shows "unavailable"; it never shows old values as current.</li>
+      <li>NBM point forecasts update every 6 hours, NWS (NDFD) and model maps every 3 hours; observations, alerts and hazards hourly
+        (GitHub's schedules are best-effort and can run late).</li>
+    </ul>
+    <p>Something looks wrong? <span data-mailto-wrap hidden><a data-mailto data-subject="Snow-Wx data status" hidden>Tell us</a>. </span>Safety information
+      (avalanche danger, NWS alerts) always links to its official source: check <a href="https://www.weather.gov/" target="_blank" rel="noopener">weather.gov</a>
+      and your <a href="https://avalanche.org/" target="_blank" rel="noopener">avalanche center</a>.</p>
+  </main>
+
+  <footer>Forecasts: NOAA/NWS. Snowpack: USDA NRCS, NOAA/NWS NOHRSC. Ski areas © OpenStreetMap contributors,
+    OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center. · <a href="status.html" aria-current="page">Data status</a> <span data-mailto-wrap hidden>· <a class="site-feedback" data-mailto data-subject="Snow-Wx feedback" hidden>Send feedback</a></span>
+  </footer>
+  <script src="js/site-config.js"></script>
+  <script src="js/search.js" defer></script>
+  <script src="js/status.js"></script>
+</body>
+</html>

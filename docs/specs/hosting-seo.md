@@ -36,3 +36,6 @@
   reads the new meta.json.
 - [ ] Data origin (R2) vs site origin: if `data/` moves to a data domain, `restore` and `monitor` need that origin instead.
 
+
+
+- **`site.base_path` / `site.feedback_email` (dev14):** nested prerendered pages must include shared scripts as `<base_path>/js/site-config.js`; that script loads `data/meta.json` (which carries `site.feedback_email`) relative to itself. No e-mail address is hard-coded anywhere in `web/`.

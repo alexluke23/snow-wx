@@ -77,7 +77,10 @@ function fmtValue(spec, v) {
 }
 
 // "Expected" (NBM's deterministic amount) explained in one place; shown as an ⓘ tooltip (owner S6).
-const EXPECTED_TIP = "Expected = NBM's forecast amount, an average of possible outcomes. You typically have about a 1-in-3 chance of reaching it; the 10–90% range shows what's typical.";
+const EXPECTED_TIP = "Expected = NBM's forecast amount, an average of possible outcomes. You typically have about a 1-in-3 chance of reaching it; the likely range (middle half) shows what's typical.";
+// "likely" = NBM p25-p75 (owner Nov 17): the default uncertainty wording for snowfall, snow level and snow ratio
+const LIKELY_TIP = "Likely = the middle half of NBM's outcomes: about a 1-in-4 chance of more than the high number and a 1-in-4 chance of less than the low number.";
+const likelyInfo = () => `<a class="info" href="about.html#probabilities" title="${LIKELY_TIP}" aria-label="What likely means">ⓘ</a>`;
 const expectedInfo = () => `<a class="info" href="about.html#nbm" title="${EXPECTED_TIP}" aria-label="What Expected means">ⓘ</a>`;
 
 // NAADS danger colors (match pipeline/avalanche.py)

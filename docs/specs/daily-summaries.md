@@ -12,11 +12,19 @@ A deterministic rules engine, **not** an LLM, run in the points pipeline.
 - **Module:** `pipeline/summary.py` — pure function
   `summarize(point, obs, alerts) -> {tag, sentence, bullets, confidence, rule_ids}`;
   rules live in `config/summary_rules.yml` (versioned; thresholds tunable).
-- **Where it shows:** top of every area card; Finder rows; "My mountains"; page
-  `<meta description>` and OG share card (SEO); email/push alert body.
+- **Where it shows (dev14):** top of every area card (full sentence + bullets), **Finder rows** (headline tag; sentence in the
+  tooltip; `summary.json` rows carry `sm: [tag, sentence]`), **"My mountains"** cards (sentence + "Report a bad summary");
+  still to do: page `<meta description>` and OG share card (W2/SEO); email/push alert body (W6).
+- **Alert tag is client-side (owner Nov 17):** points files and `summary.json` never contain alerts. `web/js/summary-ui.js`
+  (`SnowSummary.withAlerts`) reads the live `alerts/index.json` and, when the place has an ACTIVE winter-relevant alert
+  (`relevant !== false`, not past `ends`), puts "Alert active: <names>" on top of the stored summary (which becomes a bullet).
+  An alert always outranks every stored summary and is never hidden by it.
 - **Language:** probabilistic and hedged ("50% chance of ≥ 8 in at the summit by
   Thursday 6 AM"); always next to the numbers; superlatives only when rules
-  fire; "Blower" stays a labeled heuristic (§5.2).
+  fire; "Blower" stays a labeled heuristic (§5.2). **Ranges read "likely X–Y in"** = NBM's native p25–p75 of one window
+  ("the middle half of NBM's outcomes": about a 1-in-4 chance of more than the high number and of less than the low number;
+  owner Nov 17). No inline "NBM 10–90%"; no "NBM's" labels in sentences (source + issue time stay in the run line). If no
+  single native window covers a span, the sentence uses the expected amount only. Tests assert "likely", no "10–90", no "NBM".
 - **Starter rules** (tune against verification and feedback):
 
 | Tag | Condition (starting point) | Copy intent |
@@ -40,7 +48,11 @@ A deterministic rules engine, **not** an LLM, run in the points pipeline.
 | Dry stretch | 72 h p50 < 1" | "Little new snow; …" |
 
 - **Priority & conflicts:** one headline tag by priority (alert > rain-at-base >
-  powder day > storm cycle > …), bullets for the rest. Unit tests with fixtures
+  powder day > storm cycle > dry stretch > wind-affected > baseline; owner Nov 17: Dry stretch outranks Wind-affected, and wind keeps its 3 in expected-snow bar), bullets for the rest. Unit tests with fixtures
   for every rule and for conflicts.
-- **Quality loop:** weekly review of 10 summaries vs the NWS AFD and observed
-  totals; a "Report a bad summary" link.
+- **Quality loop:** a **"Report a bad summary"** link (area card and My mountains) opens a prefilled e-mail (place, page,
+  tag, rule ids, text). **Weekly review (10 min, owner):** every Monday pick 10 places (the 5 busiest ski areas plus 5 from the
+  inbox or at random), compare each summary with the NWS AFD/forecast discussion and the previous week's observed SNOTEL/NOHRSC
+  totals, and write one line per summary in `docs/summary_review.md` (date, place, rule ids, "ok / too bold / too timid / wrong",
+  note). Tune `config/summary_rules.yml` only after the same miss appears twice; record the change in PLAN §3. Not built yet: the
+  "Low confidence" rule (needs M7 model agreement) and the `<meta description>` (W2).

@@ -30,7 +30,7 @@ BUCKET = "https://noaa-nbm-grib2-pds.s3.amazonaws.com"
 CACHE = REPO_ROOT / "data_cache" / "nbm"
 CATALOG = REPO_ROOT / "data" / "ski_areas.json"
 SOURCE = "NOAA/NWS National Blend of Models (NBM) via NOAA Open Data Dissemination (AWS)"
-SELECTION_VERSION = 6          # bump when inventory.selections changes (invalidates the sample cache)
+SELECTION_VERSION = 7          # bump when inventory.selections changes (invalidates the sample cache)
 
 K_TO_F = lambda k: (k - 273.15) * 1.8 + 32.0  # noqa: E731
 MS_TO_MPH = 2.236936
@@ -322,7 +322,8 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
 
     hset = set(hours)
     series = {k: [] for k in ("t_f", "wind_mph", "gust_mph", "wdir", "sky", "snowlvl_ft",
-                              "snowlvl_p10", "snowlvl_p90", "p_snow", "slr", "slr_p10", "slr_p90", "pop")}
+                              "snowlvl_p10", "snowlvl_p25", "snowlvl_p50", "snowlvl_p75", "snowlvl_p90", "p_snow",
+                              "slr", "slr_p10", "slr_p25", "slr_p50", "slr_p75", "slr_p90", "pop")}
     ps: dict[int, float | None] = {}
     for h in hours:
         series["t_f"].append(_r(P.lapse_adjust_f(v(h, "t2m"), grid_ft, elev_ft)))
@@ -336,11 +337,16 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
         series["snowlvl_ft"].append(_r(mid, -2))
         series["snowlvl_p10"].append(_r(p10, -2))
         series["snowlvl_p90"].append(_r(p90, -2))
+        series["snowlvl_p25"].append(_r(v(h, "snowlvl_p25"), -2))
+        series["snowlvl_p50"].append(_r(sl50, -2))
+        series["snowlvl_p75"].append(_r(v(h, "snowlvl_p75"), -2))
         ps[h] = P.p_snow_level_below(elev_ft, p10, mid, p90)
         series["p_snow"].append(_r(ps[h], 2))
         series["slr"].append(_r(v(h, "slr"), 1))
         series["slr_p10"].append(_r(v(h, "slr_p10"), 1))
         series["slr_p90"].append(_r(v(h, "slr_p90"), 1))
+        for q_ in (25, 50, 75):
+            series[f"slr_p{q_}"].append(_r(v(h, f"slr_p{q_}"), 1))
         # 6-h PoP of the window this hour falls in: windows end at valid 00/06/12/18Z, so for
         # the 01/07/13/19Z cycles they end at f005, f011, ... (not at multiples of 6)
         series["pop"].append(_r(v(h + (-(init.hour + h) % 6), "pop6"), 2))
@@ -620,7 +626,8 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
                 end = (init + timedelta(hours={"24h": 24, "48h": 48, "72h": 72, "7d": 168, "10d": 240}[n])).strftime("%Y-%m-%dT%H:%MZ")
                 pop, sl = P.window_wet(pts["periods"], start, end)
                 out[n] = [x["snow_in"], x["snow_lo"], x["snow_hi"], pop, sl, P.window_snow_type(pts["periods"], start, end),
-                         bool(x.get("native"))]          # [6]: range is one native NBM window (else composite: hide)
+                         bool(x.get("native")),          # [6]: range is one native NBM window (else composite: hide)
+                         x.get("snow_q1"), x.get("snow_q3")]   # [7],[8]: the "likely" range, native NBM p25/p75 (same window)
             return out
         summary.append({
             "id": a["id"], "name": a["name"], "state": a["state"], "region": a["region"],
@@ -631,6 +638,8 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
             # [most likely (mean), 10th, 90th] snow in inches per window
             "summit": brief("summit"), "base": brief("base"), "checks": doc["checks"],
             "p_snow_base_72h": tot["base"].get("72h", {}).get("p_snow"),
+            # Daily Snow summary for Finder rows (W3): [tag, sentence]; alerts are applied client-side, never stored
+            "sm": [doc["summary"]["tag"], doc["summary"]["sentence"]] if doc.get("summary") else None,
             "snowlvl_min_72h_ft": min([p["snowlvl_min_ft"] for p in per[:6] if p["snowlvl_min_ft"] is not None],
                                       default=None),
             "gust_max_72h_mph": max([p["gust_max_mph"] for p in per[:6] if p["gust_max_mph"] is not None],

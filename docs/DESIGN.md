@@ -49,6 +49,11 @@
 - Color-blind-safe palettes (Okabe–Ito for categories); summit solid vs base
   dashed; AA contrast (4.5:1) for all text incl. pale snowfall swatches.
 - Reference lines labeled in place (32 °F, base/summit elevations, zero).
+- **Snow ratio panel (dev14):** median (solid dark line) + the "likely" p25–p75 band (one translucent Okabe–Ito blue, ~25%) from
+  the SAME percentile series over the whole run; powder-quality thresholds are thin dashed lines with direct labels in the right
+  margin ("Blower ≥ 15:1", "Medium 10–15:1", "Dense < 10:1"), never full-height colour bands; undefined stretches get a light
+  labelled "no snow forecast" strip, never zeros. **Snow level panel:** median + likely band over the whole run (solid where
+  precipitation ≥ 20%, dotted elsewhere); no-data stretches labelled.
 - Mobile: panels ≥ 200 px tall at 375 px; tap tooltips; disable chart drag/zoom
   on touch.
 - Every chart: one-sentence summary + **"View as table"** toggle.
