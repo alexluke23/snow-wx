@@ -545,3 +545,8 @@ main.status { max-width: 980px; width: 100%; box-sizing: border-box; } .status .
 @media (max-width: 640px) { .status #st-table { min-height: 1500px; } }
 /* model-map viewer transport buttons: DESIGN §6 tap targets >= 40 px (were 31) */
 #prev, #play, #next { min-height: 40px; min-width: 44px; }
+
+/* W7 wind-exposure flag (built, off): informational note under the daily summary */
+.wind-flag { margin: .6rem 0; padding: .6rem .8rem; border-left: 4px solid #0072b2; background: #eef5fb; border-radius: 4px; font-size: .95rem; }
+.wind-flag p { margin: .2rem 0; }
+@media (prefers-color-scheme: dark) { .wind-flag { background: #14232f; border-left-color: #56b4e9; } }
