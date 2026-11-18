@@ -31,13 +31,77 @@ function SnowHazards(map, { dataBase = "data/", bbox = [-125, 31, -102, 49.5], o
     return { pane: "hazards", color: c, weight: level === "warning" ? 1.6 : level === "watch" ? 1.3 : 0.8, opacity: 0.85,
       dashArray: level === "watch" ? "7 5" : null, fillColor: c, fillOpacity: level === "advisory" ? 0.25 : level === "watch" ? 0.28 : 0.32 };
   };
-  const popup = (f) => {
+  // ---- popup: readable product text IN the page (never a link to the api.weather.gov JSON record). Alert text is untrusted external
+  // content: everything is written with textContent (no innerHTML), line breaks via CSS pre-wrap, long text scrolls inside the popup.
+  const FIELD_LABEL = [["headline", "Headline"], ["area", "Area"], ["description", "Details"], ["instruction", "Instructions"]];
+  let idxP = null, detP = null;
+  const getIdx = () => (idxP ||= fetchJSON(`${dataBase}alerts/index.json`, 10000).catch(() => null));
+  const getDet = () => (detP ||= fetchJSON(`${dataBase}alerts/details.json`, 15000).catch(() => null));
+  const remote = new Map();                             // alert id -> promise (one live fetch per alert, kept in memory)
+  /** the alert id ("urn:oid:...") from the service's url field; used ONLY to look the alert up, never as an href */
+  const alertId = (u) => { try { return decodeURIComponent(String(u || "").split("/alerts/")[1] || "").split(/[?#]/)[0]; } catch { return ""; } };
+  async function sha10(text) {
+    const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(text));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 10);
+  }
+  /** {event, headline, sender, effective, expires, area, description, instruction} from our own alert files (same origin), else null */
+  async function localAlert(id) {
+    if (!id || !crypto?.subtle) return null;
+    const key = await sha10(id), [idx, det] = await Promise.all([getIdx(), getDet()]);
+    const a = idx?.alerts?.[key];
+    if (!a) return null;
+    return { event: a.event, headline: a.headline, sender: a.sender, effective: a.effective, expires: a.expires || a.ends, area: a.area,
+      description: det?.[key]?.description, instruction: det?.[key]?.instruction };
+  }
+  /** one live fetch of a single alert (CORS-enabled NWS API), only when our files do not carry it (an alert that touches no ski area) */
+  function remoteAlert(id) {
+    if (!id) return Promise.resolve(null);
+    if (!remote.has(id)) {
+      remote.set(id, (async () => {
+        const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 12000);
+        try {
+          const r = await fetch(`https://api.weather.gov/alerts/${encodeURIComponent(id)}`, { signal: ctl.signal, headers: { Accept: "application/geo+json" } });
+          if (!r.ok) return null;
+          const q = (await r.json()).properties || {};
+          return { event: q.event, headline: q.headline, sender: q.senderName, effective: q.effective, expires: q.expires || q.ends, area: q.areaDesc,
+            description: q.description, instruction: q.instruction };
+        } catch { return null; } finally { clearTimeout(t); }
+      })());
+    }
+    return remote.get(id);
+  }
+  const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  /** DOM for one hazard popup; never uses innerHTML */
+  function buildPopup(f) {
     const p = f.properties, wfo = String(p.wfo || "").replace(/^K/, "").toLowerCase();
-    const office = wfo ? `https://www.weather.gov/${encodeURIComponent(wfo)}/` : "https://www.weather.gov/";
-    return `<strong>${esc(p.prod_type)}</strong><div class="hint">NWS ${esc(levelOf(p.prod_type))}${p.expiration ? ` · expires ${esc(fmtTime(p.expiration))}` : ""}</div>
-      <p><a href="${office}" target="_blank" rel="noopener">NWS office ${esc(String(p.wfo || "").toUpperCase())} →</a>${/^https:\/\//.test(p.url || "")
-        ? ` · <a href="${esc(p.url)}" target="_blank" rel="noopener">alert data</a>` : ""}<br><span class="hint">Source: NOAA/NWS</span></p>`;
-  };
+    const box = mk("div", "hz-pop");
+    box.append(mk("strong", "", p.prod_type));
+    box.append(mk("div", "hint", `NWS ${levelOf(p.prod_type)}${p.expiration ? ` · expires ${fmtTime(p.expiration)}` : ""}`));
+    const body = mk("div", "hz-body"), status = mk("p", "hint", "Loading the full text…");
+    body.append(status);
+    box.append(body);
+    const foot = mk("p", "hz-foot");
+    if (/^[a-z]{3,4}$/.test(wfo)) {                                  // a human-readable page: the issuing office on weather.gov
+      const a = mk("a", "", "View on weather.gov");
+      a.href = `https://www.weather.gov/${wfo}/`; a.target = "_blank"; a.rel = "noopener";
+      foot.append(a, document.createTextNode(` (NWS ${String(p.wfo).toUpperCase()}) · `));
+    }
+    foot.append(mk("span", "hint", "Source: NOAA/NWS"));
+    box.append(foot);
+    (async () => {
+      const id = alertId(p.url);
+      const a = (await localAlert(id).catch(() => null)) || (await remoteAlert(id));
+      body.replaceChildren();
+      if (!a) {
+        body.append(mk("p", "hint", "The full text could not be loaded. Open the issuing office on weather.gov for the current warning, and check your local avalanche center."));
+        return;
+      }
+      const meta = [a.sender, a.effective ? `issued ${fmtTime(a.effective)}` : "", a.expires ? `expires ${fmtTime(a.expires)}` : ""].filter(Boolean).join(" · ");
+      if (meta) body.append(mk("div", "hint", meta));
+      for (const [k, label] of FIELD_LABEL) if (a[k]) { body.append(mk("div", "hz-label", label)); body.append(mk("div", "hz-text", String(a[k]))); }
+    })();
+    return box;
+  }
 
   async function fetchJSON(url, ms = 20000) {
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
@@ -81,7 +145,7 @@ function SnowHazards(map, { dataBase = "data/", bbox = [-125, 31, -102, 49.5], o
           await new Promise((r) => setTimeout(r, 1200));
         }
         if (geo) group.removeLayer(geo);
-        geo = L.geoJSON(gj, { style, renderer: L.canvas({ pane: "hazards" }), onEachFeature: (f, lyr) => lyr.bindPopup(popup(f)) });
+        geo = L.geoJSON(gj, { style, renderer: L.canvas({ pane: "hazards" }), onEachFeature: (f, lyr) => lyr.bindPopup(() => buildPopup(f), { maxWidth: 380, className: "hz-popup" }) });
         group.addLayer(geo);
         loadedAt = Date.now();
         const counts = {};
@@ -115,5 +179,8 @@ function SnowHazards(map, { dataBase = "data/", bbox = [-125, 31, -102, 49.5], o
       setTimeout(() => ("requestIdleCallback" in window ? requestIdleCallback(go, { timeout: 4000 }) : go()), 2500);
     },
     refresh: () => load(true),
+    /** test hooks (tools/browser_check.py): the popup DOM for a feature, and alert files injected in place of the network */
+    popupFor: buildPopup,
+    injectAlertFiles(idx, det) { idxP = Promise.resolve(idx); detP = Promise.resolve(det); },
   };
 }
