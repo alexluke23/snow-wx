@@ -35,6 +35,7 @@ function SnowOverlays(map, { panel, onChange, sources = [
     onAdd() {
       const c = (this._canvas = L.DomUtil.create("canvas", "leaflet-layer view-overlay leaflet-zoom-animated"));
       c.style.pointerEvents = "none";
+      if (this.options.stale) c.style.filter = "grayscale(1)";                        // stale forecast data is greyed, never shown as current
       this.getPane().appendChild(c);
       this.setOpacity(this.options.opacity);
       this._reset();
@@ -129,7 +130,7 @@ function SnowOverlays(map, { panel, onChange, sources = [
     const m = /^(\d{4})(\d{2})(\d{2})(\d{2})$/.exec(l.cycle || "");
     return m ? (Date.now() - Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4])) / 3.6e6 : null;
   };
-  const isStale = (l) => l._group === "Forecast" && ageH(l) !== null && ageH(l) > staleHours;
+  const isStale = (l) => l._group === "Forecast" && (ageH(l) === null || ageH(l) > staleHours);       // no cycle info = age unknown = treated as stale
   const issued = (l) => {
     const m = /^(\d{4})(\d{2})(\d{2})(\d{2})$/.exec(l.cycle || "");
     return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4])).toLocaleString([], { weekday: "short", hour: "numeric", timeZoneName: "short" }) : "";
@@ -186,9 +187,8 @@ function SnowOverlays(map, { panel, onChange, sources = [
     try {
       const rec = await decodeLayer(l);
       if (active !== l.id) return;          // switched while loading
-      overlay = new ViewOverlay(rec.canvas, l.bounds, { pane: "analysis", opacity: isStale(l) ? Math.min(opacity, 0.4) : opacity });
+      overlay = new ViewOverlay(rec.canvas, l.bounds, { pane: "analysis", opacity: isStale(l) ? Math.min(opacity, 0.4) : opacity, stale: isStale(l) });
       overlay.addTo(map);
-      if (isStale(l) && overlay._canvas) overlay._canvas.style.filter = "grayscale(1)";      // stale forecast data is greyed, never shown as current
       if (el) el.textContent = "Hover or tap the map for a value.";
     } catch (e) {
       if (el) el.textContent = `Overlay unavailable (${e.message}).`;

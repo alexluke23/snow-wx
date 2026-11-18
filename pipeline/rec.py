@@ -379,7 +379,25 @@ def apply_decisions(recs: list[dict], decisions: dict[str, dict]) -> tuple[list[
     if not decisions:
         return recs, rep
     ids = {r["id"] for r in recs}
-    gone = {i for i, d in decisions.items() if i in ids and d["decision"] in ("drop", "merge")}
+    drops = {i for i, d in decisions.items() if i in ids and d["decision"] == "drop"}
+    merges = {i: d["merge_into"] for i, d in decisions.items() if i in ids and d["decision"] == "merge"}
+    # a merge is valid when its target exists, is not itself, and is KEPT (not dropped, and not itself merged away). Resolved by recursion over the
+    # chain so the result never depends on CSV row order: A -> B -> C: B merges into C, A -> B is invalid (B is gone) and A stays; if B's own merge is
+    # invalid, B stays and A -> B is valid. A cycle (A -> B -> A) makes both merges invalid.
+    memo: dict[str, bool] = {}
+
+    def is_gone(i: str, seen: tuple = ()) -> bool:
+        if i in drops:
+            return True
+        if i not in merges or i in seen:
+            return False
+        if i not in memo:
+            t = merges[i]
+            memo[i] = bool(t) and t != i and t in ids and not is_gone(t, seen + (i,))
+        return memo[i]
+
+    valid = {i: t for i, t in merges.items() if is_gone(i)}
+    gone = drops | set(valid)
     merged: dict[str, list[str]] = {}
     for i, d in decisions.items():
         if i not in ids:
@@ -388,14 +406,11 @@ def apply_decisions(recs: list[dict], decisions: dict[str, dict]) -> tuple[list[
             rep["keep"].append(i)
         elif d["decision"] == "drop":
             rep["drop"].append(i)
+        elif i in valid:
+            rep["merge"].append((i, valid[i]))
+            merged.setdefault(valid[i], []).append(i)
         else:
-            t = d["merge_into"]
-            if not t or t == i or t not in ids or t in gone:
-                rep["warnings"].append(f"merge of {i} needs a valid merge_into (got {t!r}); kept")
-                gone.discard(i)
-            else:
-                rep["merge"].append((i, t))
-                merged.setdefault(t, []).append(i)
+            rep["warnings"].append(f"merge of {i} needs a valid merge_into (got {d['merge_into']!r}); kept")
     out = []
     for r in recs:
         if r["id"] in gone:

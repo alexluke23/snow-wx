@@ -40,6 +40,7 @@ DEFAULTS = {
     "from_name": "Snow-Wx",
 }
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]{1,64}@[A-Za-z0-9.\-]{1,255}\.[A-Za-z]{2,24}$")
+MIN_POP = 50                              # "precipitation likely" for the snow-level rule (percent); a rule may carry its own `min_pop`
 WINDOWS = ("24h", "48h", "72h")           # native NBM exceedance windows (never composite)
 FOOTER = ("This is an automatic notification from open model guidance, not a forecast from a person and not an avalanche forecast. "
           "Before backcountry travel read your avalanche center's forecast.")
@@ -154,7 +155,10 @@ def validate_rule(rule: dict) -> dict:
         below = float(rule.get("below_ft", 0))
         if not (0 < below < 20000):
             raise ValueError("below_ft out of range")
-        return {"kind": "level", "area": rule["area"], "window": window, "elev": elev, "below_ft": below}
+        pop = float(rule.get("min_pop", MIN_POP))
+        if not (10 <= pop <= 100):
+            raise ValueError("min_pop must be 10-100 %")
+        return {"kind": "level", "area": rule["area"], "window": window, "elev": elev, "below_ft": below, "min_pop": pop}
     raise ValueError("unknown rule kind")
 
 
@@ -196,9 +200,15 @@ def match_rule(rule: dict, ex: dict, now: datetime, max_age_h: float = 18) -> di
         return None
     sl, pop = (rec.get("sl") or {}).get(rule["window"]) or [], (rec.get("pop") or {}).get(rule["window"]) or []
     for i, level in enumerate(sl):
-        if level is not None and level <= rule["below_ft"] and (pop[i] if i < len(pop) else 0) >= 50:
+        ends = datetime.strptime(w["end"][i], "%Y-%m-%dT%H:%MZ").replace(tzinfo=timezone.utc) > now      # a window that is already over never alerts
+        if ends and level is not None and level <= rule["below_ft"] and (pop[i] if i < len(pop) else 0) >= rule.get("min_pop", MIN_POP):
             return {"rule": rule, "start": w["start"][i], "end": w["end"][i], "snow_level_ft": level, "issued": ex["issued"]}
     return None
+
+
+def _storm_key(rule: dict) -> str:
+    """one storm clock per RULE (area, kind, window, elevation): two different rules on the same area never suppress each other"""
+    return f"{rule['area']}|{rule['kind']}|{rule['window']}|{rule['elev']}"
 
 
 # ------------------------------------------------------------------ the service
@@ -240,7 +250,10 @@ class Service:
         generic = {"ok": True, "message": "If this address can receive alerts, a confirmation e-mail is on its way. Alerts start only after you confirm."}
         sub = self.store.by_email(e)
         if sub and sub["status"] == "active":
-            return generic                                              # nothing sent, nothing revealed
+            if norm != sub["rules"] and self._can_send():               # changed rules: held until the address owner confirms by e-mail (same generic answer)
+                sub["pending_rules"], sub["confirm_sent_at"] = norm, now
+                self.out.send(self._confirm_mail(sub, sign_token(self._key, "confirm", sub["id"], now, timedelta(hours=self.c["confirm_ttl_h"]))))
+            return generic
         if sub and sub["status"] == "pending" and (now - sub["confirm_sent_at"]) < timedelta(minutes=self.c["resend_confirm_after_min"]):
             return generic
         if not sub or sub["status"] == "unsubscribed":                  # a fresh opt-in is required after unsubscribing
@@ -267,6 +280,8 @@ class Service:
             return {"ok": False, "error": "this subscription was cancelled; sign up again"}      # a stale confirm link can never undo an unsubscribe
         if sub["status"] != "active":
             sub["status"], sub["confirmed_at"] = "active", now
+        elif sub.get("pending_rules"):
+            sub["rules"], sub["pending_rules"] = sub["pending_rules"], None     # confirmed change of rules
         return {"ok": True, "status": "active"}
 
     # -- one-click unsubscribe -------------------------------------------
@@ -344,7 +359,7 @@ class Service:
                 m = match_rule(rule, ex, now, self.c["max_data_age_h"])
                 if not m:
                     continue
-                key = f"{rule['area']}|{rule['kind']}"
+                key = _storm_key(rule)
                 last_end = sub["last_alert"].get(key)
                 if last_end and datetime.strptime(m["start"], "%Y-%m-%dT%H:%MZ") < datetime.strptime(last_end, "%Y-%m-%dT%H:%MZ") + timedelta(hours=self.c["storm_gap_h"]):
                     continue                                     # same storm: one alert per area per storm
@@ -359,5 +374,5 @@ class Service:
             sent.append(msg)
             sub["sent_log"] = today + [now]
             for m in hits:
-                sub["last_alert"][f"{m['rule']['area']}|{m['rule']['kind']}"] = m["end"]
+                sub["last_alert"][_storm_key(m["rule"])] = m["end"]
         return sent
