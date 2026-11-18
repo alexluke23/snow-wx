@@ -842,7 +842,29 @@ def check_pwa(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa}
+def check_storm(b: Browser, base: str, log):
+    """dev15 storm-total tracker: selectable window on the area page (SNOTEL change + NOHRSC, compaction caveat) and the 48 h / 7-day SNOTEL map variables."""
+    b.open(f"{base}/area.html#alta-ski-area", wait=7)
+    st = b.eval("""(async () => { await new Promise(r => setTimeout(r, 1500)); const h = document.getElementById('storm'); if (!h) return null;
+      const out = {buttons: [...h.querySelectorAll('button')].map(x => x.textContent.trim()), rows72: h.querySelectorAll('tbody tr').length, note: h.querySelector('.note').textContent};
+      h.querySelector('button[data-w="7d"]').click(); await new Promise(r => setTimeout(r, 300));
+      out.note7 = h.querySelector('.note').textContent; out.rows7 = h.querySelectorAll('tbody tr').length; out.pressed = h.querySelector('button[data-w="7d"]').getAttribute('aria-pressed');
+      return out; })()""")
+    log(f"  storm total: {st}")
+    need(st and st["buttons"] == ["24 h", "48 h", "72 h", "7 days"], f"storm-total window buttons: {st}")
+    need("not snowfall" in st["note"] and "NOHRSC publishes snowfall for 24" in st["note7"] and st["rows7"] == 2 and st["rows72"] >= 3 and st["pressed"] == "true", f"storm-total content: {st}")
+    b.open(f"{base}/index.html", wait=6)
+    opts = b.eval("[...document.querySelectorAll('#var-select option')].map(o => o.textContent)")
+    need(any("48-hr" in o for o in opts) and any("7-day" in o for o in opts), f"map SNOTEL variables lack 48 h / 7-day: {opts}")
+    b.eval("(() => { const s = document.getElementById('var-select'); s.value = 'depth_7d'; s.dispatchEvent(new Event('change')); })()")
+    time.sleep(2.5)
+    leg = b.eval("({layers: window.snowwx.currentLayers(), drawn: window.snowwx.points.drawnGroups(), title: (document.getElementById('legend') || document.body).textContent.slice(0, 400)})")
+    log(f"  7-day map variable: {leg['layers']} {leg['drawn']}")
+    need("snotel" in leg["layers"] and "snotel" in leg["drawn"] and "compaction" in leg["title"], f"7-day variable did not show SNOTEL with the compaction legend: {leg}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm}
 
 
 def main(argv=None) -> int:

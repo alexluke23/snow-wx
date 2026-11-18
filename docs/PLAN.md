@@ -62,9 +62,7 @@ centers). Full text: `docs/ARCHIVE.md`.
 
 - **Live:** https://alexluke23.github.io/snow-wx/ — repo `alexluke23/snow-wx` (custom domain: W1).
 - **Done:** M0–M5, M3.5, M3.6, M4.5 Sno-Parks, M9-prep archive (running), "My mountains", NBM forecast
-  overlays, dev10 basemap (relief + OSM reference layer), **dev11–dev13** (merged), **dev14** (PR open: "likely" p25–p75 wording site-wide, snow-ratio/snow-level panels from native percentile series, one powder-quality definition, W3 on Finder/My mountains, public status page, obs-map first-load defaults + drawn-set bug fix, W1 plan docs), dev11: snow charts on native
-  NBM windows ("Snowfall by day" p25–p75 bars, accumulated = expected running total), NWS snowfall colors
-  site-wide, 7/10-day summed ranges removed. Details: `docs/ARCHIVE.md`.
+  overlays, dev10 basemap (relief + OSM reference layer), **dev11–dev14** (merged: "likely" p25–p75 wording, one powder-quality definition, W3, status page, obs-map defaults), **dev15** (PR open: monitor bootstrap fix, W4 PWA built but off, obs-map lazy station files, storm-total tracker). Details: `docs/ARCHIVE.md`.
 - **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas,
   Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
 - **Known issues:** NRCS AWDB (SNOTEL) outage **over**. Last good run before it ≈ 11:25 UTC Nov 16; first failing run seen 22:07 UTC Nov 16; still down
@@ -185,7 +183,7 @@ season?") ships first.
 ### 8.4 Backlog (unscheduled, in priority order)
 Track 1 leftovers: "My mountains" refinements; powder-quality surfaces (covered by
 §5.7). Track 2 (obs map): mobile performance pass (stations/overlays render before
-basemap tiles; preconnect; smaller first payload); **resort-reported snowfall observations** (5a: needs a licence decision; no scraping) and **webcams** (5b: links first; embeds only with permission); **storm-total tracker** (NOHRSC + SNOTEL, selectable window); obs time slider
+basemap tiles; preconnect; smaller first payload); **resort-reported snowfall observations** (5a: needs a licence decision; no scraping) and **webcams** (5b: links first; embeds only with permission); **storm-total tracker** ✅ dev15 (SNOTEL 24/48/72 h/7 d + NOHRSC 24–72 h, area page + map variables); obs time slider
 (24–72 h); slope-angle/aspect layer (3DEP); more observation networks (research
 licenses first — MADIS category 3, state DOT RWIS, avalanche-center telemetry via
 the centers; **ask before building**). Models: **align model-map snowfall colors to the NWS table

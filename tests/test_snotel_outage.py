@@ -184,3 +184,21 @@ def test_simulate_failure_input_exercises_the_stale_path(cfg, tmp_path, monkeypa
     assert m.run_obs(cfg, tmp_path, ["snotel", "asos"]) == 0                      # snotel fine, asos simulated down
     meta = json.loads((tmp_path / "meta.json").read_text(encoding="utf-8"))["sources"]
     assert meta["snotel"]["ok"] is True and meta["asos"]["ok"] is False and "simulated" in meta["asos"]["error"]
+
+
+def test_storm_total_windows_48h_and_7d_and_their_hiding_when_stale():
+    import pandas as pd
+    t0 = pd.Timestamp("2026-11-10 00:00")
+    times = [t0 + pd.Timedelta(hours=h) for h in range(0, 170)]
+    depth = [10.0 + h * 0.1 for h in range(170)]           # +0.1 in per hour
+    fmt = lambda t: t.strftime("%Y-%m-%d %H:%M")           # noqa: E731
+    series = {"SNWD": [(fmt(t), v) for t, v in zip(times, depth)], "WTEQ": [(fmt(t), 2.0 + h * 0.01) for h, t in enumerate(times)]}
+    s = snotel.summarize(series)
+    assert s["depth_48h"] == pytest.approx(4.8, abs=0.3) and s["depth_72h"] == pytest.approx(7.2, abs=0.3)
+    assert s["depth_7d"] == pytest.approx(16.8, abs=0.4) and s["swe_7d"] == pytest.approx(1.68, abs=0.05)
+    f = {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-111.0, 40.0]}, "properties": {
+        "triplet": "1:UT:SNTL", "state": "UT", "obs_time": (utcnow() - timedelta(hours=60) - timedelta(hours=7)).strftime("%Y-%m-%d %H:%M"),
+        **{k: 5.0 for k in ("depth_24h", "swe_24h", "depth_48h", "swe_48h", "depth_72h", "swe_72h", "depth_7d", "swe_7d")}}}
+    p = snotel._stale(f, utcnow())["properties"]
+    assert p["depth_48h"] is None and p["swe_48h"] is None            # 60 h old: the 24 h and 48 h windows are closed
+    assert p["depth_72h"] == 5.0 and p["depth_7d"] == 5.0 and p["swe_7d"] == 5.0

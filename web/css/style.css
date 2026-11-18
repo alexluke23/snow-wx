@@ -519,3 +519,9 @@ main.status { max-width: 980px; width: 100%; box-sizing: border-box; } .status .
 #pwa-update button, #pwa-coach button, .pwa-save button { min-height: 40px; padding: 6px 12px; border-radius: 6px; border: 1px solid #5b7a99; background: #fff; color: #12202e; font: inherit; cursor: pointer; }
 #pwa-coach button.link, .pwa-save button.link { background: transparent; color: inherit; border: 0; text-decoration: underline; }
 .pwa-save { margin: 6px 0 10px; } .pwa-save .hint { margin: 4px 0 0; }
+
+/* storm-total tracker (dev15) */
+.storm { margin: 10px 0 14px; } .storm h4 { margin: 0 0 6px; }
+.storm .metrics th { text-align: left; font-weight: 500; } .storm .metrics td { white-space: nowrap; }
+.storm .sw { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 2px; vertical-align: -1px; }
+.storm .sw.pale { outline: 1px solid #9aa7b5; }

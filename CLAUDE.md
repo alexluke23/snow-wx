@@ -175,16 +175,14 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 17 2026, dev14 run; the uncommitted dev14_report.md has the briefing)**
-- main has fix-snotel + dev13. Branch `dev14` (PR open, not merged): ONE powder-quality definition (config `powder_quality`, mirrored in
-  `colors.js` POWDER_Q), "likely" = native NBM p25–p75 wording everywhere (totals `snow_q1/q3` + `summary.json` rows `[7],[8]`; 10–90 kept in files),
-  SNOWLR/SNOWLVL p10/25/50/75/90 (SELECTION_VERSION 7; panels draw median + band from the same series), obs-map first-load defaults
-  (relief + roads + ski areas + NWS hazards; version key; PointsCanvas groups hidden until their layer is on), W3 on area card, Finder rows
-  (`sm`), My mountains; alert tag client-side (`js/summary-ui.js`), `status.html` + meta.json `monitoring`/`site`, "Report a bust".
-- **No e-mail address in web/**: `site.feedback_email` (config) -> meta.json `site` -> `js/site-config.js` (`data-mailto` links; hidden if empty).
-  tests/test_hygiene.py enforces it. SNOTEL recovered Nov 18 00:45Z (PLAN §2).
-- Open: W3 meta description (W2) + Low-confidence rule (M7); heartbeat secret `HEALTHCHECK_URL`; W1/W2/W4 per PLAN §8.2; `docs/summary_review.md` weekly log.
-- Not started: storm-total tracker, M7, M8, M6, model-map NWS colors, PMTiles backup, resort-reported snowfall (licence), webcams (links first).
+**Current state (Nov 17 2026, dev15 run; the uncommitted dev15_report.md has the briefing)**
+- main has fix-snotel, dev13, dev14. Branch `dev15` (PR open, not merged): monitor bootstrap (stale/unavailable count as failures; data-age and
+  `outage_since` clocks; one decision line per source; tests/test_monitor_bootstrap.py), W4 PWA BUILT BUT OFF (`pwa.enabled=false`, `pipeline/pwa.py` +
+  `pwa_sw.js` + `web/js/pwa.js`, kill switch `pwa.kill`; enable only after W1), obs-map perf (SNOTEL/ASOS/avalanche files lazy; site-config idle + reuses
+  meta.json), storm-total tracker (snotel `depth_48h/7d`, `swe_48h/7d`; area-page window selector; map variables), percentile docs made accurate.
+- `pages` (W2) and `pwa` are CLI steps behind config flags; neither is wired into a workflow (no workflow edits allowed in these runs).
+- No e-mail address in web/: `site.feedback_email` -> meta.json `site` -> `js/site-config.js`. SNOTEL outage over (PLAN §2).
+- Open: W3 meta description (W2) + Low-confidence rule (M7); `HEALTHCHECK_URL` secret; W1 then enable pwa/pages; real iPhone/Android PWA tests (docs/specs/pwa.md).
 
 **Reusable gotchas (earlier session log: docs/ARCHIVE.md)**
 - Lighthouse: `PATH=/c/miniforge3/envs/tools:$PATH npx -y lighthouse@12.6.1 URL --only-categories=performance,accessibility`
