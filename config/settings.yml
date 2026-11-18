@@ -67,6 +67,11 @@ site:
   base_path: ""
   feedback_email: "alexluke2323@gmail.com"
 
+pages:
+  # W2 prerendered area pages (pipeline/pages.py, `python -m pipeline pages`). OFF until the domain/base path is decided and the
+  # workflow runs the step after the points tar is unpacked; a partial state cannot change the live site while this is false.
+  enabled: false
+
 monitoring:
   # Data-health issues (pipeline/monitor.py, update-site.yml `monitor` job): one GitHub issue per source, assigned
   # below so GitHub e-mails the owner; closed automatically on recovery. Limits come from each source's REAL cadence:
