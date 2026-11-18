@@ -73,6 +73,7 @@ function SnowOverlays(map, { panel, onChange, sources = [
   });
 
   let index = null, active = null, overlay = null, opacity = 0.75;
+  let staleHours = 14;                                   // forecast layers older than this (hours since the model cycle) are greyed (config forecast_overlays.stale_hours)
   const cache = new Map();   // id -> {values, w, h, canvas}
 
   async function decodeLayer(l) {
@@ -123,8 +124,18 @@ function SnowOverlays(map, { panel, onChange, sources = [
 
   const fmtValid = (iso) => new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", timeZoneName: "short" });
   const fmtShort = (iso) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric" });
+  /** hours since a forecast layer's model cycle started (l.cycle = YYYYMMDDHH, UTC), or null */
+  const ageH = (l) => {
+    const m = /^(\d{4})(\d{2})(\d{2})(\d{2})$/.exec(l.cycle || "");
+    return m ? (Date.now() - Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4])) / 3.6e6 : null;
+  };
+  const isStale = (l) => l._group === "Forecast" && ageH(l) !== null && ageH(l) > staleHours;
+  const issued = (l) => {
+    const m = /^(\d{4})(\d{2})(\d{2})(\d{2})$/.exec(l.cycle || "");
+    return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4])).toLocaleString([], { weekday: "short", hour: "numeric", timeZoneName: "short" }) : "";
+  };
   const when = (l) => (l._group === "Forecast"
-    ? `${fmtShort(l.start)} → ${fmtValid(l.valid)} · ${l.source} run`
+    ? `${fmtShort(l.start)} → ${fmtValid(l.valid)} · ${l.source} run (started ${issued(l)})`
     : `${l.id.startsWith("sf") ? "ending" : "valid"} ${fmtValid(l.valid)} · ${l.source}`);
 
   function renderPanel() {
@@ -139,6 +150,7 @@ function SnowOverlays(map, { panel, onChange, sources = [
       ${l ? `<div class="overlay-meta">
           ${legend(l)}
           <p class="hint">${esc(l.units)} · ${esc(when(l))}</p>
+          ${isStale(l) ? `<p class="stale-note" role="status"><b>Out of date:</b> this NBM run started ${Math.round(ageH(l))} h ago (limit ${staleHours} h), so the layer is drawn in grey. Check the Data status page.</p>` : ""}
           ${l._group === "Forecast" ? `<p class="hint">Grid values (2.5 km); site pages adjust for elevation. Below ${l.units === "%" ? "5 %" : "0.1 in"} is left clear so the terrain shows.</p>` : ""}
           <label class="opacity">Opacity <input id="overlay-opacity" type="range" min="0.2" max="1" step="0.05" value="${opacity}"></label>
           <p id="overlay-readout" class="readout" aria-live="polite">Hover or tap the map for a value.</p>
@@ -174,17 +186,20 @@ function SnowOverlays(map, { panel, onChange, sources = [
     try {
       const rec = await decodeLayer(l);
       if (active !== l.id) return;          // switched while loading
-      overlay = new ViewOverlay(rec.canvas, l.bounds, { pane: "analysis", opacity });
+      overlay = new ViewOverlay(rec.canvas, l.bounds, { pane: "analysis", opacity: isStale(l) ? Math.min(opacity, 0.4) : opacity });
       overlay.addTo(map);
+      if (isStale(l) && overlay._canvas) overlay._canvas.style.filter = "grayscale(1)";      // stale forecast data is greyed, never shown as current
       if (el) el.textContent = "Hover or tap the map for a value.";
     } catch (e) {
       if (el) el.textContent = `Overlay unavailable (${e.message}).`;
     }
   }
 
-  async function load(initial) {
+  /** opts: {forecast: false} hides the Forecast group (config forecast_overlays.enabled), {staleHours} sets the grey-out limit */
+  async function load(initial, opts = {}) {
+    if (Number.isFinite(opts.staleHours)) staleHours = opts.staleHours;
     // every source's index; layers remember where they came from (group, base, cache key)
-    const parts = await Promise.all(sources.map(async (s) => {
+    const parts = await Promise.all(sources.filter((s) => s.group !== "Forecast" || opts.forecast !== false).map(async (s) => {
       try {
         const ix = await (await fetch(`${s.base}index.json`, { cache: "no-cache" })).json();
         return (ix.layers || []).map((l) => ({ ...l, _base: s.base, _group: s.group, _key: ix.key, _attr: ix.attribution }));
@@ -196,5 +211,5 @@ function SnowOverlays(map, { panel, onChange, sources = [
     return index;
   }
 
-  return { load, set, current: () => active, layer: () => overlay };
+  return { load, set, current: () => active, layer: () => overlay, isStale: (id) => { const l = index?.layers.find((x) => x.id === id); return !!l && isStale(l); } };
 }

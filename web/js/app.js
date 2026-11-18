@@ -752,7 +752,7 @@
     if (rec) drawSnoParks(rec);
     skiData = ski.status === "fulfilled" ? ski.value : null; recData = rec;
     drawLegend(SNOTEL_VARS[currentVar]);                       // the legend does not need the stations
-    overlays.load(initialHash.o);
+    overlays.load(initialHash.o, { forecast: meta?.forecast_overlays?.enabled !== false, staleHours: meta?.forecast_overlays?.stale_hours });
     rebuildIndex();
     // whatever the first view needs: layers that are on, or the station named in the URL
     const wantSta = initialHash.s || "";
