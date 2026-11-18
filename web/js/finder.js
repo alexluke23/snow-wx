@@ -16,7 +16,7 @@
   const WINDOWS = [["24h", "24 h"], ["72h", "72 h"], ["7d", "7 d"], ["10d", "10 d"]];
   const PWINDOWS = [["24h", "24 h"], ["48h", "48 h"], ["72h", "72 h"]];
   // skier-relevant thresholds (inches) shown as chips when NBM provides them
-  const SKI_THR = { "24h": [4, 6, 8, 12, 18, 24], "48h": [4, 6, 8, 12, 18, 24, 30, 36], "72h": [4, 6, 8, 12, 18, 24, 30, 36, 48] };
+  const SKI_THR = { "24h": [2, 4, 6, 8, 12, 18, 24], "48h": [2, 4, 6, 8, 12, 18, 24, 30, 36], "72h": [4, 6, 8, 12, 18, 24, 30, 36, 48] };   // 2": NBM-native for 24/48 h only
   const SEPARATE = "Chances come from NBM's probabilistic guidance, calibrated separately from NBM's expected amount; " +
     "the two can disagree.";
   const fmt = (v) => (v === null || v === undefined ? "–" : v < 0.5 ? (v < 0.05 ? "0" : "<1") : `${Math.round(v)}`);
@@ -30,7 +30,7 @@
   const st = { m: pick("m", "amount"), w: pick("w", "72h"), e: pick("e", "summit"), src: pick("src", "nbm"),
                state: pick("st", ""), region: pick("r", ""), sort: pick("sort", "snow"), fav: pick("fav", "0") === "1",
                pw: pick("pw", "24h"), px: Number(pick("px", "6")), pd: Number(pick("pd", "0")), t: pick("t", "ski"),
-               ty: pick("ty", "0") === "1" };
+               ty: pick("ty", "0") === "1", dir: pick("dir", "") };
   const TYPE_SHORT = { wet: "Wet", average: "Avg", dry: "Dry", very_dry: "Blower" };
   const TYPE_LONG = { wet: "Wet/heavy (< 8:1)", average: "Average (8–12:1)", dry: "Dry/light (12–18:1)", very_dry: "Very dry/blower (≥ 18:1)" };
   // Sno-Parks (kind "snopark") reuse the ski-area fields: summit = high terrain, base = trailhead
@@ -45,10 +45,11 @@
     if (st.region) p.set("r", st.region);
     if (st.fav) p.set("fav", "1");
     if (st.ty) p.set("ty", "1");
+    if (st.dir) p.set("dir", st.dir);
     history.replaceState(null, "", `#${p}`);
     try {
       localStorage.setItem(PREF_KEY, JSON.stringify({ m: st.m, w: st.w, e: st.e, src: st.src, st: st.state, r: st.region,
-        sort: st.sort, fav: st.fav ? "1" : "0", pw: st.pw, px: String(st.px), pd: String(st.pd), t: st.t, ty: st.ty ? "1" : "0" }));
+        sort: st.sort, dir: st.dir, fav: st.fav ? "1" : "0", pw: st.pw, px: String(st.px), pd: String(st.pd), t: st.t, ty: st.ty ? "1" : "0" }));
     } catch { /* private mode */ }
   };
 
@@ -70,6 +71,43 @@
     const a = new Date(w.start[i]).toLocaleString([], opt), b = new Date(w.end[i]).toLocaleString([], opt);
     return `${i === 0 ? "Next: " : ""}${a} → ${b}`;
   };
+
+  // ---- linked state / region menus (dev13 item 1)
+  const DEFAULT_DIR = { snow: "desc", obs: "desc", sl: "asc", name: "asc" };
+  const effectiveDir = () => (st.dir === "asc" || st.dir === "desc" ? st.dir : DEFAULT_DIR[st.sort] || "desc");
+  const typeFavOk = (r, fav) => (st.t === "all" || (st.t === "snopark") === isRec(r.a)) && (!st.fav || fav.has(r.a.id));
+  let regionOrder = null;
+  /** Regions north to south (mean latitude of their places, ties by name); states alphabetical. */
+  function computeOrder() {
+    const acc = new Map();
+    for (const a of nbm.areas) {
+      const x = acc.get(a.region) || { lat: 0, n: 0 };
+      x.lat += a.lat; x.n += 1; acc.set(a.region, x);
+    }
+    regionOrder = [...acc.entries()].map(([r, x]) => [r, x.lat / x.n]).sort((p, q) => q[1] - p[1] || p[0].localeCompare(q[0])).map(([r]) => r);
+  }
+  function syncFilterMenus(fav) {
+    if (!nbm || !$("state") || !$("region")) return;
+    if (!regionOrder) computeOrder();
+    const base = rows.filter((r) => typeFavOk(r, fav));
+    const count = (pred, key) => { const m = new Map(); for (const r of base) if (pred(r)) m.set(r.a[key], (m.get(r.a[key]) || 0) + 1); return m; };
+    const byState = count((r) => !st.region || r.a.region === st.region, "state");       // counts respect the OTHER filter
+    const byRegion = count((r) => !st.state || r.a.state === st.state, "region");
+    // a choice that no longer exists under the other filter resets to All (never an empty list by accident)
+    if (st.state && !byState.get(st.state)) st.state = "";
+    if (st.region && !byRegion.get(st.region)) st.region = "";
+    const total = (m) => [...m.values()].reduce((a, b) => a + b, 0);
+    const fill = (id, names, m, current, label) => {
+      $(id).innerHTML = `<option value="">All (${total(m)})</option>` + names.map((n) => {
+        const c = m.get(n) || 0;
+        return `<option value="${esc(n)}"${n === current ? " selected" : ""}${c || n === current ? "" : " disabled"}>${esc(n)} (${c})</option>`;
+      }).join("");
+      $(id).value = current;
+    };
+    const states = [...new Set(nbm.areas.map((x) => x.state))].sort();
+    fill("state", states, byState, st.state, "All states");
+    fill("region", regionOrder, byRegion, st.region, "All regions");
+  }
 
   function buildRows() {
     const nwsBy = new Map((nws?.areas || []).map((r) => [r.id, r]));
@@ -133,9 +171,9 @@
     document.querySelector(".finder-list").classList.toggle("with-type", st.ty);   // optional Snow type column
     document.querySelector(".fhead .col-type").hidden = !st.ty;
     const fav = favs(), prob = st.m === "prob";
-    const list = rows.filter((r) => (st.t === "all" || (st.t === "snopark") === isRec(r.a))
-      && (!st.state || r.a.state === st.state) && (!st.region || r.a.region === st.region)
-      && (!st.fav || fav.has(r.a.id)));
+    syncFilterMenus(fav);                                     // linked state/region menus with counts (dev13 item 1)
+    const list = rows.filter((r) => typeFavOk(r, fav)
+      && (!st.state || r.a.state === st.state) && (!st.region || r.a.region === st.region));
     const val = (x) => (x === null || x === undefined ? -1 : x);
     const by = prob ? (x, y) => val(y.prob) - val(x.prob) || val(y.pmean) - val(x.pmean) : {
       snow: (x, y) => val(y.snow) - val(x.snow) || val(y.hi) - val(x.hi),
@@ -143,7 +181,17 @@
       sl: (x, y) => (x.slVsBase ?? 1e9) - (y.slVsBase ?? 1e9),
       name: (x, y) => x.a.name.localeCompare(y.a.name),
     }[st.sort];
-    list.sort((x, y) => (fav.has(y.a.id) - fav.has(x.a.id)) || by(x, y) || x.a.name.localeCompare(y.a.name));
+    // Deterministic: favorites first, then the chosen column in the chosen direction, ties by name (A-Z). The order
+    // depends only on the sort controls, never on which state/region is selected.
+    const flip = !prob && effectiveDir() !== DEFAULT_DIR[st.sort] ? -1 : 1;
+    list.sort((x, y) => (fav.has(y.a.id) - fav.has(x.a.id)) || flip * (by(x, y) || 0) || x.a.name.localeCompare(y.a.name));
+    const dirBtn = $("sort-dir");
+    if (dirBtn) {
+      const d = effectiveDir();
+      dirBtn.textContent = d === "desc" ? "↓" : "↑";
+      dirBtn.setAttribute("aria-label", `Sort direction: ${d === "desc" ? "descending (highest first)" : "ascending (lowest first)"}. Activate to reverse.`);
+      dirBtn.setAttribute("title", d === "desc" ? "Highest first (tap to reverse)" : "Lowest first (tap to reverse)");
+    }
     $("snow-head").innerHTML = prob ? `% chance ≥ ${st.px}" <a class="info" href="about.html#probabilities" title="${esc(SEPARATE)}" aria-label="How the chances work">ⓘ</a>`
       : `${WINDOWS.find(([v]) => v === st.w)[1]} expected ${expectedInfo()}`;
     $("rows").innerHTML = list.length ? list.map((r) => {
@@ -210,7 +258,7 @@
   function drawMap(list) {
     if (!map) return;
     layer.clearLayers();
-    const fitKey = `${st.state}|${st.region}|${st.fav}`;
+    const fitKey = `${st.state}|${st.region}|${st.fav}|${st.t}`;
     if (fitKey !== lastFit && list.length) {
       lastFit = fitKey;
       map.fitBounds(L.latLngBounds(list.map((r) => [r.a.lat, r.a.lon])).pad(0.15), { maxZoom: 9 });
@@ -246,14 +294,11 @@
     if (a.status !== "fulfilled") { $("rows").innerHTML = `<p>Forecasts are not available yet.</p>`; $("fresh").textContent = ""; return; }
     nbm = a.value; nws = b.status === "fulfilled" ? b.value : null; obs = c.status === "fulfilled" ? c.value : null;
     alerts = d.status === "fulfilled" ? d.value.areas || {} : {};
-    const states = [...new Set(nbm.areas.map((x) => x.state))].sort();
-    const regions = [...new Set(nbm.areas.map((x) => x.region))].sort();
-    $("state").innerHTML = `<option value="">All</option>${states.map((x) => `<option${x === st.state ? " selected" : ""}>${esc(x)}</option>`).join("")}`;
-    $("region").innerHTML = `<option value="">All</option>${regions.map((x) => `<option${x === st.region ? " selected" : ""}>${esc(x)}</option>`).join("")}`;
     $("sort").value = st.sort; $("favonly").checked = st.fav;
     $("state").addEventListener("change", (e) => { st.state = e.target.value; render(); });
     $("region").addEventListener("change", (e) => { st.region = e.target.value; render(); });
-    $("sort").addEventListener("change", (e) => { st.sort = e.target.value; render(); });
+    $("sort").addEventListener("change", (e) => { st.sort = e.target.value; st.dir = ""; render(); });   // new column: its default direction
+    $("sort-dir").addEventListener("click", () => { st.dir = effectiveDir() === "desc" ? "asc" : "desc"; render(); });
     $("favonly").addEventListener("change", (e) => { st.fav = e.target.checked; render(); });
     $("stype").checked = st.ty;
     $("stype").addEventListener("change", (e) => { st.ty = e.target.checked; render(); });

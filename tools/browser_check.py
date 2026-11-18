@@ -350,6 +350,31 @@ def check_charts(b: Browser, base: str, log):
         need(st["days"] >= 8 and st["bars"] == st["days"] and st["ticks"] == 0 and st["legend"] and st["bad"] == 0,
              f"{area}: daily snowfall chart wrong: {st}")
         need(len(st["labels"]) == st["days"], f"{area}: every day needs a low–high label: {st['labels']}")
+        # dev13 B1 (W3): the rules-based summary is at the top of the forecast card, hedged and labelled
+        sm = b.eval("(() => ({tag: (document.querySelector('.summary-tag') || {}).textContent || '', text: (document.querySelector('.summary-line') || {}).textContent || '',"
+                    " note: (document.querySelector('.summary-note') || {}).textContent || ''}))()")
+        log(f"  charts {area}: summary {sm['tag']!r}")
+        need(sm["tag"] and "rules, not a person" in sm["note"], f"{area}: daily summary card missing: {sm}")
+        # dev13 item 4: ONE snow-ratio + powder-quality panel (>= 260 px), no strip, powder bands + labels, p50 line only when snowing
+        pq = b.eval("""(() => { const el = document.getElementById('slr-chart'); const L = el.layout || {};
+          const anns = (L.annotations || []).map(a => a.text || '');
+          return {h: el.getBoundingClientRect().height, strip: !!document.getElementById('snow-type-strip'),
+                  bands: (L.shapes || []).filter(s => s.fillcolor && s.xref === 'paper').length,
+                  labels: ['Dense', 'Medium', 'Blower'].every(n => anns.some(t => t.includes(n))),
+                  slider: !!(L.xaxis && L.xaxis.rangeslider && L.xaxis.rangeslider.visible),
+                  summary: (el.previousElementSibling || {}).textContent || '', table: !!document.querySelector('#slr-chart + .chart-table')}; })()""")
+        log(f"  charts {area}: powder panel {pq}")
+        need(pq["h"] >= 260 and not pq["strip"] and pq["bands"] == 3 and pq["labels"] and not pq["slider"] and pq["table"],
+             f"{area}: combined snow-ratio/powder panel: {pq}")
+        need("heuristic" in pq["summary"] or "No snow" in pq["summary"], f"{area}: powder summary must say heuristic: {pq['summary'][:100]}")
+        # dev13 item 3: the heat table lists NBM's native >=2" row for 24 h (and not for 72 h)
+        rows = b.eval("""(async () => { const out = {}; for (const w of ['24h', '72h']) {
+          const btn = document.querySelector(`#ex-win [data-w="${w}"]`); if (!btn) continue; btn.click(); await new Promise(r => setTimeout(r, 700));
+          out[w] = [...document.querySelectorAll('#ex-chart tbody th')].map(t => t.textContent.trim()); }
+          document.querySelector('#ex-win [data-w="24h"]')?.click(); return out; })()""")
+        log(f"  charts {area}: heat-table rows {rows}")
+        if rows.get("24h"):
+            need(rows["24h"][0] == '2"' and '2"' not in rows.get("72h", []), f"{area}: 2-inch row: {rows}")
         # Nov 16: no 7/10-day ranges on the tiles; the partial first day is labelled in the legend and summary
         t7 = b.eval("""(() => { const tiles = [...document.querySelectorAll('.tiles .tile')].map(t => [t.querySelector('.label').textContent, t.querySelector('.rng').textContent]);
           const leg = document.querySelector('.snow-legend'); const sum = document.getElementById('period-chart').previousElementSibling;
@@ -425,7 +450,10 @@ def check_snoparks(b: Browser, base: str, log):
     need(st["elev"] == ["Summit", "Base"], f"finder elevation labels {st['elev']}")
     b.open(f"{base}/index.html", wait=7)
     ref = b.eval("window.snowwx.reference.state")
-    log(f"  obs map reference layer without interaction: {ref}")
+    if ref == "failed":                    # headless Chrome can lose WebGL after many page loads in one session: one retry
+        b.open(f"{base}/index.html", wait=9)
+        ref = b.eval("window.snowwx.reference.state")
+    log("  obs map reference layer without interaction: " + str(ref) + " " + str(b.eval("window.snowwx.reference.error || ''")))
     need(ref in ("ready", "idle"), f"roads/towns layer did not load on its own: {ref}")
     n = b.eval("(() => { const g = window.snowwx.map && document.querySelector('.leaflet-control-layers'); return [...document.querySelectorAll('.leaflet-control-layers-overlays label')].map(l => l.textContent.trim()).join('|'); })()")
     log(f"  obs map layers: {n}")
@@ -557,7 +585,104 @@ def check_snotel_outage(b: Browser, base: str, log):
             p.write_bytes(raw)
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage}
+def check_finder_filters(b: Browser, base: str, log):
+    """dev13 item 1: linked state/region menus with counts, deterministic sort, bounds fit, hash restore."""
+    b.open(f"{base}/finder.html#t=ski&m=amount&w=72h&e=summit&sort=name", wait=8)
+    MENU = """(() => { const o = (id) => [...document.getElementById(id).options].map(x => [x.value, x.textContent, x.disabled]);
+      const rows = [...document.querySelectorAll('#rows .frow .who a')].map(a => a.textContent);
+      return {state: o('state'), region: o('region'), rows, hash: location.hash}; })()"""
+    st0 = b.eval(MENU)
+    n_all = len(st0["rows"])
+    log(f"  finder: {n_all} rows; states {len(st0['state'])} regions {len(st0['region'])}; first state options {st0['state'][:3]}")
+    need(n_all > 100 and st0["state"][0][1].startswith("All (") and st0["region"][0][1].startswith("All ("), f"menus: {st0['state'][:2]}")
+    # choose a state: the region list narrows, counts add up, empty regions are disabled
+    b.eval("(() => { const s = document.getElementById('state'); s.value = 'UT'; s.dispatchEvent(new Event('change')); })()")
+    time.sleep(1.2)
+    st1 = b.eval(MENU)
+    ut_total = int(st1["state"][0][1].split("(")[1].rstrip(")"))
+    regs = [(v, int(t.rsplit("(", 1)[1].rstrip(")")), d) for v, t, d in st1["region"][1:]]
+    log(f"  finder UT: rows {len(st1['rows'])}, regions with places {[r for r in regs if r[1]][:5]}")
+    need(len(st1["rows"]) == sum(c for _, c, _ in regs) and len(st1["rows"]) < n_all, f"UT rows {len(st1['rows'])} vs region counts {regs}")
+    need(all(d for v, c, d in regs if c == 0 and v != ""), "empty regions must be disabled")
+    need("st=UT" in st1["hash"], f"hash: {st1['hash']}")
+    # sort stable: same relative order of the places that stay, on sort=name; ties by name
+    names_all = st0["rows"]
+    need(st1["rows"] == [n for n in names_all if n in set(st1["rows"])], "selecting a state must not reorder the list")
+    # region -> the state list narrows to states that have it; Tahoe-like overlaps show both states
+    b.eval("(() => { const s = document.getElementById('state'); s.value = ''; s.dispatchEvent(new Event('change')); })()")
+    time.sleep(0.8)
+    multi = b.eval("""(() => { const r = [...document.getElementById('region').options].map(o => o.value).filter(Boolean);
+      for (const name of r) { const s = document.getElementById('region'); s.value = name; s.dispatchEvent(new Event('change'));
+        const st = [...document.getElementById('state').options].filter(o => o.value && !o.disabled).map(o => o.value);
+        if (st.length > 1) return {region: name, states: st, rows: document.querySelectorAll('#rows .frow').length}; } return null; })()""")
+    log(f"  finder multi-state region: {multi}")
+    need(multi is None or len(multi["states"]) > 1, f"overlap region: {multi}")
+    # regions north to south
+    order = b.eval("""(() => [...document.getElementById('region').options].map(o => o.value).filter(Boolean))()""")
+    log(f"  finder region order (first 6): {order[:6]}")
+    # sort direction: reverse keeps the same set, reverses the order; the hash carries it
+    b.eval("(() => { const r = document.getElementById('region'); r.value = ''; r.dispatchEvent(new Event('change')); })()")
+    time.sleep(0.6)
+    a1 = b.eval("[...document.querySelectorAll('#rows .frow .who a')].map(a => a.textContent)")
+    b.eval("document.getElementById('sort-dir').click()")
+    time.sleep(0.8)
+    a2 = b.eval("({rows: [...document.querySelectorAll('#rows .frow .who a')].map(a => a.textContent), hash: location.hash})")
+    need(a2["rows"] == a1[::-1] and "dir=desc" in a2["hash"], f"sort direction toggle: {a2['hash']}")
+    # hash restores state, region and sort
+    b.open(f"{base}/finder.html#t=ski&m=amount&w=72h&e=summit&sort=name&dir=desc&st=CO", wait=8)
+    rs = b.eval("({state: document.getElementById('state').value, rows: [...document.querySelectorAll('#rows .frow .who a')].map(a => a.textContent), dir: document.getElementById('sort-dir').textContent})")
+    log(f"  finder hash restore: state {rs['state']} dir {rs['dir']} rows {len(rs['rows'])}")
+    need(rs["state"] == "CO" and rs["dir"] == "↓" and rs["rows"] == sorted(rs["rows"], reverse=True), "hash did not restore state/direction")
+    # the map fits the filtered places (Colorado only)
+    bounds = b.eval("""(async () => { await new Promise(r => setTimeout(r, 2500));
+      const m = window.snowwx && window.snowwx.map; if (!m) return null; const c = m.getCenter(); return {lat: c.lat, lon: c.lng, z: m.getZoom()}; })()""")
+    log(f"  finder map after state=CO: {bounds}")
+    need(bounds is None or (36 < bounds["lat"] < 42 and -110 < bounds["lon"] < -104 and bounds["z"] >= 6), f"map did not fit Colorado: {bounds}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_hazards(b: Browser, base: str, log):
+    """dev13 item 2: layer defaults, memory, hash override, reset, NWS hazards layer + never-blank fallback."""
+    LAYERS = """(() => Object.fromEntries([...document.querySelectorAll('.leaflet-control-layers-overlays label')]
+      .map(l => [l.textContent.trim(), l.querySelector('input').checked])))()"""
+    b.open(f"{base}/about.html", wait=2)
+    b.eval("localStorage.removeItem('snowwx.layers'); 1")
+    b.open(f"{base}/index.html#map=6/42/-112", wait=10)
+    d = b.eval(LAYERS)
+    log(f"  defaults: {d}")
+    on = {k for k, v in d.items() if v}
+    need({"Roads, towns & peaks", "Ski areas", "Avalanche danger", "NWS winter hazards"} <= on and not ({"SNOTEL", "ASOS / AWOS (wind, temp)"} & on),
+         f"layer defaults wrong: {d}")
+    hz = b.eval("(() => ({status: window.snowwx.hazards.state.status, count: window.snowwx.hazards.state.count, panel: document.getElementById('hazards').textContent.trim(),"
+                " hidden: document.getElementById('hazards').hidden}))()")
+    log(f"  hazards: {hz['status']} {hz['count']} | {hz['panel'][:110]!r}")
+    need(not hz["hidden"] and hz["status"] in ("ok", "fallback") and len(hz["panel"]) > 40, f"hazards panel is blank: {hz}")
+    # memory: turn SNOTEL on, reload: still on; hash carries it
+    b.eval("document.querySelectorAll('.leaflet-control-layers-overlays label input')[5].click(); 1")
+    time.sleep(0.8)
+    st = b.eval("({ls: localStorage.getItem('snowwx.layers'), hash: location.hash})")
+    need("snotel" in (st["ls"] or "") and "ly=" in st["hash"], f"layer choice not remembered: {st}")
+    b.open(f"{base}/index.html#map=6/42/-112", wait=9)
+    need(b.eval(LAYERS).get("SNOTEL") is True, "SNOTEL choice not restored from localStorage")
+    # explicit hash beats memory
+    b.open(f"{base}/index.html#map=6/42/-112&ly=ref,ski", wait=8)
+    d2 = b.eval(LAYERS)
+    need(d2.get("Ski areas") is True and d2.get("SNOTEL") is False and d2.get("NWS winter hazards") is False, f"hash override: {d2}")
+    # reset to defaults
+    b.eval("document.getElementById('reset-layers').click(); 1")
+    time.sleep(1.0)
+    d3 = b.eval(LAYERS)
+    st = b.eval("({ls: localStorage.getItem('snowwx.layers'), hash: location.hash})")
+    need(d3.get("NWS winter hazards") is True and d3.get("SNOTEL") is False and st["ls"] is None and "ly=" not in st["hash"], f"reset: {d3} {st}")
+    # never a silent blank: service blocked -> our alerts index fallback notice
+    b.open(f"{base}/index.html#map=6/42/-112", wait=8, block=["*mapservices.weather.noaa.gov*"])
+    fb = b.eval("(async () => { await new Promise(r => setTimeout(r, 2500)); return {status: window.snowwx.hazards.state.status, panel: document.getElementById('hazards').textContent.trim()}; })()")
+    log(f"  blocked service: {fb['status']} | {fb['panel'][:120]!r}")
+    need(fb["status"] == "fallback" and "not showing" in fb["panel"], f"no visible fallback when the NWS service fails: {fb}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards}
 
 
 def main(argv=None) -> int:

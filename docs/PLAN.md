@@ -106,6 +106,7 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
 | Nov 16 | **Drop the 7/10-day 10–90% ranges** (Finder, My mountains, area tiles): expected total only; keep native 24/48/72 h ranges. |
 | Nov 16 | Partial first day keeps the **hatched grey expected bar**; legend/tooltip/aria: "partial day — expected amount, no range". |
 | Nov 16 | SNOTEL 24 h depth change on the obs map: gains use NWS colors, losses stay brown, legend titled "Snow depth change" (compaction ≠ snowfall). |
+| Nov 17 | **dev13 UX package (overnight, assumptions flagged in the session report):** NBM-native P(≥2″) row for 24/48 h only (never derived); one combined snow-ratio + powder-quality panel; linked Finder state/region menus with counts; obs-map defaults (reference layer, ski areas, Sno-Parks, avalanche, **NWS winter hazards** ON; SNOTEL/ASOS/NOHRSC OFF, remembered, URL `ly=` overrides, Reset button), red alert rings removed; hazards from NOAA/NWS WWA map service with a visible fallback to our alerts index; config `hazards.enabled`. |
 | Nov 17 | **SNOTEL outage handling accepted:** previous good copy from the live site (option A, `SITE_ORIGIN`/`site.origin`, on the W1 cutover checklist); stale ≤ 48 h with original timestamps (never re-stamped), 24/72 h changes hidden when older than their window; data-health GitHub issues per source with limits from each source's real cadence (config `monitoring`), assigned to the owner, monitor can never fail the deploy. Independent "workflow did not run" check proposed in `docs/specs/data-pipeline.md` 5.2c (heartbeat service recommended). |
 | Nov 16 | **Composite ranges are never shown:** where a 24/48/72 h total would add several 6 h percentile windows (fallback cycles), show the expected total only; points JSON marks totals `native: true/false`. Archive columns unchanged (they never carry composite ranges). Lighthouse target: median of ≥ 3 interleaved runs ≥ 85. |
 | Nov 16 | Model-map snowfall colors stay as is for now (backlog §8.4). **Guard:** points JSON and the forecast archive keep their existing fields (p10/p50/p90, P(≥4/8/12″), 24/48/72 h). |
@@ -157,7 +158,7 @@ analytics, pipeline monitoring.
 
 **W1 Domain & hosting** — custom domain on Cloudflare Pages + R2; ≤ 20,000 files, no file > 25 MiB; old URL redirects;
 Lighthouse not worse; rollback plan. **W2 Indexable pages** — ≥ 161 server-rendered area pages (title/description/summary
-without JS); sitemap; `#id` redirects; OG cards for top 60. **W3 Daily summaries** — every point has a summary in
+without JS); sitemap; `#id` redirects; OG cards for top 60. **W3 Daily summaries** (v1 pipeline + area card done in dev13; Finder/My mountains/meta pending) — every point has a summary in
 `points/<id>.json`; fixture-tested rules; shown on cards, Finder rows, meta descriptions. **W4 PWA** — §5.8 tests pass on
 real iPhone + Android; staleness banners; install event. **W5 Analytics/monitoring** — cookieless events (favorite,
 install, signup, alert, avalanche-center click, "view as table"); feedback link; failure notifications; public status
@@ -184,7 +185,7 @@ season?") ships first.
 ### 8.4 Backlog (unscheduled, in priority order)
 Track 1 leftovers: "My mountains" refinements; powder-quality surfaces (covered by
 §5.7). Track 2 (obs map): mobile performance pass (stations/overlays render before
-basemap tiles; preconnect; smaller first payload); **storm-total tracker** (NOHRSC + SNOTEL, selectable window); obs time slider
+basemap tiles; preconnect; smaller first payload); **resort-reported snowfall observations** (5a: needs a licence decision; no scraping) and **webcams** (5b: links first; embeds only with permission); **storm-total tracker** (NOHRSC + SNOTEL, selectable window); obs time slider
 (24–72 h); slope-angle/aspect layer (3DEP); more observation networks (research
 licenses first — MADIS category 3, state DOT RWIS, avalanche-center telemetry via
 the centers; **ask before building**). Models: **align model-map snowfall colors to the NWS table
