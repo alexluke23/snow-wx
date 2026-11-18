@@ -75,7 +75,7 @@ Code `pipeline/ecmwf.py` (`python -m pipeline ecmwf --out out/models [--force]`)
 | Release | files published ~7-9 h after the nominal time (the 00Z ENS 24 h file was written 07:40Z); the 0.1° files ~2 h after the 0.25° ones |
 | Throttle | the mirror answers HTTP 503 `SlowDown` under bursts (seen after ~10 rapid requests); `ecmwf._get` backs off and uses 6 workers |
 
-**Budgets (full real run, 00Z Nov 18, 160 ski areas, tp + sf, 50 members, 41 steps, HRES + ENS):** **1,214 MB downloaded in 300 s** wall clock (download + decode + sample; ~5 s per ENS step; the ENS index files are 2 MB each = ~80 MB of the total),
+**Budgets (full real run, 00Z Nov 18, 160 ski areas, tp + sf, 50 members, 41 steps, HRES + ENS):** **1,214 MB downloaded in 300 s** (second run, the 12Z cycle of Nov 17: 1,205 MB in 336 s, 0 missing messages) wall clock (download + decode + sample; ~5 s per ENS step; the ENS index files are 2 MB each = ~80 MB of the total),
 0 missing member messages. Output: **162 files** (160 plume files + `precip.json` + `index.json`; the site build is ~5.6 k files, limit 20,000); plume file **avg 14.9 KB raw / 3.7 KB gzip (max 19.1 / 5.6 KB), total 2.4 MB raw / 0.60 MB gzip**;
 HRES `precip.json` 37 KB raw / 7 KB gzip, merged into `multimodel.json`. The per-area point JSON (target < 150 KB) is unchanged (no ensemble data in it); plume files are fetched only when the Ensemble view is selected (the browser check
 asserts 0 requests before and 1 after). Values are integers in 0.1 mm. 6-hourly to 240 h was affordable, so no extension toward 360 h was attempted (it would add ~0.45 GB).
