@@ -291,29 +291,49 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
 
     def fetch(u, row):
         r = _get(session, u, {"Range": f"bytes={row['_offset']}-{row['_offset'] + row['_length'] - 1}"})
+        if r is None:
+            raise RuntimeError(f"{u}: not found")
         nbytes["n"] += len(r.content)
         return decode(r.content)
 
-    # HRES: terrain once, then tp / sf per step
-    hrows0 = parse_index(_get(session, url(c, cyc, "oper", 0, "index")).text)
-    z = select(hrows0, "z").get(0)
+    def maybe(u, row):
+        """one message, or None when it cannot be fetched/decoded: a failed member is a MISSING member (counted against max_missing_frac), not a dead run"""
+        try:
+            return fetch(u, row)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("ecmwf: %s: %s", u.rsplit("/", 1)[-1], exc)
+            return None
+
+    def index(stream, step, required):
+        r = _get(session, url(c, cyc, stream, step, "index"))
+        if r is None:
+            if required:
+                raise RuntimeError(f"ECMWF {stream} index for step {step} not on the mirror")
+            return []
+        return parse_index(r.text)
+
+    # HRES: terrain once, then tp / sf per step (HRES is optional per step: a gap in the line, the ensemble still publishes)
+    z = select(index("oper", 0, False), "z").get(0)
     if z:
-        zf = fetch(url(c, cyc, "oper", 0, "grib2"), z)
-        sam.z = sam.sample(zf) / 9.80665                   # geopotential (m2/s2) -> metres
+        zf = maybe(url(c, cyc, "oper", 0, "grib2"), z)
+        if zf is not None:
+            sam.z = sam.sample(zf) / 9.80665               # geopotential (m2/s2) -> metres
     with ThreadPoolExecutor(c["workers"]) as ex:
         for s in steps[1:]:
-            hrows = parse_index(_get(session, url(c, cyc, "oper", s, "index")).text)
+            hrows = index("oper", s, False)
             for param in ("tp", "sf"):
                 row = select(hrows, param).get(0)
-                sam.add_hres(param, s, fetch(url(c, cyc, "oper", s, "grib2"), row) if row else None)
-            erows = parse_index(_get(session, url(c, cyc, "enfo", s, "index")).text)
+                sam.add_hres(param, s, maybe(url(c, cyc, "oper", s, "grib2"), row) if row else None)
+            erows = index("enfo", s, True)
             for param in ("tp", "sf"):
                 sel = select(erows, param, "pf")
-                got = dict(zip(sel, ex.map(lambda k: fetch(url(c, cyc, "enfo", s, "grib2"), sel[k]), sel)))
-                sam.add_ens(param, s, got)
+                fetched = dict(zip(sel, ex.map(lambda k: maybe(url(c, cyc, "enfo", s, "grib2"), sel[k]), sel)))
+                sam.add_ens(param, s, {k: v for k, v in fetched.items() if v is not None})
             if sam.missing.get(s, 0) > c["max_missing_frac"] * c["members"]:
                 raise RuntimeError(f"ECMWF ENS step {s}: {sam.missing[s]} of {c['members']} member messages missing")
     plume, hres_doc = area_docs(sam, cyc, steps)
+    if not plume:                                      # nothing usable: fail BEFORE touching the last good files
+        raise RuntimeError("ECMWF: no area has data")
     out = Path(out)
     (out / "ecmwf" / "plume").mkdir(parents=True, exist_ok=True)
     for old in (out / "ecmwf" / "plume").glob("*.json"):

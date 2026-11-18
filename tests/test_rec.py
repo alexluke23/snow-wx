@@ -153,3 +153,16 @@ def test_review_csv_is_never_published():
     assert not list((root / "web").rglob("*review*.csv")) and not list((root / "web").rglob("rec_points*"))
     for wf in (root / ".github" / "workflows").glob("*.yml"):
         assert "rec_points_review" not in wf.read_text(encoding="utf-8")
+
+
+def test_merge_validity_does_not_depend_on_row_order():
+    from pipeline.rec import apply_decisions
+    recs = [_rec(i, i.upper(), 41.5, -112.5) for i in "abc"]
+    chain = {"a": {"decision": "merge", "merge_into": "b", "note": ""}, "b": {"decision": "merge", "merge_into": "c", "note": ""}}
+    forward, rep1 = apply_decisions(recs, chain)
+    backward, rep2 = apply_decisions(recs, dict(reversed(list(chain.items()))))
+    assert [r["id"] for r in forward] == [r["id"] for r in backward] == ["a", "c"]       # a -> b is invalid (b is merged away): a stays, b merges into c
+    assert rep1["merge"] == rep2["merge"] == [("b", "c")] and len(rep1["warnings"]) == len(rep2["warnings"]) == 1
+    # if b's own merge has no valid target, b stays and a -> b becomes valid
+    out, rep = apply_decisions(recs, {"a": chain["a"], "b": {"decision": "merge", "merge_into": "", "note": ""}})
+    assert [r["id"] for r in out] == ["b", "c"] and rep["merge"] == [("a", "b")]

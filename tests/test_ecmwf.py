@@ -230,3 +230,36 @@ def test_too_many_missing_member_messages_fail_the_run_and_write_nothing(tmp_pat
 def test_disabled_flag_downloads_nothing(tmp_path, monkeypatch):
     mirror = FakeMirror()
     assert E.run({}, mirror, tmp_path, points=PTS[:1]) == {"ok": False, "skipped": "disabled"} and mirror.gets == []
+
+
+def test_one_failed_member_download_is_a_missing_member_not_a_dead_run(tmp_path, monkeypatch):
+    calls = {"n": 0}
+
+    def flaky(blob):
+        calls["n"] += 1
+        if calls["n"] % 40 == 7:                                   # a decode / fetch error now and then
+            raise ValueError("corrupt message")
+        return np.full((721, 1440), 0.002, dtype="float32")
+    monkeypatch.setattr(E, "decode", flaky)
+    monkeypatch.setattr(E.time, "sleep", lambda s: None)
+    res = E.run({"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 1}}, FakeMirror(), tmp_path / "m", cycle=CYC, points=PTS[:1])
+    assert res["ok"] and res["missing_member_messages"] >= 1 and calls["n"] > 100
+
+
+def test_missing_hres_files_leave_a_gap_not_a_failure_and_an_empty_result_keeps_the_last_good_files(tmp_path, monkeypatch):
+    class NoHres(FakeMirror):
+        def get(self, u, headers=None, timeout=None, **k):
+            return _Resp(status=404) if "/oper/" in u else super().get(u, headers=headers, timeout=timeout)
+    monkeypatch.setattr(E, "decode", lambda blob: np.full((721, 1440), 0.002, dtype="float32"))
+    monkeypatch.setattr(E.time, "sleep", lambda s: None)
+    res = E.run({"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 1}}, NoHres(), tmp_path / "m", cycle=CYC, points=PTS[:1])
+    d = json.loads((tmp_path / "m" / "ecmwf" / "plume" / "alta.json").read_text(encoding="utf-8"))
+    assert res["ok"] and d["hres_tp"] == [0, None, None] and d["tp"][1][0] == 20
+    # an ENS index that is not on the mirror fails the run and the files written before stay
+    class NoEns(FakeMirror):
+        def get(self, u, headers=None, timeout=None, **k):
+            return _Resp(status=404) if "/enfo/" in u else super().get(u, headers=headers, timeout=timeout)
+    before = (tmp_path / "m" / "ecmwf" / "plume" / "alta.json").read_bytes()
+    with pytest.raises(RuntimeError, match="not on the mirror"):
+        E.run({"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 1}}, NoEns(), tmp_path / "m", cycle=CYC, points=PTS[:1])
+    assert (tmp_path / "m" / "ecmwf" / "plume" / "alta.json").read_bytes() == before

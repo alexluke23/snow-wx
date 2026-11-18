@@ -596,7 +596,7 @@ def daily_summary(doc: dict) -> dict | None:
 
 
 def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: datetime,
-                  col: dict[tuple, int], generated: str) -> tuple[dict, list]:
+                  col: dict[tuple, int], generated: str, wind: dict | None = None) -> tuple[dict, list]:
     files, summary = {}, []
     times = [(init + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%MZ") for h in hours]
     for a in cat["areas"]:
@@ -616,7 +616,7 @@ def build_outputs(cat: dict, data: dict[int, dict], hours: list[int], init: date
         tot = {k: doc["points"][k]["totals"] for k in ("summit", "base")}
         doc["checks"] = P.plausibility(tot["base"], tot["summit"])
         doc["summary"] = daily_summary(doc)
-        wx = WX.for_point_doc(doc, {"wind_exposure": WIND_EXPOSURE})     # W7 Phase A: None while the flag is off (default)
+        wx = WX.for_point_doc(doc, {"wind_exposure": wind if wind is not None else WIND_EXPOSURE})     # W7 Phase A: None while the flag is off (default)
         if wx:
             doc["wind_exposure"] = wx
         files[a["id"]] = doc
@@ -828,7 +828,7 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
         return 1
 
     generated = utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    files, summary = build_outputs(cat, data, hours, cycle, col, generated)
+    files, summary = build_outputs(cat, data, hours, cycle, col, generated, wind=WIND_EXPOSURE)
     files.update(station_outputs(stations, data, hours, cycle, col, generated))
     out.mkdir(parents=True, exist_ok=True)
     for old in stale_point_files(out):   # common.py: only files a previous points run wrote

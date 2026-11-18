@@ -262,3 +262,44 @@ def test_no_secret_or_address_is_hard_coded_in_the_module():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "pipeline" / "alerts_backend.py").read_text(encoding="utf-8")
     assert "@gmail" not in src and "sk_live" not in src and 'SECRET = b"' not in src
+
+
+# ---- dev17 code-review fixes
+def test_two_rules_on_one_area_keep_separate_storm_clocks():
+    svc, clock = mk()
+    r1 = {**RULE}                                                                  # summit 24 h >= 8 in
+    r2 = {"kind": "snow", "area": "alta-ski-area", "window": "24h", "elev": "base", "thr_in": 4, "min_prob": 50}
+    ex = exceed()
+    ex["areas"]["alta-ski-area"]["base"] = {"24h": [[90, 70, 5, 1], [90, 70, 5, 1], [90, 70, 5, 1]]}
+    active_sub(svc, rules=(r1, r2))
+    sent = svc.run(ex)
+    assert len(sent) == 1 and "(summit)" in sent[0]["text"] and "(base)" in sent[0]["text"]            # both rules alert in the same mail
+    sub = svc.store.by_email("a@example.com")
+    assert len(sub["last_alert"]) == 2 and all(k.count("|") == 3 for k in sub["last_alert"])           # one storm clock per rule
+
+
+def test_snow_level_rule_ignores_a_window_that_is_already_over_and_takes_its_own_pop_threshold():
+    r = AB.validate_rule({"kind": "level", "area": "alta-ski-area", "window": "24h", "below_ft": 5000})
+    assert r["min_pop"] == 50
+    late = datetime(2026, 11, 19, 20, tzinfo=timezone.utc)
+    ex = exceed(issued="2026-11-19T19:00Z", sl=4000, pop=90)
+    m = AB.match_rule(r, ex, late)
+    assert m["start"] == "2026-11-20T12:00Z"                                        # the first window (ended 12Z Nov 19) is skipped even though its snow level matches
+    lax = AB.validate_rule({"kind": "level", "area": "alta-ski-area", "window": "24h", "below_ft": 5000, "min_pop": 20})
+    assert AB.match_rule(lax, exceed(sl=4500, pop=30), T0) is not None and AB.match_rule(r, exceed(sl=4500, pop=30), T0) is None
+    with pytest.raises(ValueError):
+        AB.validate_rule({"kind": "level", "area": "a", "below_ft": 5000, "min_pop": 5})
+
+
+def test_changed_rules_for_an_active_address_wait_for_the_owner_to_confirm():
+    svc, _ = mk()
+    sub = active_sub(svc)
+    n = len(svc.out.sent)
+    new_rule = {**RULE, "thr_in": 12}
+    out = svc.subscribe("a@example.com", [new_rule])
+    assert out["ok"] and "confirmation e-mail is on its way" in out["message"]     # the same generic answer a brand-new address gets
+    assert sub["rules"][0]["thr_in"] == 8.0 and sub["pending_rules"][0]["thr_in"] == 12.0 and len(svc.out.sent) == n + 1      # nothing changed yet, a confirmation went out
+    assert svc.confirm(token_from(svc.out.sent[-1], "confirm"))["ok"] and sub["rules"][0]["thr_in"] == 12.0 and sub["pending_rules"] is None
+    n2 = len(svc.out.sent)
+    svc.subscribe("a@example.com", [new_rule])                                      # the same rules again: nothing to confirm
+    assert len(svc.out.sent) == n2

@@ -34,6 +34,8 @@ acceptance list (or re-run them against a Node port).
 | Compliance | no e-mail at all unless a postal address and the base URL are configured (CAN-SPAM); every e-mail carries the address, the unsubscribe link and "not an avalanche forecast, read your avalanche center" |
 | Rate limits | sign-ups 3 / e-mail / h and 20 / IP / h; ≤ 3 alert e-mails / subscriber / 24 h; ≤ 1 alert per area per storm (a new alert needs a trigger window starting ≥ 12 h after the last alerted window ended) |
 | Matching | on `exceed_summary.json` only: NBM's NATIVE exceedance probability for a native threshold column (a threshold that is not a column, e.g. 5 in, never matches: no interpolation) in a native 24/48/72 h window; or "snow level ≤ X while precipitation is likely (PoP ≥ 50 %)"; windows already over are skipped; data older than 18 h or missing never alerts. No percentile is read, summed or scaled. |
+| Changing rules | re-submitting an ACTIVE address with different rules does not change anything until the address owner confirms (a confirmation e-mail with the new rules pending; the answer is the same generic one), so nobody can alter someone else's alerts by typing their address |
+| Caps | the daily cap (3 mails) holds alerts back: windows that end meanwhile are never sent late (matching requires the window to still be ahead); each rule has its own storm clock (area, kind, window, elevation); the snow-level rule's "precipitation likely" threshold is per rule (`min_pop`, default 50 %) |
 | Magic link | single use (token recorded), 15 min, same answer for unknown addresses |
 | Free preset | ≥ 50 % chance of ≥ 8 in in 24 h at each favorite's summit (`preset_rules`) |
 
