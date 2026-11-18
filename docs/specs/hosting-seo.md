@@ -39,3 +39,48 @@
 
 
 - **`site.base_path` / `site.feedback_email` (dev14):** nested prerendered pages must include shared scripts as `<base_path>/js/site-config.js`; that script loads `data/meta.json` (which carries `site.feedback_email`) relative to itself. No e-mail address is hard-coded anywhere in `web/`.
+
+---
+
+## W1 hosting-migration plan (dev14 D1; docs only, nothing built)
+
+### Measured today (build/ of Nov 17 2026, after one full build)
+| Item | Value | Limit |
+|---|---|---|
+| Files in the deploy | **5,558** (data 3,792 incl. points 1,457 + NDFD 1,446 + SNOTEL 837; models 1,726; JS/vendor/HTML ~35) | 20,000 per deployment |
+| Total size | **220 MB** (points 66 MB, models 123 MB, NDFD 21 MB, SNOTEL 7 MB) | none on total |
+| Largest file | `data/points/exceed_summary.json` 1.4 MB gz-uncompressed | 25 MiB per file |
+Headroom today is large, but W2 adds ~610 prerendered pages and model maps grow with every model/domain; plan for the split anyway.
+
+### Static shell vs data
+- **Shell (Cloudflare Pages):** `*.html`, `css/`, `js/`, `vendor/`, `status.html`, W2 pages, sitemap/robots. Deployed on code changes only (also well inside 500 builds/month).
+- **Data (R2 at `data.<domain>`):** `data/**` (points, ndfd, snotel, layers, alerts, hazards, meta.json) and `models/**`. Updated by the existing Actions jobs; the hourly build no longer redeploys the shell.
+- **`DATA_ORIGIN`:** one value (config `site.data_origin`, default `""` = same origin), exposed to pages through a tiny `data-origin` meta/`site-config.js` constant. All fetches become `${DATA_ORIGIN}data/...` (today: relative `data/`, `fetch` in app.js, area.js, finder.js, mine.js, hazards.js, search.js, overlays.js, models.js, status.js, site-config.js). Needs CORS (`Access-Control-Allow-Origin: <site origin>`) on R2 and `Cache-Control` short (60 s) for JSON, long + hashed names for frames.
+- `pipeline restore` and the monitor read `site.origin` (+ the data origin once it differs): checklist above.
+
+### R2 sync
+- After each job (points / ndfd / models / hourly obs) `aws s3 sync`-style upload via R2's S3 API with a scoped token stored as GitHub Actions secrets (owner creates; never in code). Keep the existing release-asset hand-off between jobs; the final build job uploads `build/data` + `build/models` to R2 and deploys the shell only when shell files changed (`git diff` on `web/`).
+- Delete-with-guard: only remove keys listed by the previous manifest (same idea as `stale_point_files`). Write `data/meta.json` last so the status page never shows a newer time than the data.
+- Budget: ~ 220 MB per sync, mostly unchanged files: use content hashes to skip uploads (R2 ops are free-tier-limited: Class A 1 M/month; hourly full upload of 3.8 k objects ≈ 2.8 M/month, so hash-skip is required) **[verify]**.
+
+### Parity test (before cutover)
+Script `tools/parity_check.py`: for 30 sampled URLs/paths (pages + data files) compare GitHub Pages vs the new origin (status 200, byte-equal for static, JSON equal for data within one run), then run `tools/browser_check.py --build` against the new origin. Pass = identical results to today's 13 checks plus Lighthouse not worse than main.
+
+### Redirect / canonical stub
+- Old GitHub Pages site keeps `index.html` meta-refresh + `<link rel="canonical">` to the new domain and a small script mapping `#id` and old pages to new paths (`area.html#alta-ski-area` → `/ski/ut/alta-ski-area/`). Stub contains no data. Remove `site.origin` from Pages once restore reads the new origin.
+- New domain: `robots.txt`, `sitemap.xml` (~610 URLs), canonical on every page.
+
+### Rollback
+Keep GitHub Pages deploying the full current site (shell + data) until two weeks after cutover; DNS cutover is a CNAME change, so rollback = point the domain back (TTL 5 min) and re-enable the Pages deploy; R2 data is additive and can stay. Do not delete the Pages workflow job until then.
+
+### [verify] before starting
+Cloudflare Pages direct-upload build counting; image-heavy-site terms for model PNGs on R2/Pages; R2 free-tier operation counts for hourly syncs; CORS + cache headers on custom `data.` domain; whether Pages `_headers` can set `Cache-Control` per path; GitHub Pages online-business terms (why we move).
+
+### Cookieless analytics: options (not wired)
+| Option | Cost | Cookieless | Notes |
+|---|---|---|---|
+| **Cloudflare Web Analytics** | free | yes, no cookies/localStorage | Works on Pages/any site via one beacon script; page views, referrers, Core Web Vitals; no custom events |
+| Plausible (hosted) | ~$9/mo | yes | Custom events (favorite, install, signup, "view as table"), simple; paid |
+| Plausible/Umami self-hosted | server cost | yes | Needs a server we do not run (no servers rule) |
+| GoatCounter | free for non-commercial; paid otherwise | yes | Tiny, events limited |
+**Recommendation:** Cloudflare Web Analytics now (free, same vendor as hosting, no consent banner), add Plausible only when W5 needs custom events (Feb 2027 paid-launch decisions). Do not add any script until W1 is live.
