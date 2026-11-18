@@ -907,6 +907,8 @@ def check_hazard_popup(b: Browser, base: str, log):
 def check_snopark_finder_mobile(b: Browser, base: str, log):
     """dev16 M4.5: the Finder Type filter (Ski areas / Sno-Parks / All) at 375 px: tappable (>= 40 px), no sideways scroll, state/region menus
     follow the type with counts, a Sno-Park row links to its forecast page and shows its source/attribution there."""
+    b.open(f"{base}/about.html", wait=1.5)
+    b.eval("localStorage.clear(); sessionStorage.clear(); 1")                     # earlier checks leave a remembered state/region filter behind
     b.open(f"{base}/finder.html#t=ski", width=375, wait=6)
     st = b.eval("""(() => ({types: [...document.querySelectorAll('#type button')].map(x => [x.textContent.trim(), Math.round(x.getBoundingClientRect().height), Math.round(x.getBoundingClientRect().width)]),
         rows: document.querySelectorAll('#rows .frow').length, hscroll: document.documentElement.scrollWidth > innerWidth + 2,
@@ -931,7 +933,53 @@ def check_snopark_finder_mobile(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile}
+def check_multimodel(b: Browser, base: str, log):
+    """dev16 M7: precipitation by model on the area page: NBM + HRRR/RRFS/GFS lines, agreement badge (heuristic label), units toggle, table, model terrain in
+    the tooltip, graceful when data/multimodel.json is missing, JS rebase == Python rebase."""
+    sys.path.insert(0, str(REPO))
+    from datetime import datetime, timezone
+    from pipeline.models import multimodel as mm_mod
+    area = "alta-ski-area"
+    if not (Path(base_dir_holder["path"]) / "data" / "multimodel.json").exists():
+        raise Fail("build/data/multimodel.json missing: run the models quickly or `pipeline build` first")
+    b.open(f"{base}/area.html#{area}", wait=7)
+    _draw_all(b)
+    st = b.eval("""(async () => { await new Promise(r => setTimeout(r, 1500)); const el = document.getElementById('mm-chart'); if (!el || !el.data) return null;
+      const out = {names: el.data.map(t => t.name), badge: document.getElementById('mm-badge').textContent, summary: (el.previousElementSibling || {}).textContent || '',
+        hover: el.data[1].hovertemplate, terrain: String(el.data[1].customdata[0]), title0: (el.layout.annotations[0] || {}).text, h: Math.round(el.getBoundingClientRect().height), note: document.getElementById('mm-note').textContent,
+        labels: el.layout.annotations.map(a => a.text)};
+      document.querySelector('#mm-mode [data-m=snow]').click(); await new Promise(r => setTimeout(r, 800));
+      out.title1 = (el.layout.annotations[0] || {}).text; out.badge1 = document.getElementById('mm-badge').textContent;
+      const d = document.querySelector('#mm-chart + .chart-table'); d.open = true; d._build && d._build();
+      out.cols = [...d.querySelectorAll('th[scope=col]')].map(t => t.textContent); out.rows = d.querySelectorAll('tbody tr').length;
+      document.querySelector('#mm-mode [data-m=liquid]').click(); await new Promise(r => setTimeout(r, 500));
+      // JS rebase vs the python reference on a fixture
+      out.js = MultiModel.rebase(Date.parse('2026-11-18T12:00Z'), [0, 6, 12], [0, 0.2, 0.9], Date.parse('2026-11-18T15:00Z'));
+      return out; })()""")
+    log(f"  multimodel: {json.dumps(st)[:600]}")
+    need(st and st["names"][0] == "NBM" and len(st["names"]) >= 3 and {"HRRR", "RRFS", "GFS"} & set(st["names"]), f"model lines missing: {st and st['names']}")
+    need(("High" in st["badge"] or "Medium" in st["badge"] or "Low" in st["badge"]) and "heuristic" in st["badge"], f"agreement badge/heuristic label: {st['badge']}")
+    need("customdata" in st["hover"] and "summit" in st["hover"] and "terrain" in st["terrain"], f"tooltip lacks model terrain vs summit: {st['hover']} {st['terrain']}")
+    need(st["summary"].rstrip().endswith(".") and "…" not in st["summary"] and "model agreement" in st["summary"], f"headline sentence: {st['summary']}")
+    need("Liquid" in st["title0"] and "Snow" in st["title1"] and st["badge1"] == st["badge"], f"units toggle: {st['title0']} / {st['title1']}; badge must not change")
+    need(st["cols"][:2] == ["Time", "NBM"] and st["rows"] >= 4 and st["h"] >= 200, f"table/height: {st['cols']} {st['rows']} {st['h']}")
+    py = mm_mod.rebase(datetime(2026, 11, 18, 12, tzinfo=timezone.utc), [0, 6, 12], [0, 0.2, 0.9], datetime(2026, 11, 18, 15, tzinfo=timezone.utc))
+    need([round(x, 3) for x in st["js"]] == [round(x, 3) for x in py], f"JS rebase {st['js']} != Python {py}")
+    b.open(f"{base}/area.html#{area}", wait=7, block=["*multimodel.json*"])
+    _draw_all(b)
+    time.sleep(1.5)
+    msg = b.eval("(document.getElementById('mm-chart') || {textContent: ''}).textContent")
+    need("not available" in msg, f"missing multimodel.json must read gracefully: {msg}")
+    for width in (375,):
+        b.open(f"{base}/area.html#{area}", width=width, wait=7)
+        _draw_all(b)
+        time.sleep(1.5)
+        sc = b.eval("({w: document.documentElement.scrollWidth, vw: innerWidth, h: Math.round(document.getElementById('mm-chart').getBoundingClientRect().height)})")
+        need(sc["w"] <= sc["vw"] + 2 and sc["h"] >= 200, f"model panel at 375 px: {sc}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel}
 
 
 def main(argv=None) -> int:

@@ -52,7 +52,7 @@ def speed_dir(u, v):
     return spd, (270.0 - math.degrees(math.atan2(v, u))) % 360.0
 
 
-def nearest_index(lat: np.ndarray, lon: np.ndarray, pts: list[tuple[float, float]]) -> list[tuple[int, int] | None]:
+def nearest_index(lat: np.ndarray, lon: np.ndarray, pts: list[tuple[float, float]], max_deg: float = 0.1) -> list[tuple[int, int] | None]:
     """Nearest grid cell (row, col) per (lat, lon); None if outside the cropped grid."""
     out = []
     coslat = np.cos(np.radians(lat))
@@ -60,7 +60,7 @@ def nearest_index(lat: np.ndarray, lon: np.ndarray, pts: list[tuple[float, float
         d2 = (lat - la) ** 2 + ((lon - lo) * coslat) ** 2
         k = int(np.nanargmin(d2))
         r, c = np.unravel_index(k, lat.shape)
-        out.append((int(r), int(c)) if d2[r, c] < 0.1 ** 2 else None)   # within ~10 km
+        out.append((int(r), int(c)) if d2[r, c] < max_deg ** 2 else None)   # default within ~10 km (3-km HRRR/RRFS grids)
     return out
 
 

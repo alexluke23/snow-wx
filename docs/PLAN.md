@@ -163,7 +163,7 @@ install, signup, alert, avalanche-center click, "view as table"); feedback link;
 page. **W6 Alerts** — double opt-in, one-click unsubscribe, test alert by email + push within one points run, rate
 limits. **W7 ◇ Wind flag** — renders for 5 test cases, reviewed by an avalanche-literate person.
 
-**M7 Precipitation by model** — ✅ when: per-area chart of HRRR/RRFS/GFS/NBM
+**M7 Precipitation by model** (built dev16 for NBM/HRRR/RRFS/GFS; ECMWF waits for M8-lite) — ✅ when: per-area chart of HRRR/RRFS/GFS/NBM
 (+ ECMWF when M8-lite lands) in liquid-equivalent with inches toggle; agreement
 badge documented in about.html.
 

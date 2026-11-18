@@ -40,7 +40,7 @@
       <a href="https://avalanche.org/" target="_blank" rel="noopener">avalanche center</a> before heading out.</p>
 
     <nav class="toc" aria-label="On this page">
-      <a href="#nbm">NBM forecasts</a> · <a href="#daily-snow">Snowfall by day</a> · <a href="#accumulated">Accumulated snow</a> · <a href="#snow-colors">Snowfall colours</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#daily-summary">Daily summary</a> · <a href="#storm-total">Storm total</a> · <a href="#winter-hazards">Winter hazards layer</a> · <a href="#forecast-map">Forecast map</a> · <a href="#powder-quality">Powder quality</a> ·
+      <a href="#nbm">NBM forecasts</a> · <a href="#daily-snow">Snowfall by day</a> · <a href="#accumulated">Accumulated snow</a> · <a href="#snow-colors">Snowfall colours</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#daily-summary">Daily summary</a> · <a href="#model-agreement">Model comparison</a> · <a href="#storm-total">Storm total</a> · <a href="#winter-hazards">Winter hazards layer</a> · <a href="#forecast-map">Forecast map</a> · <a href="#powder-quality">Powder quality</a> ·
       <a href="#snow-level">Snow level</a> · <a href="#elevation">Elevation</a> · <a href="#nws">NWS forecast</a> ·
 <a href="#snoparks">Sno-Parks</a> · <a href="#afd">Forecaster discussion</a> ·
       <a href="#sources">Data sources</a> · <a href="#disclaimer">Disclaimer</a>
@@ -176,6 +176,18 @@
         always comes first (it is read live, not stored in the summary). The summary also appears on Powder Finder rows (tag) and in
         My mountains. Every summary has a <b>"Report a bad summary"</b> link, and the owner reviews ten summaries against the NWS
         forecast discussion and observed totals each week.</p>
+    </section>
+
+    <section id="model-agreement">
+      <h3>Precipitation by model and the agreement badge</h3>
+      <p>Each forecast page compares NBM with three NOAA models sampled at the summit: <b>HRRR</b> (to 48 h), <b>RRFS</b> (to 84 h) and <b>GFS</b> (to 10 days). They are
+        drawn as cumulative <b>liquid-equivalent</b> precipitation, because the models' own snowfall products differ. The "Snow (in)" toggle converts each model's liquid
+        with NBM's median snow ratio and NBM's chance of snow at the point ("inches assume NBM SLR"); the NBM line is NBM's own expected snowfall. All lines start at
+        the newest model start, so they are comparable; each model's own terrain height at the point is in the tooltip, since a coarse grid can sit well below or above the summit.</p>
+      <p><b>Model agreement</b> (High / Medium / Low) is a <b>heuristic until verified</b>, not an accuracy claim. Over the longest window (72, 48, 36, 24, 12 or 6 hours after
+        the common start) that at least three of NBM, HRRR, RRFS and GFS reach, we take each model's liquid total and the median of those totals. A model "agrees" if it is within
+        ±25% of the median (or within 0.10 inch when the median is small). If at least 75% of the models agree the badge is <b>High</b>, at least 50% <b>Medium</b>, otherwise
+        <b>Low</b>; when every model is under 0.10 inch the window is "all dry" and shown as High. The badge always uses liquid amounts, so the units toggle does not change it.</p>
     </section>
 
     <section id="storm-total">

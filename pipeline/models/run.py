@@ -25,6 +25,7 @@ import numpy as np
 from ..common import REPO_ROOT, utcnow, write_json
 from . import derive as d
 from .config import FIELD_INFO, QPF_WINDOWS, expand_fhours, field_domains, field_fhours
+from . import multimodel as mm
 from . import ridge as rw
 from .fetch import (Grid, candidate_cycles, cycle_complete, decode, download_frame,
                     latest_cycle, needed_vars, var_catalog)
@@ -240,6 +241,12 @@ def run_model(cfg: dict, model: str, out: Path, *, fhours: list[int] | None = No
             sampler = rw.Sampler(mcfg, rw.load_summits())
         except (OSError, ValueError, KeyError) as exc:
             log.warning("%s: ridge wind disabled: %s", model, exc)
+    msampler = None                                   # precipitation by model at each summit (M7; models.yml multi_model.enabled)
+    if (cfg.get("multi_model") or {}).get("enabled", True) and mcfg.get("multi_model", True):
+        try:
+            msampler = mm.PrecipSampler(mm.load_points())
+        except (OSError, ValueError, KeyError) as exc:
+            log.warning("%s: multi-model sampling disabled: %s", model, exc)
     state = RunState()
     grid: Grid | None = None
     grid_path = work / "grid.npz"
@@ -275,6 +282,13 @@ def run_model(cfg: dict, model: str, out: Path, *, fhours: list[int] | None = No
                     except Exception as exc:  # noqa: BLE001 - never lose the maps over it
                         log.warning("%s f%03d ridge wind: %s", model, f, exc)
                 arrays = derive_frame(raw, grid, mcfg, use_fields, f, state)
+                if msampler is not None:
+                    try:
+                        # the run total comes from derive_frame's state (set whenever any QPF/snow/snow-level field is made), not
+                        # from the optional qpf_total map field
+                        msampler.add(f, {"qpf_total": state.totals.get(f), "orog_ft": arrays.get("orog_ft")}, grid)
+                    except Exception as exc:  # noqa: BLE001 - never lose the maps over it
+                        log.warning("%s f%03d multi-model sample: %s", model, f, exc)
             except Exception as exc:
                 # Later accumulations continue from the last good frame (state.prev_f).
                 log.warning("%s f%03d failed: %s", model, f, exc)
@@ -316,6 +330,8 @@ def run_model(cfg: dict, model: str, out: Path, *, fhours: list[int] | None = No
     write_json(model_dir / "index.json", index)
     if sampler is not None and sampler.hours:
         write_json(model_dir / "ridge.json", sampler.document(model, mcfg["label"], cycle))
+    if msampler is not None and msampler.hours:
+        write_json(model_dir / "precip.json", msampler.document(model, mcfg["label"], cycle))
     for old in model_dir.iterdir():   # keep only this cycle
         if old.is_dir() and old.name != cid:
             shutil.rmtree(old, ignore_errors=True)
