@@ -20,9 +20,19 @@ import yaml
 RULES_PATH = Path(__file__).resolve().parent.parent / "config" / "summary_rules.yml"
 
 
+SETTINGS_PATH = RULES_PATH.parent / "settings.yml"
+
+
 def load_rules(path: Path | None = None) -> dict:
+    """Rules file plus the ONE shared powder-quality thresholds from settings.yml (owner Nov 17)."""
     with open(path or RULES_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        rules = yaml.safe_load(f)
+    with open(SETTINGS_PATH, encoding="utf-8") as f:
+        rules["powder_quality"] = (yaml.safe_load(f) or {}).get("powder_quality") or {}
+    return rules
+
+
+WHERE = {"summit": "summit", "base": "base", "point": "station"}
 
 
 def _num(v, d=0):
@@ -63,7 +73,7 @@ def facts(doc: dict, rules: dict) -> dict:
     t24, t72 = (pt.get("totals") or {}).get("24h") or {}, (pt.get("totals") or {}).get("72h") or {}
     f["expected_24h"], f["expected_72h"] = t24.get("snow_in"), t72.get("snow_in")
     f["native_72h"] = bool(t72.get("native"))
-    f["range_72h"] = (t72.get("snow_lo"), t72.get("snow_hi")) if f["native_72h"] else None
+    f["range_72h"] = (t72.get("snow_q1"), t72.get("snow_q3")) if f["native_72h"] else None      # "likely" = native p25-p75
     w24, w72 = native_first_window(pt, "24h"), native_first_window(pt, "72h")
     f["w24"], f["w72"] = w24, w72
     per = pt.get("periods") or []
@@ -112,12 +122,12 @@ def summarize(doc: dict, alerts: list[dict] | None = None, obs: dict | None = No
     else:
         p12 = w24["p_ge"].get(12.0)
         if (w24["p50"] is not None and w24["p50"] >= r["p50_24h_in"] and p12 is not None and p12 >= r["p_ge12_pct"]
-                and f["slr_24h"] is not None and f["slr_24h"] >= r["slr_p50"] and (f["gust_24h"] or 0) < r["gust_mph"]):
+                and f["slr_24h"] is not None and f["slr_24h"] >= rules["powder_quality"]["blower_at"] and (f["gust_24h"] or 0) < r["gust_mph"]):
             fired.append(("deep_powder", "Deep powder day",
-                          f"Deep, light snow likely: NBM's median for the next 24 h is {_inch(w24['p50'])} in with a {p12}% chance of 12 in or more"
-                          f" (snow ratio about {round(f['slr_24h'])}:1, a heuristic), summit gusts under {r['gust_mph']} mph."))
+                          f"Deep, light snow likely: the median forecast for the next 24 h is {_inch(w24['p50'])} in with a {p12}% chance of 12 in or more"
+                          f" (snow ratio about {round(f['slr_24h'])}:1, the Blower class, a heuristic), summit gusts under {r['gust_mph']} mph."))
 
-    # storm cycle: native 72 h window (p50 and the native p10-p90 range); never a summed range
+    # storm cycle: native 72 h window (p50 and the native p25-p75 "likely" range); never a summed range
     r = rules["storm_cycle"]
     w72 = f["w72"]
     if w72 is None or not f["native_72h"]:
@@ -125,7 +135,7 @@ def summarize(doc: dict, alerts: list[dict] | None = None, obs: dict | None = No
     elif w72["p50"] is not None and w72["p50"] >= r["p50_72h_in"] and f["range_72h"] and None not in f["range_72h"]:
         lo, hi = f["range_72h"]
         fired.append(("storm_cycle", "Storm cycle",
-                      f"Multi-day storm: {_inch(lo)}–{_inch(hi)} in likely at the {f['point'].replace('point', 'station')} over the next 72 h (NBM 10–90%)."))
+                      f"Multi-day storm: likely {_inch(lo)}–{_inch(hi)} in at the {WHERE.get(f['point'], f['point'])} over the next 72 h."))
 
     # wind-affected snow (summit gusts > threshold while snowing: from the snow-type flag)
     if f["wind_snow"] and (f.get("expected_72h") or 0) >= rules["wind"]["min_snow_72h_in"]:
@@ -146,7 +156,7 @@ def summarize(doc: dict, alerts: list[dict] | None = None, obs: dict | None = No
         e = f.get("expected_72h")
         sentence = ("No snowfall forecast is available right now." if e is None
                     else "Little or no snow expected over the next 72 h." if e < 0.5
-                    else f"Expected snowfall over the next 72 h: about {_inch(e)} in (NBM's average).")
+                    else f"Expected snowfall over the next 72 h: about {_inch(e)} in (the average of possible outcomes).")
         head = ("Snow expected" if (e or 0) >= 1 else "Little snow")
         fired.append(("baseline", head, sentence))
     tag, sentence = fired[0][1], fired[0][2]

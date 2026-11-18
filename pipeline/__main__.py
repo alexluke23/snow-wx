@@ -49,6 +49,10 @@ def write_meta(cfg: dict, outdir: Path, updates: dict) -> None:
         "generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "region": cfg["region"],
         "sources": sources,
+        # the limits the data-health monitor uses (config monitoring.sources), for the public status page (status.html)
+        "monitoring": {"sources": (cfg.get("monitoring") or {}).get("sources") or {}},
+        # public settings the pages read (web/js/site-config.js): only the feedback address, from config site.feedback_email
+        "site": {"feedback_email": os.environ.get("SNOWWX_FEEDBACK_EMAIL") or (cfg.get("site") or {}).get("feedback_email") or ""},
     })
 
 
@@ -225,6 +229,11 @@ def main(argv=None) -> int:
     p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("pages", help="prerendered area pages + sitemap + robots (W2; no-op unless config pages.enabled)")
+    p.add_argument("--out", default="build", help="site folder (data/ already merged)")
+    p.add_argument("--force", action="store_true", help="write even when pages.enabled is false (local preview)")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("restore", help="restore the previous good SNOTEL copy from the live site (CI, before the build)")
     p.add_argument("--out", default="build/data")
     p.add_argument("--origin", default=None, help="live site origin (default: SITE_ORIGIN env or config site.origin)")
@@ -267,6 +276,9 @@ def main(argv=None) -> int:
     cfg = load_config(args.config)
     from .cache import housekeeping
     housekeeping(REPO_ROOT, cfg)                 # prune data_cache (> 2 days), log disk use
+    if args.cmd == "pages":
+        from . import pages
+        return pages.run(load_config(args.config), Path(args.out), force=args.force)
     if args.cmd == "restore":
         from . import restore
         info = restore.restore_previous(cfg, make_session(cfg), Path(args.out), args.origin)

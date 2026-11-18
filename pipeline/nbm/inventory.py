@@ -13,7 +13,7 @@ Inventory facts (checked 7 Nov 2026, core + qmd, blend v4.x on AWS):
 - core messages use alternativeRowScanning=1 (odd rows stored east-to-west; ecCodes
   returns storage order), qmd does not: see run.flat_index. Decoded values were
   checked against the NBS text bulletins (TMP, Q06, SLV) at 8 airports.
-- SNOWLVL is metres MSL; SNOWLR is ~0 where no snow falls.
+- SNOWLVL is metres MSL; SNOWLR is populated in dry hours too; zeros only in a few warm, low cells.
 """
 
 from __future__ import annotations
@@ -95,7 +95,7 @@ def find(msgs: list[Msg], sel: Sel, fhour: int) -> Msg | None:
     return None
 
 
-PCTS = (10, 50, 90)
+PCTS = (10, 25, 50, 75, 90)        # snow level and snow ratio: 25/75 = the default "likely" band (owner Nov 17); 10/90 kept
 SNOW_PCTS = (10, 25, 50, 75, 90)   # snowfall: 25/75 = the "likely" band (owner S10)
 QPF_PCTS = (10, 25, 50, 75, 90)   # qmd QPF: 10/90 to 48 h, 25/75 = "likely range" beyond (owner S3)
 T2, SFC, W10 = "2 m above ground", "surface", "10 m above ground"
@@ -149,8 +149,8 @@ def classify(m: Msg, h: int, cycle_hour: int, product: str) -> str | None:
                     ("SNOWLR", SFC): "slr"}.get((v, lev))
         if v == "SNOWLVL" and lev == SFC and k == "pct" and m.value in PCTS:
             return f"snowlvl_p{m.value}"
-        if v == "SNOWLR" and lev == SFC and k == "pct" and m.value in (10, 90):
-            return f"slr_p{m.value}"                          # snow-ratio band (owner S10)
+        if v == "SNOWLR" and lev == SFC and k == "pct" and m.value in PCTS:
+            return f"slr_p{m.value}"                          # snow-ratio median + likely band (owner S10, Nov 17)
         if v == "PTYPE" and k == "prob":
             return {">=5 <7": "p_snow_type", ">=1 <2": "p_rain_type"}.get(m.value)
         return None
