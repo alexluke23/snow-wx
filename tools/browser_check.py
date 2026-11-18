@@ -864,7 +864,150 @@ def check_storm(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm}
+def check_hazard_popup(b: Browser, base: str, log):
+    """dev16 Part 0b: a hazard popup shows readable product text in the page (fixture alert), escapes hostile text, links only to weather.gov
+    (never an api.weather.gov alert record), and a lookup miss gives a clear message plus the same office link. Works at 375 px."""
+    import hashlib
+    aid = "urn:oid:2.49.0.1.840.0.fixture.001"
+    key = hashlib.sha1(aid.encode()).hexdigest()[:10]
+    idx = {"alerts": {key: {"event": "Winter Storm Warning", "headline": "Winter Storm Warning issued by <b>NWS Salt Lake City</b>", "sender": "NWS Salt Lake City UT",
+           "effective": "2026-11-17T12:00:00-07:00", "expires": "2026-11-19T05:00:00-07:00", "area": "Wasatch Mountains; <img src=x onerror=alert(1)>"}}}
+    det = {key: {"description": "* WHAT...Heavy snow.\n  Totals 12 to 24 inches.\n<script>window.__pwned = 1</script>", "instruction": "Slow down.\nCarry a shovel."}}
+    for width in (1280, 375):
+        b.open(f"{base}/index.html", width=width, wait=6)
+        b.eval(f"window.snowwx.hazards.injectAlertFiles({json.dumps(idx)}, {json.dumps(det)}); 1")
+        res = b.eval("""(async () => {
+          const mkf = (url) => ({properties: {prod_type: 'Winter Storm Warning', wfo: 'KSLC', expiration: '2026-11-19T12:00:00Z', url}});
+          const out = {};
+          for (const [name, url] of [['known', 'https://api.weather.gov/alerts/%s'], ['unknown', 'https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.nothing.999']]) {
+            const host = document.createElement('div'); host.className = 'leaflet-popup-content'; host.style.cssText = 'position:fixed;top:60px;left:8px;width:300px;background:#fff;z-index:99999';
+            const dom = window.snowwx.hazards.popupFor(mkf(url)); host.append(dom); document.body.append(host);
+            await new Promise(r => setTimeout(r, name === 'unknown' ? 6000 : 800));
+            const body = dom.querySelector('.hz-body');
+            out[name] = {text: body.textContent, html: dom.innerHTML, links: [...dom.querySelectorAll('a')].map(a => a.href), scripts: dom.querySelectorAll('script, img').length,
+                         pre: getComputedStyle(dom.querySelector('.hz-text') || dom).whiteSpace, maxH: getComputedStyle(body).maxHeight, w: host.getBoundingClientRect().width, vw: innerWidth};
+            if (name === 'known') out.known.shot = host.getBoundingClientRect().bottom;
+            if (name === 'known') host.id = 'hz-fixture'; else host.remove();
+          }
+          out.pwned = !!window.__pwned;
+          return out; })()""" % aid)
+        log(f"  hazard popup {width}px: {json.dumps(res)[:700]}")
+        k, u = res["known"], res["unknown"]
+        need("Totals 12 to 24 inches." in k["text"] and "Slow down." in k["text"] and "NWS Salt Lake City UT" in k["text"] and "Wasatch Mountains" in k["text"], f"readable text missing: {k['text'][:200]}")
+        need("<script>" in k["text"] and "&lt;script&gt;" in k["html"] and k["scripts"] == 0 and not res["pwned"], f"alert text was not escaped: {k['html'][:300]}")
+        need(k["links"] == ["https://www.weather.gov/slc/"] and k["pre"] == "pre-wrap" and k["maxH"] != "none", f"links/layout: {k['links']} {k['pre']} {k['maxH']}")
+        need(all("api.weather.gov" not in l and not l.endswith(".json") for l in k["links"] + u["links"]), "a popup link points at an API/JSON endpoint")
+        need("could not be loaded" in u["text"] and u["links"] == ["https://www.weather.gov/slc/"], f"lookup miss needs a clear message and the office link: {u}")
+        need(k["w"] <= k["vw"], f"popup wider than the viewport: {k['w']} > {k['vw']}")
+        if width == 375:
+            b.shot(Path(tempfile.gettempdir()) / "hz_popup_375.png")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_snopark_finder_mobile(b: Browser, base: str, log):
+    """dev16 M4.5: the Finder Type filter (Ski areas / Sno-Parks / All) at 375 px: tappable (>= 40 px), no sideways scroll, state/region menus
+    follow the type with counts, a Sno-Park row links to its forecast page and shows its source/attribution there."""
+    b.open(f"{base}/about.html", wait=1.5)
+    b.eval("localStorage.clear(); sessionStorage.clear(); 1")                     # earlier checks leave a remembered state/region filter behind
+    b.open(f"{base}/finder.html#t=ski", width=375, wait=6)
+    st = b.eval("""(() => ({types: [...document.querySelectorAll('#type button')].map(x => [x.textContent.trim(), Math.round(x.getBoundingClientRect().height), Math.round(x.getBoundingClientRect().width)]),
+        rows: document.querySelectorAll('#rows .frow').length, hscroll: document.documentElement.scrollWidth > innerWidth + 2,
+        states: [...document.querySelectorAll('#state option')].length}))()""")
+    log(f"  finder 375 type filter: {st}")
+    need([t[0] for t in st["types"]] == ["Ski areas", "Sno-Parks", "All"] and all(t[1] >= 40 for t in st["types"]), f"type filter not tappable at 375 px: {st}")
+    need(not st["hscroll"], f"finder scrolls sideways at 375 px: {st}")
+    ski_rows = st["rows"]
+    b.eval("[...document.querySelectorAll('#type button')].find(x => x.textContent.trim() === 'Sno-Parks').click(); 1")
+    time.sleep(1.2)
+    sp = b.eval("""(() => ({rows: document.querySelectorAll('#rows .frow').length, sp: document.querySelectorAll('#rows .frow .kind-sp').length,
+        states: [...document.querySelectorAll('#state option')].map(o => o.textContent), first: (document.querySelector('#rows .frow a') || {}).href || ''}))()""")
+    log(f"  finder 375 sno-parks: rows {sp['rows']} (ski {ski_rows}) states {sp['states'][:4]}")
+    need(sp["rows"] > ski_rows and sp["sp"] == sp["rows"], f"Sno-Park type shows the wrong rows: {sp['rows']} vs ski {ski_rows}")
+    more = b.eval("(document.getElementById('show-all') || {textContent: ''}).textContent")
+    need(sp["rows"] == 200 and "Show all 447" in more, f"long lists are capped at 200 rows with a Show all button: {sp['rows']} {more!r}")
+    b.eval("document.getElementById('show-all').click(); 1")
+    time.sleep(0.8)
+    need(b.eval("document.querySelectorAll('#rows .frow').length") == 447, "Show all must draw every Sno-Park")
+    need(sp["states"][0].startswith("All (") and any(x.startswith("WA (") for x in sp["states"]), f"state menu does not follow the type: {sp['states'][:5]}")
+    b.eval("window.scrollTo(0, 0); 1")
+    b.shot(Path(tempfile.gettempdir()) / "finder_sp_375.png")
+    area = sp["first"].split("#")[-1]
+    b.open(f"{base}/area.html#{area}", width=375, wait=6)
+    pg = b.eval("""(() => ({txt: document.getElementById('area').textContent, hscroll: document.documentElement.scrollWidth > innerWidth + 2}))()""")
+    need(("USDA Forest Service" in pg["txt"] or "OpenStreetMap" in pg["txt"]) and not pg["hscroll"], "Sno-Park page lacks its source/attribution or scrolls sideways")
+    time.sleep(1.0)
+    ex = b.eval("""(() => ({summary: !!document.querySelector('.summary-line'), avy: !!document.querySelector('.rec-key .rk-avy, #area a[href*="avalanche"], #area a[href^="http"]')}))()""")
+    need(ex["summary"], "Sno-Park page has no daily summary (the W3 rules apply to every point)")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_multimodel(b: Browser, base: str, log):
+    """dev16 M7: precipitation by model on the area page: NBM + HRRR/RRFS/GFS lines, agreement badge (heuristic label), units toggle, table, model terrain in
+    the tooltip, graceful when data/multimodel.json is missing, JS rebase == Python rebase."""
+    sys.path.insert(0, str(REPO))
+    from datetime import datetime, timezone
+    from pipeline.models import multimodel as mm_mod
+    area = "alta-ski-area"
+    if not (Path(base_dir_holder["path"]) / "data" / "multimodel.json").exists():
+        raise Fail("build/data/multimodel.json missing: run the models quickly or `pipeline build` first")
+    b.open(f"{base}/area.html#{area}", wait=7)
+    _draw_all(b)
+    st = b.eval("""(async () => { await new Promise(r => setTimeout(r, 1500)); const el = document.getElementById('mm-chart'); if (!el || !el.data) return null;
+      const out = {names: el.data.map(t => t.name), badge: document.getElementById('mm-badge').textContent, summary: (el.previousElementSibling || {}).textContent || '',
+        hover: el.data[1].hovertemplate, terrain: String(el.data[1].customdata[0]), title0: (el.layout.annotations[0] || {}).text, h: Math.round(el.getBoundingClientRect().height), note: document.getElementById('mm-note').textContent,
+        labels: el.layout.annotations.map(a => a.text)};
+      document.querySelector('#mm-mode [data-m=snow]').click(); await new Promise(r => setTimeout(r, 800));
+      out.title1 = (el.layout.annotations[0] || {}).text; out.badge1 = document.getElementById('mm-badge').textContent;
+      const d = document.querySelector('#mm-chart + .chart-table'); d.open = true; d._build && d._build();
+      out.cols = [...d.querySelectorAll('th[scope=col]')].map(t => t.textContent); out.rows = d.querySelectorAll('tbody tr').length;
+      document.querySelector('#mm-mode [data-m=liquid]').click(); await new Promise(r => setTimeout(r, 500));
+      // JS rebase vs the python reference on a fixture
+      out.js = MultiModel.rebase(Date.parse('2026-11-18T12:00Z'), [0, 6, 12], [0, 0.2, 0.9], Date.parse('2026-11-18T15:00Z'));
+      return out; })()""")
+    log(f"  multimodel: {json.dumps(st)[:600]}")
+    need(st and st["names"][0] == "NBM" and len(st["names"]) >= 3 and {"HRRR", "RRFS", "GFS"} & set(st["names"]), f"model lines missing: {st and st['names']}")
+    need(("High" in st["badge"] or "Medium" in st["badge"] or "Low" in st["badge"]) and "heuristic" in st["badge"], f"agreement badge/heuristic label: {st['badge']}")
+    need("customdata" in st["hover"] and "summit" in st["hover"] and "terrain" in st["terrain"], f"tooltip lacks model terrain vs summit: {st['hover']} {st['terrain']}")
+    need(st["summary"].rstrip().endswith(".") and "…" not in st["summary"] and "model agreement" in st["summary"], f"headline sentence: {st['summary']}")
+    need("Liquid" in st["title0"] and "Snow" in st["title1"] and st["badge1"] == st["badge"], f"units toggle: {st['title0']} / {st['title1']}; badge must not change")
+    need(st["cols"][:2] == ["Time", "NBM"] and st["rows"] >= 4 and st["h"] >= 200, f"table/height: {st['cols']} {st['rows']} {st['h']}")
+    py = mm_mod.rebase(datetime(2026, 11, 18, 12, tzinfo=timezone.utc), [0, 6, 12], [0, 0.2, 0.9], datetime(2026, 11, 18, 15, tzinfo=timezone.utc))
+    need([round(x, 3) for x in st["js"]] == [round(x, 3) for x in py], f"JS rebase {st['js']} != Python {py}")
+    b.open(f"{base}/area.html#{area}", wait=7, block=["*multimodel.json*"])
+    _draw_all(b)
+    time.sleep(1.5)
+    msg = b.eval("(document.getElementById('mm-chart') || {textContent: ''}).textContent")
+    need("not available" in msg, f"missing multimodel.json must read gracefully: {msg}")
+    for width in (375,):
+        b.open(f"{base}/area.html#{area}", width=width, wait=7)
+        _draw_all(b)
+        time.sleep(1.5)
+        sc = b.eval("({w: document.documentElement.scrollWidth, vw: innerWidth, h: Math.round(document.getElementById('mm-chart').getBoundingClientRect().height)})")
+        need(sc["w"] <= sc["vw"] + 2 and sc["h"] >= 200, f"model panel at 375 px: {sc}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_mobile_sweep(b: Browser, base: str, log):
+    """dev16: every page at 375 px: no sideways scroll, no JS errors, primary buttons tappable (>= 36 px), nothing wider than the viewport."""
+    pages = ["index.html", "finder.html", "mine.html", "about.html", "status.html", "models.html", "area.html#alta-ski-area", "area.html#sp-wing-mountain", "area.html#snotel-1000-OR-SNTL"]
+    bad = []
+    for pg in pages:
+        b.open(f"{base}/{pg}", width=375, wait=6)
+        _draw_all(b)
+        time.sleep(1.0)
+        r = b.eval("""(() => { const vw = innerWidth, wide = [...document.querySelectorAll('body *')].filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > vw + 2 && !e.closest('.leaflet-container, .tbl-wrap, .chart, .js-plotly-plot, pre, .hz-popup, [hidden]') && getComputedStyle(e).position !== 'fixed'; }).slice(0, 3).map(e => e.tagName + '.' + e.className + ':' + Math.round(e.getBoundingClientRect().right));
+          const small = [...document.querySelectorAll('button:not([hidden])')].filter(x => { const r = x.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.height < 36 && !x.closest('.leaflet-container, .leaflet-control, .js-plotly-plot'); }).map(x => (x.id || x.textContent.trim().slice(0, 16)) + ':' + Math.round(x.getBoundingClientRect().height)).slice(0, 5);
+          return {scroll: document.documentElement.scrollWidth, vw, wide, small}; })()""")
+        log(f"  375px {pg}: {r}")
+        if r["scroll"] > r["vw"] + 2 or r["wide"]:
+            bad.append((pg, r["scroll"], r["wide"]))
+        if r["small"]:
+            log(f"    small tap targets on {pg}: {r['small']}")
+    need(not bad, f"sideways overflow at 375 px: {bad}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "mobile": check_mobile_sweep}
 
 
 def main(argv=None) -> int:

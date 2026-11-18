@@ -450,6 +450,50 @@ What actually happened (snow measured/seen, where, photos or links welcome):
   const windChill = (t, v) => (t === null || v === null || t === undefined || v === undefined ? null
     : t <= 50 && v >= 3 ? Math.round(35.74 + 0.6215 * t - 35.75 * v ** 0.16 + 0.4275 * t * v ** 0.16) : Math.round(t));     // "precipitation likely": same rule as Powder Finder and the pipeline
 
+  // ---- Precipitation by model (M7; js/multimodel.js, data/multimodel.json): liquid-equivalent, cumulative, one line per model.
+  const MM_STYLE = { nbm: { color: "#111827", width: 3.2, dash: "solid" }, hrrr: { color: C.OI.vermillion, width: 2, dash: "solid" },
+    rrfs: { color: C.OI.blue, width: 2, dash: "solid" }, gfs: { color: C.OI.green, width: 2, dash: "dash" } };
+  let mmDoc, mmMode = "liquid";
+  async function modelChart(el, fc, tz) {
+    const sec = $("mm-sec"), P = fc.points.summit;
+    if (mmDoc === undefined) mmDoc = await getJSON("data/multimodel.json").catch(() => null);
+    if (!mmDoc?.areas?.[fc.id] || !P) {
+      el.innerHTML = `<p class="hint">The model comparison is not available for this area yet (it needs a recent HRRR, RRFS or GFS run).</p>`;
+      $("mm-badge").textContent = "";
+      return;
+    }
+    const nbm = { initMs: Date.parse(fc.issued), precip: P.precip, times: fc.times, ratio: P.series.slr_p50 || P.series.slr, psnow: P.series.p_snow };
+    // the snow conversion needs NBM's ratio and chance of snow: without them the toggle is disabled (never a silent 10:1 / all-snow guess)
+    const snowOk = (nbm.ratio || []).some((v) => v) && (nbm.psnow || []).some((v) => v !== null && v !== undefined);
+    const snowBtn = document.querySelector("#mm-mode [data-m=snow]");
+    if (snowBtn) { snowBtn.disabled = !snowOk; snowBtn.title = snowOk ? "" : "NBM's snow ratio / chance of snow are not available for this point"; }
+    if (!snowOk && mmMode === "snow") mmMode = "liquid";
+    const r = MultiModel.build({ doc: mmDoc, areaId: fc.id, nbm, mode: mmMode });
+    if (r.series.length < 2) { el.innerHTML = `<p class="hint">Only one source covers the next hours here, so there is nothing to compare yet.</p>`; return; }
+    const unit = mmMode === "snow" ? "in of snow" : "in of liquid";
+    const xs = (s) => s.x.map((t) => C.wall(t, tz));
+    const traces = r.series.map((s) => ({ x: xs(s), y: s.y, mode: "lines+markers", name: s.label, line: { color: MM_STYLE[s.key].color, width: MM_STYLE[s.key].width, dash: MM_STYLE[s.key].dash },
+      marker: { size: s.key === "nbm" ? 3 : 4, color: MM_STYLE[s.key].color }, customdata: s.y.map(() => (s.z === null ? "NBM 2.5 km grid, adjusted to the summit" : `${s.label} terrain ${s.z.toLocaleString()} ft`)),
+      hovertemplate: `${s.label}: %{y:.2f} ${unit}<br>%{customdata} vs summit ${Math.round(P.elev_ft).toLocaleString()} ft<extra></extra>` }));
+    const allX = r.series.flatMap((s) => s.x), x0 = C.wall(r.t0, tz), x1 = C.wall(Math.max(...allX), tz);
+    const ymax = Math.max(0.5, ...r.series.flatMap((s) => s.y.filter((v) => v !== null))) * 1.08;
+    const ax = C.timeAxis(x0, x1, el.clientWidth - C.MARGIN.l - 56);
+    const labels = C.endLabels(r.series.map((s) => ({ xs: xs(s), ys: s.y, text: s.label, color: MM_STYLE[s.key].color })), { yrange: [0, ymax], plotHeight: 230 - C.MARGIN.t - ax.b + 34 });
+    C.plot(el, traces, C.layout(240, { margin: { r: 56, b: ax.b }, showlegend: false, shapes: ax.shapes, annotations: [C.axisTitle(mmMode === "snow" ? "Snow (in), at NBM's ratio" : "Liquid precipitation (in)"), ...labels],
+      xaxis: ax.axis, yaxis: C.yaxis({ range: [0, ymax] }) }));
+    const ag = r.agreement;
+    $("mm-badge").innerHTML = ag ? `Model agreement: <b class="mm-${ag.label.toLowerCase()}">${ag.label}</b>${ag.dry ? " (all dry)" : ""} <span class="hint">(${ag.within} of ${ag.n} models within ±25% of the median over the next ${ag.H} h; a heuristic until verified)</span>
+      <a class="info" href="about.html#model-agreement" title="Share of models within ±25% of the median liquid total (or 0.10 in) over the longest window at least 3 models cover: High ≥ 75%, Medium ≥ 50%, else Low. A heuristic, not an accuracy claim." aria-label="How model agreement works">ⓘ</a>`
+      : `<span class="hint">Model agreement needs at least three models over the same hours.</span>`;
+    const fmt = (v) => (v === null || v === undefined ? "–" : v.toFixed(2));
+    C.summary(el, ag ? `Next ${ag.H} h at the summit, ${mmMode === "snow" ? "snow at NBM's ratio" : "liquid precipitation"}: ${ag.totals.map(([l]) => `${l} ${fmt(MultiModel.valueAt(r.series.find((s) => s.label === l), r.t0, ag.H))} in`).join(", ")}; model agreement is ${ag.label.toLowerCase()}${ag.dry ? " (all dry)" : ""} (a heuristic).`
+      : `Precipitation by model: ${r.series.map((s) => s.label).join(", ")}.`);
+    const grid = []; for (let h = 0; h <= 240; h += 6) if (r.series.some((s) => MultiModel.valueAt(s, r.t0, h) !== null)) grid.push(h);
+    C.tableToggle(el, `Cumulative ${unit} since ${localDT(new Date(r.t0).toISOString(), tz)}, by model`, ["Time", ...r.series.map((s) => s.label)],
+      grid.map((h) => [localDT(new Date(r.t0 + h * 3.6e6).toISOString(), tz), ...r.series.map((s) => fmt(MultiModel.valueAt(s, r.t0, h)))]));
+    $("mm-note").textContent = `Cumulative from ${localDT(new Date(r.t0).toISOString(), tz)} (the newest model start), summit point. ${mmMode === "snow" ? "Inches assume NBM's median snow ratio and NBM's chance of snow at the point; the NBM line is NBM's own expected snowfall. " : "Liquid-equivalent precipitation, so models with different snowfall products compare fairly. "}Each model's own terrain height is in the tooltip (coarser grids sit lower or higher than the summit). Sources: NOAA/NWS NBM, HRRR, RRFS and GFS.`;
+  }
+
   function snowLevelChart(el, fc, keys, tz) {
     const s = fc.points[keys[0]].series, t = fc.times;
     const xs = t.map((x) => C.wall(x, tz));
@@ -940,6 +984,11 @@ What actually happened (snow measured/seen, where, photos or links welcome):
       <section><h3>Snow level vs the ${isStation ? "station" : isRec ? "trailhead and high terrain" : "mountain"}</h3>
         <div class="chart" id="sl-chart" style="height:260px"><p class="hint">Loading chart…</p></div>
         <p class="note" id="sl-note"></p></section>
+      ${isStation || isRec ? "" : `<section id="mm-sec"><h3>Precipitation by model <a class="info" href="about.html#model-agreement" title="NBM, HRRR, RRFS and GFS precipitation at the summit, cumulative, in liquid-equivalent inches (or snow at NBM's ratio)." aria-label="About the model comparison">ⓘ</a></h3>
+        <p class="mm-badge" id="mm-badge" aria-live="polite"></p>
+        <span class="seg" id="mm-mode" role="group" aria-label="Units"><button type="button" data-m="liquid" class="on" aria-pressed="true">Liquid (in)</button><button type="button" data-m="snow" aria-pressed="false">Snow (in)</button></span>
+        <div class="chart" id="mm-chart" style="height:240px"><p class="hint">Loading chart…</p></div>
+        <p class="note" id="mm-note"></p></section>`}
       <section><h3>Hour by hour <span class="h3sub" id="hbh-sub"></span></h3>
         <div class="chart" id="t-chart" style="height:220px"><p class="hint">Loading chart…</p></div>
         <div class="chart" id="w-chart" style="height:220px"><p class="hint">Loading chart…</p></div>
@@ -1041,11 +1090,19 @@ What actually happened (snow measured/seen, where, photos or links welcome):
         if ($("slr-chart")) C.lazy($("slr-chart"), withPlotly(() => slrChart($("slr-chart"), d, pt, tz)));
         if (!$("ex-sec").hidden) C.lazy($("ex-chart"), () => exceedTable($("ex-chart"), d, pt, tz));
         C.lazy($("sl-chart"), withPlotly(() => snowLevelChart($("sl-chart"), d, keys, tz)));
+        if ($("mm-sec")) $("mm-sec").hidden = src === "nws";                    // the comparison is NBM + models; not shown beside the NWS-only view
+        if ($("mm-chart") && src !== "nws") C.lazy($("mm-chart"), withPlotly(() => modelChart($("mm-chart"), d, tz)));
         C.lazy($("t-chart"), withPlotly(() => tempChart($("t-chart"), d, keys, tz)));
         C.lazy($("w-chart"), withPlotly(() => windChart($("w-chart"), d, pt, keys, tz)));
         C.lazy($("p-chart"), withPlotly(() => snowRateChart($("p-chart"), d, pt, tz)));
         return Promise.resolve();
       };
+      $("mm-mode")?.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {
+        if (btn.disabled) return;
+        mmMode = btn.dataset.m;
+        $("mm-mode").querySelectorAll("button").forEach((x) => { x.classList.toggle("on", x === btn); x.setAttribute("aria-pressed", String(x === btn)); });
+        modelChart($("mm-chart"), doc(), tz);
+      }));
       $("ex-win")?.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {
         exWin = btn.dataset.w;
         $("ex-win").querySelectorAll("button").forEach((x) => { x.classList.toggle("on", x === btn); x.setAttribute("aria-pressed", String(x === btn)); });

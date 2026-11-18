@@ -31,3 +31,17 @@ confidence signal powder chasers want.
 - **Verification hook:** the archive also stores each model, enabling a public
   "which model did best this season, by region" scorecard (M9) — highly shareable.
 - Later (M10): ensemble members (GEFS, ECMWF ENS/AIFS ENS) as a true plume.
+
+### M7 build (dev16)
+- **Sampling:** `pipeline/models/multimodel.py` `PrecipSampler` records, for every ski area's SUMMIT coordinates, the run-total liquid precipitation (APCP since init, in; the array
+  the QPF maps already difference, taken from `derive_frame`'s state) and the model's own terrain height, at every frame of HRRR / RRFS / GFS; `<models>/<model>/precip.json` per run
+  (rides the existing model tars), merged at site build into `data/multimodel.json` (`models: [{model, label, cycle, init, hours}]`, `areas: {id: {model: {q, z}}}`). Nearest cell within 0.75 x the grid's cell diagonal (a point outside a cropped grid gets no series, not an edge cell). A model whose init is > 24 h older than the newest is dropped at merge, and each run deletes its old precip.json first. Config `models.yml` `multi_model.enabled` (default true; false = no sampling, no file, the page says "not available yet"). Ski areas only (Sno-Parks/SNOTEL: not built).
+- **Alignment:** each series is cumulative from its OWN init; `js/multimodel.js` `rebase` re-expresses them from the newest model start (`pipeline.models.multimodel.rebase` is the tested Python
+  twin; the browser check asserts they agree). The NBM line comes from the area's points file (`precip` windows, cumulative from the issue time). No percentiles are involved or added.
+- **Units toggle:** liquid (default) or snow at NBM's median ratio (`slr_p50`, else `slr`) times NBM's chance of snow at the point (`p_snow`), per interval; the NBM line is NBM's own expected snowfall.
+  Labelled "inches assume NBM SLR".
+- **Agreement badge (heuristic until verified):** longest window H in {72, 48, 36, 24, 12, 6} h after the common start that >= 3 sources reach; median of their liquid totals; a source agrees if within
+  +-25% of the median (or 0.10 in when small); >= 75% High, >= 50% Medium, else Low; all totals < 0.10 in = "High (all dry)". Always from liquid, so the toggle never changes it. about.html#model-agreement.
+- **Budget (Nov 17, 3 models):** measured on a full HRRR run (29 frames) 27.6 KB for 160 areas (172 B per area); three models ~95 KB for the whole `multimodel.json` (~0.6 KB per area; gzip far less); sampling cost ~16 ms per frame plus a one-time
+  ~0.9 s KD-tree nearest-cell index per model run on a 1000x1400 grid (the models.yml renders take 100-180 s), so under +1% runtime. Neither breaks a budget: enabled.
+- ECMWF (M8) is not part of this step.

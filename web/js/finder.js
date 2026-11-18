@@ -31,6 +31,8 @@
                state: pick("st", ""), region: pick("r", ""), sort: pick("sort", "snow"), fav: pick("fav", "0") === "1",
                pw: pick("pw", "24h"), px: Number(pick("px", "6")), pd: Number(pick("pd", "0")), t: pick("t", "ski"),
                ty: pick("ty", "0") === "1", dir: pick("dir", "") };
+  const ROW_CAP = 200;
+  let showAll = false;                                   // reset whenever a filter changes (see update())
   const TYPE_SHORT = { dense: "Dense", medium: "Medium", blower: "Blower" };
   const TYPE_LONG = { dense: `Dense (< ${POWDER_Q.dense_below}:1)`, medium: `Medium (${POWDER_Q.dense_below}–${POWDER_Q.blower_at}:1)`, blower: `Blower (≥ ${POWDER_Q.blower_at}:1)` };
   // Sno-Parks (kind "snopark") reuse the ski-area fields: summit = high terrain, base = trailhead
@@ -195,7 +197,9 @@
     }
     $("snow-head").innerHTML = prob ? `% chance ≥ ${st.px}" <a class="info" href="about.html#probabilities" title="${esc(SEPARATE)}" aria-label="How the chances work">ⓘ</a>`
       : `${WINDOWS.find(([v]) => v === st.w)[1]} expected ${expectedInfo()}`;
-    $("rows").innerHTML = list.length ? list.map((r) => {
+    // long lists (all 447 Sno-Parks): draw the first ROW_CAP rows, the rest on demand (a 450-row DOM costs ~700 ms of main-thread time on phones)
+    const shownList = showAll ? list : list.slice(0, ROW_CAP);
+    $("rows").innerHTML = list.length ? shownList.map((r) => {
       const c = prob ? colorFor(PROB, r.prob) || "#f4f6f8" : colorFor(SNOWFALL, r.snow) || "#f4f6f8";
       const main = prob ? `<b>${r.prob === null ? "–" : `${r.prob}%`}</b>${r.pmean === null ? "" : `<small>expected ${fmt(r.pmean)}"</small>`}`
         : `<b>${fmt(r.snow)}"</b>${r.hi === null || r.hi === undefined ? "" : `<small title="${LIKELY_TIP}">${fmt(r.lo)}–${fmt(r.hi)}</small>`}`;
@@ -223,6 +227,8 @@
         </span>
       </div>`;
     }).join("") : `<p class="hint">No ${TYPE_WORD[st.t]} match these filters.</p>`;
+    $("rows-more").innerHTML = shownList.length < list.length ? `<button type="button" id="show-all">Show all ${list.length} (showing ${shownList.length})</button>` : "";   // outside the role=list container
+    $("show-all")?.addEventListener("click", () => { showAll = true; render(); });
     $("snow-legend-box").innerHTML = prob ? "" : snowLegendHtml(Math.max(0, ...list.map((r) => r.hi ?? r.snow ?? 0)), { minTop: 12 });
     $("legend-note").textContent = prob
       ? `Chance of at least ${st.px}" of snow in ${st.pw.replace("h", " h")} (${dayLabel(st.pd).replace("Next: ", "")}) at the ${st.e}, from NBM's ` +
@@ -237,7 +243,7 @@
     drawMap(list);
   }
 
-  function update() { buildRows(); render(); }
+  function update() { showAll = false; buildRows(); render(); }
 
   async function ensureExceed() {
     if (exceed) return;
