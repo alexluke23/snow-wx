@@ -67,9 +67,11 @@ centers). Full text: `docs/ARCHIVE.md`.
   site-wide, 7/10-day summed ranges removed. Details: `docs/ARCHIVE.md`.
 - **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas,
   Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
-- **Known issues:** NRCS AWDB (SNOTEL) outage **recovered** (live meta.json 00:45 UTC Nov 18: ok, 836 stations). Last good run before it ≈ 11:25 UTC
-  Nov 16; first failing run seen 22:07 UTC Nov 16. **M9 excludes SNOTEL obs from 2026-11-16 12Z through 2026-11-18 00:45Z** (conservative; the
-  archive's last SNOTEL day of the outage is a partial 9-station day). Handling: probe, last good copy ≤ 48 h flagged stale, auto-recovery.
+- **Known issues:** NRCS AWDB (SNOTEL) outage **over**. Last good run before it ≈ 11:25 UTC Nov 16; first failing run seen 22:07 UTC Nov 16; still down
+  02:21 UTC Nov 17. The forecast archive now holds 821 stations for 2026-11-17 12Z, so a fetch succeeded after 12Z Nov 17: recovery lies between
+  02:21 UTC and ≈ 13:26 UTC Nov 17 (the earlier "00:45Z Nov 18" was only the first success I looked at). The Nov 16 12Z row was later backfilled (820
+  stations). **M9 still excludes SNOTEL obs 2026-11-16 12Z through 2026-11-17 12Z** until the backfilled rows are checked. No Data-health issue opened because the
+  monitor (merged 13:26 UTC Nov 17) most likely started after recovery; dev15 hardens the bootstrap anyway (§3). Handling: probe, last good copy ≤ 48 h flagged stale, auto-recovery.
   Obs map Lighthouse mobile 71–88 (bimodal; target: no worse than main, baseline ≈ 82, median of ≥ 3 interleaved runs); site ≈ 220 MB / 5.6 k files.
 
 ---
@@ -105,6 +107,7 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
 | Nov 17 | **dev13 UX package (overnight, assumptions flagged in the session report):** NBM-native P(≥2″) row for 24/48 h only (never derived); one combined snow-ratio + powder-quality panel; linked Finder state/region menus with counts; obs-map defaults (reference layer, ski areas, Sno-Parks, avalanche, **NWS winter hazards** ON; SNOTEL/ASOS/NOHRSC OFF, remembered, URL `ly=` overrides, Reset button), red alert rings removed; hazards from NOAA/NWS WWA map service with a visible fallback to our alerts index; config `hazards.enabled`. |
 | Nov 17 | **SNOTEL outage handling accepted:** previous good copy from the live site (option A, `SITE_ORIGIN`/`site.origin`, on the W1 cutover checklist); stale ≤ 48 h with original timestamps (never re-stamped), 24/72 h changes hidden when older than their window; data-health GitHub issues per source with limits from each source's real cadence (config `monitoring`), assigned to the owner, monitor can never fail the deploy. Independent "workflow did not run" check proposed in `docs/specs/data-pipeline.md` 5.2c (heartbeat service recommended). |
 | Nov 17 | **Owner feedback (live review) → dev14:** the **default uncertainty range for snowfall, snow level and snow ratio is 25–75% ("likely", the middle half of NBM's outcomes)**; 10–90% is kept only where explicitly noted (Finder/W3 chance fields, M9 archive). Inline text says "likely X–Y in" with no "NBM 10–90%" label (source and issue time stay in run lines and captions). **One powder-quality definition** (config `powder_quality`: Dense < 10:1, Blower ≥ 15:1). Obs map first-load layers: relief + roads + ski areas + NWS winter hazards only; avalanche, Sno-Parks, SNOTEL, ASOS, NOHRSC off. W3 "Dry stretch" outranks "Wind-affected"; alert tag computed client-side from alerts/index.json. Obs-map Lighthouse target: no worse than main (≈ 82). |
+| Nov 17 | **Monitor bootstrap (dev15):** a failing/stale/unavailable source is judged by the data's own age, last success and `outage_since`, not only the restarted failure counter; one decision log line per source. |
 | Nov 16 | **Composite ranges are never shown:** where a 24/48/72 h total would add several 6 h percentile windows (fallback cycles), show the expected total only; points JSON marks totals `native: true/false`. Archive columns unchanged (they never carry composite ranges). Lighthouse target: median of ≥ 3 interleaved runs ≥ 85. |
 | Nov 16 | Model-map snowfall colors stay as is for now (backlog §8.4). **Guard:** points JSON and the forecast archive keep their existing fields (p10/p50/p90, P(≥4/8/12″), 24/48/72 h). |
 
