@@ -175,16 +175,15 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 17 2026, end of the overnight run; the uncommitted dev13_report.md has the full briefing)**
-- Branches pushed, not merged: `fix-snotel` (SNOTEL outage handling: fail-fast probe, last good copy ≤ 48 h flagged stale restored from the
-  live site via `pipeline restore`/`SITE_ORIGIN`, per-source history in meta.json, data-health GitHub issues via `pipeline/monitor.py`
-  and a `monitor` job, `simulate_failure` dispatch input, guarded heartbeat ping, `tests.yml` PR workflow) and `dev13` (on top of
-  fix-snotel: NBM-native P(≥2″) row, combined snow-ratio + powder-quality panel, linked Finder menus with counts, obs-map layer
-  defaults/memory/`ly=` hash + NWS winter hazards layer (`hazards.js`, `pipeline/hazards.py`, config `hazards.enabled`), W3 daily
-  summaries v1 (`pipeline/summary.py`, `config/summary_rules.yml`, area card only)).
-- NRCS AWDB (SNOTEL) outage since Nov 16 is upstream (whole host 502); the site shows stale/unavailable labels (PLAN §2 records the window).
-- Open: W3 summaries on Finder rows / My mountains / meta description; heartbeat secret `HEALTHCHECK_URL` (owner account needed);
-  "Blower" means ≥ 15:1 in the powder panel but ≥ 18:1 in the Finder "Type" column; Next per PLAN §8.2 (W5a analytics, W1 hosting prep, W2, W4).
+**Current state (Nov 17 2026, dev14 run; the uncommitted dev14_report.md has the briefing)**
+- main has fix-snotel + dev13. Branch `dev14` (PR open, not merged): ONE powder-quality definition (config `powder_quality`, mirrored in
+  `colors.js` POWDER_Q), "likely" = native NBM p25–p75 wording everywhere (totals `snow_q1/q3` + `summary.json` rows `[7],[8]`; 10–90 kept in files),
+  SNOWLR/SNOWLVL p10/25/50/75/90 (SELECTION_VERSION 7; panels draw median + band from the same series), obs-map first-load defaults
+  (relief + roads + ski areas + NWS hazards; version key; PointsCanvas groups hidden until their layer is on), W3 on area card, Finder rows
+  (`sm`), My mountains; alert tag client-side (`js/summary-ui.js`), `status.html` + meta.json `monitoring`/`site`, "Report a bust".
+- **No e-mail address in web/**: `site.feedback_email` (config) -> meta.json `site` -> `js/site-config.js` (`data-mailto` links; hidden if empty).
+  tests/test_hygiene.py enforces it. SNOTEL recovered Nov 18 00:45Z (PLAN §2).
+- Open: W3 meta description (W2) + Low-confidence rule (M7); heartbeat secret `HEALTHCHECK_URL`; W1/W2/W4 per PLAN §8.2; `docs/summary_review.md` weekly log.
 - Not started: storm-total tracker, M7, M8, M6, model-map NWS colors, PMTiles backup, resort-reported snowfall (licence), webcams (links first).
 
 **Reusable gotchas (earlier session log: docs/ARCHIVE.md)**
