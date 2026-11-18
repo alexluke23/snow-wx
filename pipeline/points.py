@@ -7,10 +7,17 @@ Methods (owner decisions, PLAN.md §3, session 2; documented for about.html):
 - Point snow = NBM snowfall × P(snow level below the point), the probability taken
   from NBM's snow-level percentiles (10/50/90, linear tails) to 48 h and from a
   ±800 ft ramp on the deterministic snow level after that.
-- Ranges: 0–48 h NBM snowfall percentiles 10–90 (6-h windows added rank by rank,
-  i.e. a slightly wide range); beyond 48 h ("extended outlook") NBM QPF percentiles
-  × SNOWLR (clamped 4–25) × P(snow) — the 25th–75th "likely range" (owner S3). Ranges are
-  not forced to contain the deterministic mean: NBM calibrates the two separately.
+- Ranges (what each product uses TODAY; the site's default wording is the 25–75 "likely" band, owner Nov 17):
+  * Snowfall-by-day bars (12Z–12Z) and the 24/48/72 h totals: ONE native NBM window's percentiles (24/48/72 h, or 6 h for a short
+    first day), scaled by P(snow at the point): `snow_p25/p50/p75` per day; `snow_q1/q3` (25–75, the "likely" range shown) and
+    `snow_lo/hi` (10–90, kept for the archive, Finder fields and W3) per total, with `native` true only for a single window.
+  * 12-h day/night periods (stored in the points file, used by the calibration report, not drawn): 6-h native windows added RANK BY RANK
+    — `snow_lo/hi` = 10–90 and `snow_q1/q3` = 25–75 to ~48 h. This is a documented, conservative approximation (slightly wide);
+    M9 should check it against observed SNOTEL snowfall. Beyond that ("extended outlook", `range` "derived 25-75"): NBM QPF
+    25–75 × SNOWLR (clamped 4–25) × P(snow).
+  * 7/10-day totals: only the expected amount is shown; any range fields stored for them are composites and never displayed.
+  * Percentiles are never summed across days or into 7/10-day totals. Ranges are not forced to contain the deterministic mean:
+    NBM calibrates the two separately.
 - Temperature: NBM value at the 2.5-km cell moved to the point with 6.5 °C/km
   (height change capped at 4000 ft).
 - Periods: 12 h, 00Z–12Z (night) and 12Z–00Z (day), labelled in local time.

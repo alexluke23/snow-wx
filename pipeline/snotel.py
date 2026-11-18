@@ -260,10 +260,14 @@ def summarize(series: dict[str, list[tuple]]) -> dict:
         "obs_time": obs_time.strftime("%Y-%m-%d %H:%M") if obs_time is not None else None,
         "swe_in": latest(sw),
         "swe_24h": change_over(sw, 24),
+        "swe_48h": change_over(sw, 48),
         "swe_72h": change_over(sw, 72),
+        "swe_7d": change_over(sw, 168),
         "depth_in": latest(sd),
         "depth_24h": change_over(sd, 24, smooth_hours=3),
+        "depth_48h": change_over(sd, 48, smooth_hours=3),
         "depth_72h": change_over(sd, 72, smooth_hours=3),
+        "depth_7d": change_over(sd, 168, smooth_hours=3),
         "temp_f": latest(ta),
         "tmax_24h": float(last24.max()) if not last24.empty else None,
         "tmin_24h": float(last24.min()) if not last24.empty else None,
@@ -375,7 +379,8 @@ def _stale(f: dict, now: datetime) -> dict:
     props = {**f["properties"], "stale": True, "age_h": age}
     # a change over the last 24 h / 72 h says nothing once the data are older than that window: hide it
     # (owner Nov 17); the obs_time and every other timestamp stay exactly as originally observed
-    for window, keys in ((24, ("depth_24h", "swe_24h", "precip_24h", "tmax_24h", "tmin_24h")), (72, ("depth_72h", "swe_72h"))):
+    for window, keys in ((24, ("depth_24h", "swe_24h", "precip_24h", "tmax_24h", "tmin_24h")), (48, ("depth_48h", "swe_48h")),
+                         (72, ("depth_72h", "swe_72h")), (168, ("depth_7d", "swe_7d"))):
         if age > window:
             for k in keys:
                 if k in props:

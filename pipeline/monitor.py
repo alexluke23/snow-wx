@@ -40,8 +40,19 @@ def age_hours(iso: str | None, now: datetime) -> float | None:
     return None if t is None else round((now - t).total_seconds() / 3600, 1)
 
 
+def _failing(e: dict) -> bool:
+    """A source counts as failing when its run failed OR it is serving stale/unavailable data (SNOTEL fallbacks)."""
+    return e.get("ok") is False or bool(e.get("unavailable")) or bool(e.get("stale"))
+
+
 def evaluate(meta: dict, now: datetime, mcfg: dict) -> dict[str, dict]:
-    """{source: {"problem": str | None, "detail": {...}}} for every source listed in config monitoring.sources."""
+    """{source: {"problem": str | None, "detail": {...}, "log": str}} for every source listed in config monitoring.sources.
+
+    Bootstrap rules (dev15, after the real SNOTEL outage opened no issue): history may be missing (the outage predates the
+    monitor, or a fresh runner restarted the counters), so a failing source is judged by every clock we have, not only by
+    `consecutive_failures`: the data's own age (`last_observed` / `observed_through` for stale and unavailable copies), the time
+    since the last success, and `outage_since` (first-seen-failing). A failing source whose age cannot be known at all is a breach once
+    the failure-count limit is reached."""
     sources = (meta or {}).get("sources") or {}
     out = {}
     for name, lim in (mcfg.get("sources") or {}).items():
@@ -49,30 +60,49 @@ def evaluate(meta: dict, now: datetime, mcfg: dict) -> dict[str, dict]:
         reasons = []
         if not isinstance(e, dict):
             # absent from meta.json: a new source, or the Pages deploy has not propagated yet: not an alarm
-            out[name] = {"problem": None, "detail": {"note": "no status in meta.json", "limits": lim}}
+            out[name] = {"problem": None, "detail": {"note": "no status in meta.json", "limits": lim},
+                         "log": f"{name}: no status in meta.json -> no alarm"}
             continue
-        else:
-            fails = int(e.get("consecutive_failures") or 0)
-            if lim.get("max_failures") and fails >= int(lim["max_failures"]):
-                reasons.append(f"failed {fails} runs in a row (limit {lim['max_failures']})")
-            ref = e.get("last_success_at") or (e.get("at") if e.get("ok") else None)
-            age = age_hours(ref, now)
-            if age is not None and lim.get("max_age_hours") and age > float(lim["max_age_hours"]):
-                reasons.append(f"last success {age:.0f} h ago (limit {lim['max_age_hours']} h)")
-            if e.get("ok") is False and "consecutive_failures" not in e and not reasons:
-                reasons.append(f"missing: {e.get('error') or 'no data'}")       # a product that never arrived
-        out[name] = {"problem": "; ".join(reasons) or None,
+        failing = _failing(e)
+        fails = int(e.get("consecutive_failures") or 0)
+        if failing:
+            fails = max(fails, 1)                                   # stale/unavailable/ok:false is at least one failed run
+        max_f, max_a = lim.get("max_failures"), lim.get("max_age_hours")
+        if max_f and fails >= int(max_f):
+            reasons.append(f"failed {fails} runs in a row (limit {max_f})")
+        # age of the source: last success if known, else the data's own time (stale/unavailable copies), else (failing) first-seen failing
+        ref, ref_kind = e.get("last_success_at") or (e.get("at") if e.get("ok") and not e.get("stale") else None), "last success"
+        if not ref and failing:
+            for key, kind in (("observed_through", "data time"), ("last_observed", "data time"), ("outage_since", "first seen failing")):
+                if e.get(key):
+                    ref, ref_kind = e[key], kind
+                    break
+        age = age_hours(ref, now)
+        if failing and e.get("last_success_at") and (e.get("observed_through") or e.get("last_observed")):
+            # prefer the OLDER clock: a stale copy can be older than the last (re)stamped run
+            alt = age_hours(e.get("observed_through") or e.get("last_observed"), now)
+            if alt is not None and (age is None or alt > age):
+                age, ref_kind = alt, "data time"
+        if age is not None and max_a and age > float(max_a) and (failing or ref_kind == "last success"):
+            reasons.append(f"{ref_kind} {age:.0f} h ago (limit {max_a} h)")
+        if e.get("ok") is False and "consecutive_failures" not in e and not reasons:
+            reasons.append(f"missing: {e.get('error') or 'no data'}")       # a product that never arrived
+        state = "unavailable" if e.get("unavailable") else "stale" if e.get("stale") else "failed" if e.get("ok") is False else "ok"
+        problem = "; ".join(reasons) or None
+        out[name] = {"problem": problem,
                      "detail": {"ok": e.get("ok"), "error": e.get("error"), "last_success_at": e.get("last_success_at"),
                                 "consecutive_failures": e.get("consecutive_failures"), "at": e.get("at"),
                                 "stale": e.get("stale"), "age_h": e.get("age_h"), "unavailable": e.get("unavailable"),
-                                "limits": lim}}
+                                "outage_since": e.get("outage_since"), "limits": lim},
+                     "log": f"{name}: state={state} failures={fails}/{max_f or '-'} age={'?' if age is None else f'{age:.1f}h'}"
+                            f"({ref_kind if age is not None else 'unknown'})/{max_a or '-'}h -> {'BREACH: ' + problem if problem else 'ok'}"}
     return out
 
 
 def issue_body(name: str, res: dict, run_url: str | None) -> str:
     d = res["detail"]
     lines = [f"**{name}** is unhealthy: {res['problem']}.", ""]
-    for k in ("ok", "error", "last_success_at", "consecutive_failures", "at", "stale", "age_h", "unavailable", "limits"):
+    for k in ("ok", "error", "last_success_at", "consecutive_failures", "at", "stale", "age_h", "unavailable", "outage_since", "limits"):
         if d.get(k) not in (None, "", False) or k in ("ok",):
             lines.append(f"- {k}: `{d.get(k)}`")
     lines += ["", "Limits come from `config/settings.yml` `monitoring.sources` (set per source from its real cadence).",
@@ -152,7 +182,16 @@ def check(mcfg: dict, meta: dict | None, now: datetime, open_issues: list[dict],
           run_url: str | None = None) -> list[str]:
     if meta is None:
         return ["live meta.json unreachable: nothing to evaluate"]
-    return apply(plan(evaluate(meta, now, mcfg), open_issues, run_url), mcfg, gh)
+    results = evaluate(meta, now, mcfg)
+    actions = plan(results, open_issues, run_url)
+    acting = {a[1] if a[0] == "create" else None: a[0] for a in actions}
+    open_titles = {i["title"] for i in open_issues}
+    lines = []
+    for name, res in results.items():          # one line per source with its decision, so the Actions log explains it
+        act = ("open issue" if acting.get(name) == "create" else "issue already open" if TITLE.format(name=name) in open_titles and res["problem"]
+               else "close issue" if TITLE.format(name=name) in open_titles else "none")
+        lines.append(f"{res['log']} | action: {act}")
+    return lines + apply(actions, mcfg, gh)
 
 
 def main(argv: list[str] | None = None) -> int:

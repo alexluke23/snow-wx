@@ -10,9 +10,23 @@ const SNOTEL_VARS = {
              "#08519c", "#6a51a3", "#d03dcf"],
     signed: true, digits: 0,
   },
+  depth_48h: {
+    label: "48-hr snow depth change (in)",
+    bins: [-3, 2, 4, 9, 15, 21, 30, 42],
+    colors: ["#a6761d", "#f0f0f0", "#c6dbef", "#9ecae1", "#6baed6", "#3182bd",
+             "#08519c", "#6a51a3", "#d03dcf"],
+    signed: true, digits: 0,
+  },
   depth_72h: {
     label: "72-hr snow depth change (in)",
     bins: [-4, 2, 6, 12, 18, 24, 36, 48],
+    colors: ["#a6761d", "#f0f0f0", "#c6dbef", "#9ecae1", "#6baed6", "#3182bd",
+             "#08519c", "#6a51a3", "#d03dcf"],
+    signed: true, digits: 0,
+  },
+  depth_7d: {
+    label: "7-day snow depth change (storm total, in)",
+    bins: [-6, 3, 8, 15, 24, 36, 48, 72],
     colors: ["#a6761d", "#f0f0f0", "#c6dbef", "#9ecae1", "#6baed6", "#3182bd",
              "#08519c", "#6a51a3", "#d03dcf"],
     signed: true, digits: 0,
@@ -138,7 +152,7 @@ function snowPale(hex) {
   const k = SNOWFALL.bins.indexOf(1), last = SNOWFALL.bins.indexOf(36);
   const bins = [-2, ...SNOWFALL.bins.slice(k, last + 1)];             // -2, 1, 2, 3, 4, 6, 8, 12, 18, 24, 30, 36
   const colors = ["#a6761d", "#f0f0f0", ...SNOWFALL.colors.slice(k + 1, last + 2)];
-  for (const key of ["depth_24h", "depth_72h"]) {
+  for (const key of ["depth_24h", "depth_48h", "depth_72h", "depth_7d"]) {
     SNOTEL_VARS[key].bins = bins; SNOTEL_VARS[key].colors = colors;
     SNOTEL_VARS[key].legendTitle = "Snow depth change (in); includes compaction, not snowfall";
   }

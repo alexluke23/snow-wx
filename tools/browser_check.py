@@ -763,7 +763,108 @@ def check_status(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status}
+def check_pwa(b: Browser, base: str, log):
+    """dev15 W4: install + precache, Save for offline, an OFFLINE run through CDP (My mountains and a favorite's page with charts), staleness
+    banner (info offline, red > 24 h), update flow files, kill switch. Uses a trimmed temp copy of build/ with pwa.enabled forced on."""
+    import shutil
+    from datetime import datetime, timedelta, timezone
+    sys.path.insert(0, str(REPO))
+    from pipeline import pwa as pwa_mod
+    src = Path(base_dir_holder["path"])
+    fav = "alta-ski-area"
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        for f in src.iterdir():
+            if f.name in ("data", "models"):
+                continue
+            (shutil.copytree if f.is_dir() else shutil.copy)(f, t / f.name)
+        for rel in ("meta.json", "ski_areas.json", "rec_points.json", "snotel_points.json", "search.json", "avalanche_ratings.json", "alerts/index.json",
+                    f"points/summary.json", f"points/{fav}.json", f"ndfd/{fav}.json"):
+            if (src / "data" / rel).exists():
+                (t / "data" / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(src / "data" / rel, t / "data" / rel)
+        meta_path = t / "data" / "meta.json"
+        write_meta = lambda hours_old: meta_path.write_text(json.dumps({**json.loads(meta_path.read_text(encoding="utf-8")), "generated_at": (datetime.now(timezone.utc) - timedelta(hours=hours_old)).strftime("%Y-%m-%dT%H:%M:%SZ")}), encoding="utf-8")  # noqa: E731
+        write_meta(1.5)
+        cfg = {"site": {"origin": "http://127.0.0.1", "base_path": ""}, "pwa": {"enabled": True}}
+        need(pwa_mod.run(cfg, t) == 0 and (t / "sw.js").exists(), "pwa build step wrote nothing")
+        with serve(t) as tbase:
+            b.cmd("Network.emulateNetworkConditions", offline=False, latency=0, downloadThroughput=-1, uploadThroughput=-1)
+            b.open(f"{tbase}/mine.html", wait=3)
+            b.eval(f"localStorage.setItem('snowwx.favorites', JSON.stringify(['{fav}'])); 1")
+            b.open(f"{tbase}/mine.html", wait=4)
+            st = b.eval("""(async () => { const r = await navigator.serviceWorker.ready; for (let i = 0; i < 40 && !navigator.serviceWorker.controller; i++) await new Promise(x => setTimeout(x, 150));
+              return {active: !!r.active, ctrl: !!navigator.serviceWorker.controller, manifest: !!document.querySelector('link[rel=manifest]'), save: !!document.getElementById('pwa-save'),
+                      shell: (await caches.keys()).filter(k => k.startsWith('snowwx-shell-')).length}; })()""")
+            log(f"  pwa install: {st}")
+            need(st["active"] and st["manifest"] and st["shell"] == 1, f"service worker not installed / shell not precached: {st}")
+            need(st["save"], f"My mountains has no 'Save for offline' control: {st}")
+            # charts library online once (so it can be cached), then Save for offline
+            b.open(f"{tbase}/area.html#{fav}", wait=7)
+            b.open(f"{tbase}/mine.html", wait=4)
+            b.eval("document.querySelector('#pwa-save button').click(); 1")
+            time.sleep(6)
+            note = b.eval("(document.getElementById('pwa-save-note') || {}).textContent || ''")
+            log(f"  pwa save note: {note}")
+            need("Saved 1 favorite" in note and "MB of 25 MB" in note, f"Save for offline did not report: {note}")
+            mb = float(note.split("Saved 1 favorite for offline: ")[1].split(" MB")[0])
+            need(mb < 5, f"1 favorite must stay far below the 25 MB budget: {mb} MB")
+            # OFFLINE run
+            b.cmd("Network.emulateNetworkConditions", offline=True, latency=0, downloadThroughput=0, uploadThroughput=0)
+            b.open(f"{tbase}/mine.html", wait=4)
+            off = b.eval("""(() => ({cards: document.querySelectorAll('.mcard').length, online: navigator.onLine,
+               banner: (document.getElementById('pwa-banner') || {}).textContent || '', bannerHidden: (document.getElementById('pwa-banner') || {hidden: true}).hidden}))()""")
+            log(f"  pwa offline mine: {off}")
+            need(off["cards"] == 1 and "Offline — data from" in off["banner"] and not off["bannerHidden"], f"offline My mountains failed: {off}")
+            b.open(f"{tbase}/area.html#{fav}", wait=6)
+            _draw_all(b)
+            area = b.eval("""(() => ({h1: (document.querySelector('h2, h1') || {}).textContent || '', charts: [...document.querySelectorAll('.chart')].filter(c => c.data).length,
+               banner: (document.getElementById('pwa-banner') || {}).textContent || ''}))()""")
+            log(f"  pwa offline area: {area}")
+            need(area["charts"] >= 3 and "Offline" in area["banner"], f"offline favorite page has no charts/banner: {area}")
+            b.cmd("Network.emulateNetworkConditions", offline=False, latency=0, downloadThroughput=-1, uploadThroughput=-1)
+            # staleness: online but data 30 h old = red with the avalanche-center message; 8 h = amber
+            for hrs, cls in ((30, "red"), (8, "amber")):
+                write_meta(hrs)
+                b.open(f"{tbase}/mine.html", wait=3)
+                bn = b.eval("(() => { const n = document.getElementById('pwa-banner'); return {cls: n ? n.className : '', hidden: n ? n.hidden : true, text: n ? n.textContent : ''}; })()")
+                log(f"  pwa banner {hrs} h: {bn}")
+                need(bn["cls"] == cls and not bn["hidden"] and (cls != "red" or "avalanche center" in bn["text"]), f"staleness banner at {hrs} h: {bn}")
+            # kill switch: the next build emits the self-removing worker; reload -> unregistered, caches gone
+            need(pwa_mod.run({**cfg, "pwa": {"enabled": True, "kill": True}}, t) == 0, "kill switch build")
+            b.open(f"{tbase}/mine.html", wait=2)
+            b.eval("navigator.serviceWorker.getRegistration().then(r => r && r.update()); 1")
+            time.sleep(4)
+            gone = b.eval("""(async () => ({regs: (await navigator.serviceWorker.getRegistrations()).length, caches: (await caches.keys()).filter(k => k.startsWith('snowwx-')).length}))()""")
+            log(f"  pwa kill switch: {gone}")
+            need(gone["regs"] == 0 and gone["caches"] == 0, f"kill switch did not unregister/clear: {gone}")
+        b.cmd("Network.emulateNetworkConditions", offline=False, latency=0, downloadThroughput=-1, uploadThroughput=-1)
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_storm(b: Browser, base: str, log):
+    """dev15 storm-total tracker: selectable window on the area page (SNOTEL change + NOHRSC, compaction caveat) and the 48 h / 7-day SNOTEL map variables."""
+    b.open(f"{base}/area.html#alta-ski-area", wait=7)
+    st = b.eval("""(async () => { await new Promise(r => setTimeout(r, 1500)); const h = document.getElementById('storm'); if (!h) return null;
+      const out = {buttons: [...h.querySelectorAll('button')].map(x => x.textContent.trim()), rows72: h.querySelectorAll('tbody tr').length, note: h.querySelector('.note').textContent};
+      h.querySelector('button[data-w="7d"]').click(); await new Promise(r => setTimeout(r, 300));
+      out.note7 = h.querySelector('.note').textContent; out.rows7 = h.querySelectorAll('tbody tr').length; out.pressed = h.querySelector('button[data-w="7d"]').getAttribute('aria-pressed');
+      return out; })()""")
+    log(f"  storm total: {st}")
+    need(st and st["buttons"] == ["24 h", "48 h", "72 h", "7 days"], f"storm-total window buttons: {st}")
+    need("not snowfall" in st["note"] and "NOHRSC publishes snowfall for 24" in st["note7"] and st["rows7"] == 2 and st["rows72"] >= 3 and st["pressed"] == "true", f"storm-total content: {st}")
+    b.open(f"{base}/index.html", wait=6)
+    opts = b.eval("[...document.querySelectorAll('#var-select option')].map(o => o.textContent)")
+    need(any("48-hr" in o for o in opts) and any("7-day" in o for o in opts), f"map SNOTEL variables lack 48 h / 7-day: {opts}")
+    b.eval("(() => { const s = document.getElementById('var-select'); s.value = 'depth_7d'; s.dispatchEvent(new Event('change')); })()")
+    time.sleep(2.5)
+    leg = b.eval("({layers: window.snowwx.currentLayers(), drawn: window.snowwx.points.drawnGroups(), title: (document.getElementById('legend') || document.body).textContent.slice(0, 400)})")
+    log(f"  7-day map variable: {leg['layers']} {leg['drawn']}")
+    need("snotel" in leg["layers"] and "snotel" in leg["drawn"] and "compaction" in leg["title"], f"7-day variable did not show SNOTEL with the compaction legend: {leg}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm}
 
 
 def main(argv=None) -> int:
