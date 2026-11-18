@@ -182,7 +182,7 @@ Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-
   M9 scorer `python -m pipeline verify` (+ `docs/verification_first_look.md`).
 - CLI steps behind flags, not wired into workflows (no workflow edits in these runs): `pages` (pages.enabled), `pwa` (pwa.enabled; never before W1).
 - No e-mail address in web/: `site.feedback_email` -> meta.json -> `js/site-config.js`. SNOTEL outage over; recovery time unconfirmed, first confirmed live 00:45Z Nov 18 (PLAN §2).
-- Browser suite: `tools/browser_check.py` has 18 checks (adds pwa, storm, hazpop, spmobile, mmodel); `mmodel` needs `build/data/multimodel.json` (run the three models quickly, then `multimodel.merge`).
+- Browser suite: `tools/browser_check.py` has 19 checks (adds pwa, storm, hazpop, spmobile, mmodel, mobile 375 px sweep); `mmodel` needs `build/data/multimodel.json` (run the three models quickly, then `multimodel.merge`).
 - Open: W3 meta description (W2) + Low-confidence rule (now unblocked by M7 agreement); `HEALTHCHECK_URL` secret; W1 then enable pwa/pages; real-device PWA tests; ECMWF (M8).
 
 **Reusable gotchas (earlier session log: docs/ARCHIVE.md)**
