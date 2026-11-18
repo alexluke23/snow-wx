@@ -33,6 +33,23 @@ def load_points(repo: Path = REPO_ROOT) -> list[dict]:
             for a in cat["areas"] if a.get("summit")]
 
 
+def nearest_cells(lat: np.ndarray, lon: np.ndarray, pts: list[tuple[float, float]]) -> list[tuple[int, int] | None]:
+    """Nearest grid cell per (lat, lon) with a tolerance that follows the grid spacing (0.75 x the cell diagonal: 3-km HRRR/RRFS ~0.03 deg, 0.25-degree
+    GFS ~0.27 deg), so a point outside a cropped grid gets None instead of an edge cell. A KD-tree keeps it fast on ~1.5 M-cell grids."""
+    from scipy.spatial import cKDTree
+    dlat = float(np.nanmedian(np.abs(np.diff(lat, axis=0)))) if lat.shape[0] > 1 else 0.25
+    dlon = float(np.nanmedian(np.abs(np.diff(lon, axis=1)))) if lon.shape[1] > 1 else 0.25
+    c = float(np.cos(np.radians(np.nanmean(lat))))
+    tol = 0.75 * float(np.hypot(dlat, dlon * c))
+    tree = cKDTree(np.column_stack([lat.ravel(), lon.ravel() * c]))
+    d, k = tree.query(np.array([[la, lo * c] for la, lo in pts]))
+    out = []
+    for dist, kk in zip(d, k):
+        r, col = np.unravel_index(int(kk), lat.shape)
+        out.append((int(r), int(col)) if dist <= tol else None)
+    return out
+
+
 class PrecipSampler:
     """Collects run-total precipitation at each point, frame by frame, for one model run."""
 
@@ -46,8 +63,7 @@ class PrecipSampler:
     def add(self, f: int, arrays: dict, grid) -> None:
         """`arrays` = derive_frame output (needs qpf_total for f > 0; orog_ft once)."""
         if self.idx is None:
-            # 0.3 deg: a 0.25-degree GFS grid center can be ~0.18 deg from a point; the model terrain at the cell is reported with the series
-            self.idx = nearest_index(grid.lat, grid.lon, [(p["lat"], p["lon"]) for p in self.points], max_deg=0.3)
+            self.idx = nearest_cells(grid.lat, grid.lon, [(p["lat"], p["lon"]) for p in self.points])
         total = arrays.get("qpf_total")
         if f > 0 and total is None:
             return                                                      # this frame has no run total: skip it, the series just has a gap
@@ -81,6 +97,7 @@ def merge(models_dir: Path, out_path: Path, order=ORDER) -> dict | None:
     """data/multimodel.json: {generated_at, models: [{model, label, cycle, init, hours}], areas: {id: {model: {q, z}}}}.
     Each model keeps its own hours and init; q is cumulative liquid precipitation (in) since that init."""
     docs = []
+    max_age_h = 24                                      # a model whose init is far older than the newest is stale (a failed run left its old file)
     for m in order:
         p = Path(models_dir) / m / "precip.json"
         if p.exists():
@@ -88,6 +105,14 @@ def merge(models_dir: Path, out_path: Path, order=ORDER) -> dict | None:
                 docs.append(json.loads(p.read_text(encoding="utf-8")))
             except ValueError:
                 log.warning("multimodel: bad %s", p)
+    if docs:
+        fmt = "%Y-%m-%dT%H:%MZ"
+        newest = max(datetime.strptime(d["init"], fmt) for d in docs)
+        kept = [d for d in docs if (newest - datetime.strptime(d["init"], fmt)).total_seconds() <= max_age_h * 3600]
+        for d in docs:
+            if d not in kept:
+                log.warning("multimodel: dropping stale %s (init %s, newest %s)", d["model"], d["init"], newest.strftime(fmt))
+        docs = kept
     if not docs:
         return None
     areas: dict[str, dict] = {}

@@ -463,6 +463,11 @@ What actually happened (snow measured/seen, where, photos or links welcome):
       return;
     }
     const nbm = { initMs: Date.parse(fc.issued), precip: P.precip, times: fc.times, ratio: P.series.slr_p50 || P.series.slr, psnow: P.series.p_snow };
+    // the snow conversion needs NBM's ratio and chance of snow: without them the toggle is disabled (never a silent 10:1 / all-snow guess)
+    const snowOk = (nbm.ratio || []).some((v) => v) && (nbm.psnow || []).some((v) => v !== null && v !== undefined);
+    const snowBtn = document.querySelector("#mm-mode [data-m=snow]");
+    if (snowBtn) { snowBtn.disabled = !snowOk; snowBtn.title = snowOk ? "" : "NBM's snow ratio / chance of snow are not available for this point"; }
+    if (!snowOk && mmMode === "snow") mmMode = "liquid";
     const r = MultiModel.build({ doc: mmDoc, areaId: fc.id, nbm, mode: mmMode });
     if (r.series.length < 2) { el.innerHTML = `<p class="hint">Only one source covers the next hours here, so there is nothing to compare yet.</p>`; return; }
     const unit = mmMode === "snow" ? "in of snow" : "in of liquid";
@@ -1085,6 +1090,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
         if ($("slr-chart")) C.lazy($("slr-chart"), withPlotly(() => slrChart($("slr-chart"), d, pt, tz)));
         if (!$("ex-sec").hidden) C.lazy($("ex-chart"), () => exceedTable($("ex-chart"), d, pt, tz));
         C.lazy($("sl-chart"), withPlotly(() => snowLevelChart($("sl-chart"), d, keys, tz)));
+        if ($("mm-sec")) $("mm-sec").hidden = src === "nws";                    // the comparison is NBM + models; not shown beside the NWS-only view
         if ($("mm-chart") && src !== "nws") C.lazy($("mm-chart"), withPlotly(() => modelChart($("mm-chart"), d, tz)));
         C.lazy($("t-chart"), withPlotly(() => tempChart($("t-chart"), d, keys, tz)));
         C.lazy($("w-chart"), withPlotly(() => windChart($("w-chart"), d, pt, keys, tz)));
@@ -1092,6 +1098,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
         return Promise.resolve();
       };
       $("mm-mode")?.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {
+        if (btn.disabled) return;
         mmMode = btn.dataset.m;
         $("mm-mode").querySelectorAll("button").forEach((x) => { x.classList.toggle("on", x === btn); x.setAttribute("aria-pressed", String(x === btn)); });
         modelChart($("mm-chart"), doc(), tz);

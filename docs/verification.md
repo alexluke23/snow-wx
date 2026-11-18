@@ -106,6 +106,6 @@ print(both.groupby(pd.cut(both.lead_h, [0, 24, 48, 96, 168, 264]))[["det", "d_de
 ## Scoring script (M9-prep, dev16)
 `python -m pipeline verify --dir <folder with the three monthly files> --out <folder>` (`pipeline/verify.py`, tests in `tests/test_verify.py`) pairs every archived 24-h
 forecast at a SNOTEL site with the observed 24-h depth change (3-h median, clipped at 0; a lower bound of snowfall) and writes `scores_by_lead.csv`,
-`scores_by_state_days12.csv`, `scores_by_elevation_days12.csv`, `summary.json` and a `README.md`. It EXCLUDES observations inside `verification.snotel_outage`
+`scores_by_state_days12.csv`, `scores_by_elevation_days12.csv`, `summary.json` and a `README.md`. It EXCLUDES observations whose 24-h window overlaps `verification.snotel_outage`
 (config; the NRCS outage, ending at the first confirmed live recovery 2026-11-18 00:45Z) and observations with fewer than 20 hourly reports (stale/carried/patchy),
 and counts what it dropped. Temperature is not scored (the archive has no temperatures). First look: `docs/verification_first_look.md`.

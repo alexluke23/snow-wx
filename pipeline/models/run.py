@@ -241,6 +241,7 @@ def run_model(cfg: dict, model: str, out: Path, *, fhours: list[int] | None = No
             sampler = rw.Sampler(mcfg, rw.load_summits())
         except (OSError, ValueError, KeyError) as exc:
             log.warning("%s: ridge wind disabled: %s", model, exc)
+    (model_dir / "precip.json").unlink(missing_ok=True)   # a failed run must not leave last cycle's file to be merged as current
     msampler = None                                   # precipitation by model at each summit (M7; models.yml multi_model.enabled)
     if (cfg.get("multi_model") or {}).get("enabled", True) and mcfg.get("multi_model", True):
         try:
