@@ -119,6 +119,7 @@
     "ASOS / AWOS (wind, temp)": asosLayer,
   }, { collapsed: window.innerWidth < 800 }).addTo(map);
   map.on("overlayadd overlayremove", persistLayers);
+  map.on("overlayadd", (e) => { for (const [k, key] of [["snotel", "sno"], ["asos", "aso"], ["avy", "avy"]]) if (e.layer === ALL_LAYERS[k]) ensure(key); });
   window.snowwx.points = points; window.snowwx.currentLayers = currentLayers;   // test handles (tools/browser_check.py)
   layersReady = true;
   L.control.scale({ imperial: true, metric: true }).addTo(map);
@@ -340,6 +341,16 @@
   const initialHash = readHash();
   if (initialHash.v && SNOTEL_VARS[initialHash.v]) currentVar = initialHash.v;
 
+  // ---- lazily loaded station files (dev15): each loads once, then draws and refreshes the search index
+  let skiData = null, recData = null, asosData = null;
+  const lazyLoads = {};
+  const ensure = (k) => (lazyLoads[k] ||= ({
+    avy: async () => { avyLayer.addData(await getJSON("avalanche.geojson")); },
+    sno: async () => { snotelData = await getJSON("snotel.geojson"); drawSnotel(); rebuildIndex(); },
+    aso: async () => { asosData = await getJSON("asos.geojson"); drawAsos(asosData); rebuildIndex(); },
+  })[k]().catch((e) => { delete lazyLoads[k]; console.warn(`lazy ${k}:`, e.message); }));
+  const rebuildIndex = () => buildIndex(snotelData, asosData, skiData, recData);
+
   function drawSnotel() {
     if (!snotelData) return;
     const spec = SNOTEL_VARS[currentVar];
@@ -374,10 +385,10 @@
       ${p.stale ? `<p class="snotel-note">Observations are ${Math.max(1, Math.round(p.age_h))} h old (SNOTEL data service not responding).</p>` : ""}
       <table class="metrics">
         <tr><td>Snow depth</td><td>${num(p.depth_in, 0, '"')}</td></tr>
-        <tr><td>Depth change 24 / 72 hr</td><td>${signed(p.depth_24h, 0, '"')} / ${signed(p.depth_72h, 0, '"')}</td></tr>
+        <tr><td>Depth change 24 / 48 / 72 hr / 7 d</td><td>${signed(p.depth_24h, 0, '"')} / ${signed(p.depth_48h, 0, '"')} / ${signed(p.depth_72h, 0, '"')} / ${signed(p.depth_7d, 0, '"')}</td></tr>
         <tr><td>SWE</td><td>${num(p.swe_in, 1, '"')} (${num(p.pct_median, 0)}% of median${
           p.pct_median == null && p.median_swe_in != null ? `; median ${num(p.median_swe_in, 1, '"')}` : ""})</td></tr>
-        <tr><td>SWE change 24 / 72 hr</td><td>${signed(p.swe_24h, 1, '"')} / ${signed(p.swe_72h, 1, '"')}</td></tr>
+        <tr><td>SWE change 24 / 48 / 72 hr / 7 d</td><td>${signed(p.swe_24h, 1, '"')} / ${signed(p.swe_48h, 1, '"')} / ${signed(p.swe_72h, 1, '"')} / ${signed(p.swe_7d, 1, '"')}</td></tr>
         <tr><td>Precip 24 hr</td><td>${num(p.precip_24h, 2, '"')}</td></tr>
         <tr><td>Temp now (24-hr hi / lo)</td><td>${num(p.temp_f, 0, "°")} (${num(p.tmax_24h, 0, "°")} / ${num(p.tmin_24h, 0, "°")})</td></tr>
       </table>
@@ -438,7 +449,7 @@
   $("var-select").value = currentVar;
   $("var-select").addEventListener("change", (e) => {
     if (!map.hasLayer(snotelLayer)) snotelLayer.addTo(map);                 // picking a SNOTEL variable = you want SNOTEL
-    currentVar = e.target.value; drawSnotel(); writeHash();
+    currentVar = e.target.value; ensure("sno").then(drawSnotel); writeHash();
   });
 
   // ---------------------------------------------------------------- ASOS
@@ -621,6 +632,10 @@
       input.blur();
       selectStation(s);
     };
+    // SNOTEL / ASOS stations are in the index only once their files are loaded: fetch them the first time the box is used
+    input.addEventListener("focus", () => Promise.all([ensure("sno"), ensure("aso")]).then(() => {
+      if (input.value) { results = searchStations(input.value); active = results.length ? 0 : -1; render(); }
+    }), { once: true });
     input.addEventListener("input", () => { results = searchStations(input.value); active = results.length ? 0 : -1; render(); });
     input.addEventListener("keydown", (e) => {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -710,13 +725,15 @@
     if (initialHash.view) map.setView(initialHash.view.center, initialHash.view.zoom);
     else map.setView([41.5, -113], 5);
     setZoomClass();
+    // dev15 performance pass: the SNOTEL, ASOS and avalanche files are only fetched when their layer is on (they are OFF by
+    // default), when a station is opened from the URL, or at the first use of the station search (ensure()).
     const dataP = Promise.allSettled([
-      getJSON("avalanche.geojson"), getJSON("snotel.geojson"), getJSON("asos.geojson"),
       getJSON("map_points.json"),                      // compact ski areas + Sno-Parks (pipeline/search.py)
       getJSON("alerts/index.json")]);
     let meta = null;
     try {
       meta = await getJSON("meta.json");
+      if (typeof SiteConfig !== "undefined") SiteConfig.provide?.(meta);          // reuse this fetch (site-config.js)
       lastUpdated = meta.generated_at;
       $("updated").textContent = `Updated ${localTime(meta.generated_at)}`;
       drawStatus(meta);
@@ -728,16 +745,22 @@
     }
     if (!initialHash.view && meta?.region?.map_center) map.setView(meta.region.map_center, meta.region.map_zoom || 5);
 
-    const [avy, sno, aso, ski, alr] = await dataP;
+    const [ski, alr] = await dataP;
     if (alr.status === "fulfilled") areaAlerts = alr.value.areas || {};
-    if (avy.status === "fulfilled") avyLayer.addData(avy.value);
-    if (sno.status === "fulfilled") { snotelData = sno.value; drawSnotel(); }
-    if (aso.status === "fulfilled") drawAsos(aso.value);
     if (ski.status === "fulfilled") drawSkiAreas(ski.value);
     const rec = ski.status === "fulfilled" ? { areas: ski.value.snoparks || [] } : null;
     if (rec) drawSnoParks(rec);
+    skiData = ski.status === "fulfilled" ? ski.value : null; recData = rec;
+    drawLegend(SNOTEL_VARS[currentVar]);                       // the legend does not need the stations
     overlays.load(initialHash.o);
-    buildIndex(sno.value, aso.value, ski.value, rec);
+    rebuildIndex();
+    // whatever the first view needs: layers that are on, or the station named in the URL
+    const wantSta = initialHash.s || "";
+    const need = new Set(["snotel", "asos", "avy"].filter((k) => map.hasLayer(ALL_LAYERS[k])));
+    if (wantSta.startsWith("asos:")) need.add("asos"); else if (wantSta && !wantSta.startsWith("area:") && !wantSta.startsWith("sp:")) need.add("snotel");
+    const keyOf = { snotel: "sno", asos: "aso", avy: "avy" };
+    if (wantSta) await Promise.all([...need].map((k) => ensure(keyOf[k])));
+    else [...need].forEach((k) => ensure(keyOf[k]));
 
     hashReady = true;
     openFromHash(initialHash, false);

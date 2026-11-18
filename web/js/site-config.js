@@ -26,8 +26,12 @@ const SiteConfig = (() => {
       if (wrap) wrap.hidden = false;
     }
   };
+  /** a page that already fetched meta.json (the obs map) hands it over: no second request */
+  const provide = (meta) => { cfg = Promise.resolve((meta && meta.site) || {}); };
+  const idle = (fn) => ("requestIdleCallback" in window ? requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 1500));
   const start = () => {
-    wire();
+    idle(() => wire());                                      // never competes with the first paint
+    if (document.getElementById("map")) return;              // the obs map adds no mailto links after load: no observer there
     let timer = 0;                                           // debounced: page scripts add many nodes in bursts
     new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(() => wire(), 200); }).observe(document.body, { childList: true, subtree: true });
   };
@@ -35,5 +39,5 @@ const SiteConfig = (() => {
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   /** attribute string for a link that becomes a mailto once the address is known: `<a ${SiteConfig.attrs(subject, body)}>text</a>` */
   const attrs = (subject, body = "") => `data-mailto data-subject="${esc(subject)}" data-body="${esc(body)}" hidden`;
-  return { load, wire, attrs, feedbackEmail: async () => String((await load()).feedback_email || "").trim() };
+  return { load, wire, attrs, provide, feedbackEmail: async () => String((await load()).feedback_email || "").trim() };
 })();

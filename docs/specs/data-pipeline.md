@@ -68,6 +68,11 @@ Per run: a one-station health probe (10 s), then stations per state and hourly/d
   reads the LIVE meta.json and opens/updates/closes ONE issue per unhealthy source ("Data health: <source>", label
   `data-health`, assigned to `monitoring.assignee` so GitHub e-mails them). Uses only the workflow's `GITHUB_TOKEN`
   (`issues: write`); no secrets. It cannot fail the deploy: separate job after deploy, `continue-on-error`, script always exits 0.
+- **Bootstrap rules (dev15):** `consecutive_failures` restarts on a fresh runner and is absent in old-format meta.json, so a failing source
+  (`ok:false`, `stale` or `unavailable`) is also judged by the data's own clock (`observed_through` / `last_observed`), `last_success_at`
+  and `outage_since` (first seen failing): breach when that age exceeds `max_age_hours`; a failing source with no clock at all breaches at the failure limit.
+  Stale and unavailable count as at least one failure. Every run prints one line per source (`snotel: state=stale failures=1/3 age=9.0h(data time)/6h
+  -> BREACH ... | action: open issue`) so the Actions log explains the decision. Tests: `tests/test_monitor_bootstrap.py` (replayed meta states, real-outage path).
 - Delivery: GitHub e-mails the assignee (Settings → Notifications → e-mail on); the GitHub mobile app gives push.
 - **Test input:** `update-site.yml` has a manual `simulate_failure=<source>` input (workflow_dispatch only; sets
   `SIMULATE_FAILURE`): the source fails as if its service were down (SNOTEL goes through the real stale/unavailable path), so
