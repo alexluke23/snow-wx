@@ -464,16 +464,21 @@ What actually happened (snow measured/seen, where, photos or links welcome):
 
   // ---- Precipitation by model (M7; js/multimodel.js, data/multimodel.json): liquid-equivalent, cumulative, one line per model.
   const MM_STYLE = { nbm: { color: "#111827", width: 3.2, dash: "solid" }, hrrr: { color: C.OI.vermillion, width: 2, dash: "solid" },
-    rrfs: { color: C.OI.blue, width: 2, dash: "solid" }, gfs: { color: C.OI.green, width: 2, dash: "dash" } };
-  let mmDoc, mmMode = "liquid";
+    rrfs: { color: C.OI.blue, width: 2, dash: "solid" }, gfs: { color: C.OI.green, width: 2, dash: "dash" }, ecmwf: { color: C.OI.purple, width: 2, dash: "dashdot" } };
+  let mmDoc, mmMode = "liquid", mmView = "models";                                  // view = per visit only (not stored)
+  const hasPlume = () => (mmDoc?.models || []).some((m) => m.model === "ecmwf" && m.plume);
   async function modelChart(el, fc, tz) {
     const sec = $("mm-sec"), P = fc.points.summit;
     if (mmDoc === undefined) mmDoc = await getJSON("data/multimodel.json").catch(() => null);
     if (!mmDoc?.areas?.[fc.id] || !P) {
-      el.innerHTML = `<p class="hint">The model comparison is not available for this area yet (it needs a recent HRRR, RRFS or GFS run).</p>`;
+      chartMsg(el, `<p class="hint">The model comparison is not available for this area yet (it needs a recent HRRR, RRFS or GFS run).</p>`);
       $("mm-badge").textContent = "";
       return;
     }
+    const viewBox = $("mm-view");                                                    // the Models / Ensemble toggle exists only when ECMWF data were published
+    if (viewBox) viewBox.hidden = !hasPlume();
+    if (!hasPlume()) mmView = "models";
+    if (mmView === "ens") return ensembleChart(el, fc, tz);
     const nbm = { initMs: Date.parse(fc.issued), precip: P.precip, times: fc.times, ratio: P.series.slr_p50 || P.series.slr, psnow: P.series.p_snow };
     // the snow conversion needs NBM's ratio and chance of snow: without them the toggle is disabled (never a silent 10:1 / all-snow guess)
     const snowOk = (nbm.ratio || []).some((v) => v) && (nbm.psnow || []).some((v) => v !== null && v !== undefined);
@@ -481,7 +486,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     if (snowBtn) { snowBtn.disabled = !snowOk; snowBtn.title = snowOk ? "" : "NBM's snow ratio / chance of snow are not available for this point"; }
     if (!snowOk && mmMode === "snow") mmMode = "liquid";
     const r = MultiModel.build({ doc: mmDoc, areaId: fc.id, nbm, mode: mmMode });
-    if (r.series.length < 2) { el.innerHTML = `<p class="hint">Only one source covers the next hours here, so there is nothing to compare yet.</p>`; return; }
+    if (r.series.length < 2) { chartMsg(el, `<p class="hint">Only one source covers the next hours here, so there is nothing to compare yet.</p>`); return; }
     const unit = mmMode === "snow" ? "in of snow" : "in of liquid";
     const xs = (s) => s.x.map((t) => C.wall(t, tz));
     const traces = r.series.map((s) => ({ x: xs(s), y: s.y, mode: "lines+markers", name: s.label, line: { color: MM_STYLE[s.key].color, width: MM_STYLE[s.key].width, dash: MM_STYLE[s.key].dash },
@@ -495,7 +500,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
       xaxis: ax.axis, yaxis: C.yaxis({ range: [0, ymax] }) }));
     const ag = r.agreement;
     $("mm-badge").innerHTML = ag ? `Model agreement: <b class="mm-${ag.label.toLowerCase()}">${ag.label}</b>${ag.dry ? " (all dry)" : ""} <span class="hint">(${ag.within} of ${ag.n} models within ±25% of the median over the next ${ag.H} h; a heuristic until verified)</span>
-      <a class="info" href="about.html#model-agreement" title="Share of models within ±25% of the median liquid total (or 0.10 in) over the longest window at least 3 models cover: High ≥ 75%, Medium ≥ 50%, else Low. A heuristic, not an accuracy claim." aria-label="How model agreement works">ⓘ</a>`
+      <a class="info" href="about.html#model-agreement" title="Share of models within ±25% of the median liquid total (or 0.10 in) over the longest window at least 3 models cover: High ≥ 80%, Medium ≥ 66%, else Low. A heuristic, not an accuracy claim." aria-label="How model agreement works">ⓘ</a>`
       : `<span class="hint">Model agreement needs at least three models over the same hours.</span>`;
     const fmt = (v) => (v === null || v === undefined ? "–" : v.toFixed(2));
     C.summary(el, ag ? `Next ${ag.H} h at the summit, ${mmMode === "snow" ? "snow at NBM's ratio" : "liquid precipitation"}: ${ag.totals.map(([l]) => `${l} ${fmt(MultiModel.valueAt(r.series.find((s) => s.label === l), r.t0, ag.H))} in`).join(", ")}; model agreement is ${ag.label.toLowerCase()}${ag.dry ? " (all dry)" : ""} (a heuristic).`
@@ -503,7 +508,77 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     const grid = []; for (let h = 0; h <= 240; h += 6) if (r.series.some((s) => MultiModel.valueAt(s, r.t0, h) !== null)) grid.push(h);
     C.tableToggle(el, `Cumulative ${unit} since ${localDT(new Date(r.t0).toISOString(), tz)}, by model`, ["Time", ...r.series.map((s) => s.label)],
       grid.map((h) => [localDT(new Date(r.t0 + h * 3.6e6).toISOString(), tz), ...r.series.map((s) => fmt(MultiModel.valueAt(s, r.t0, h)))]));
-    $("mm-note").textContent = `Cumulative from ${localDT(new Date(r.t0).toISOString(), tz)} (the newest model start), summit point. ${mmMode === "snow" ? "Inches assume NBM's median snow ratio and NBM's chance of snow at the point; the NBM line is NBM's own expected snowfall. " : "Liquid-equivalent precipitation, so models with different snowfall products compare fairly. "}Each model's own terrain height is in the tooltip (coarser grids sit lower or higher than the summit). Sources: NOAA/NWS NBM, HRRR, RRFS and GFS.`;
+    $("mm-note").textContent = `Cumulative from ${localDT(new Date(r.t0).toISOString(), tz)} (the newest model start), summit point. ${mmMode === "snow" ? "Inches assume NBM's median snow ratio and NBM's chance of snow at the point; the NBM line is NBM's own expected snowfall. " : "Liquid-equivalent precipitation, so models with different snowfall products compare fairly. "}Each model's own terrain height is in the tooltip (coarser grids sit lower or higher than the summit). Sources: NOAA/NWS NBM, HRRR, RRFS and GFS${r.series.some((s) => s.key === "ecmwf") ? `; ECMWF IFS (operational run, 0.25°): adapted from "ECMWF IFS 15-day Forecast Data" by ECMWF, licensed under CC BY 4.0 (creativecommons.org/licenses/by/4.0), see the ECMWF Terms of Use` : ""}.`;
+  }
+
+
+  // ---- ECMWF IFS ENS plume (dev17): the second view of the panel; models/ecmwf/plume/<area>.json is fetched ONLY when this view is selected
+  const ensDocs = new Map();
+  /** replace a chart with a message: purge the Plotly state first, or a later Plotly.react would draw into a DOM that no longer exists (blank chart) */
+  const chartMsg = (el, html) => { try { window.Plotly?.purge(el); } catch { /* no plot yet */ } el.innerHTML = html; };
+  async function ensembleChart(el, fc, tz) {
+    const P = fc.points.summit, badge = $("mm-badge"), note = $("mm-note");
+    if (!el.data) el.innerHTML = `<p class="hint">Loading the ECMWF ensemble…</p>`;
+    if (!ensDocs.has(fc.id)) ensDocs.set(fc.id, getJSON(`models/ecmwf/plume/${encodeURIComponent(fc.id)}.json`).catch(() => null));
+    const doc = await ensDocs.get(fc.id);
+    if (!doc || !doc.hours?.length) {
+      chartMsg(el, `<p class="hint">The ECMWF ensemble is not available for this area yet.</p>`); badge.textContent = ""; return;
+    }
+    const nbmRatio = P.series.slr_p50 || P.series.slr || [];
+    const snowOk = nbmRatio.some((v) => v);
+    const snowBtn = document.querySelector("#mm-mode [data-m=snow]");
+    if (snowBtn) { snowBtn.disabled = !snowOk; snowBtn.title = snowOk ? "" : "NBM's snow ratio is not available for this point"; }
+    if (!snowOk && mmMode === "snow") mmMode = "liquid";
+    const issued = Date.parse(fc.issued), init = Date.parse(doc.init);
+    const t0 = Math.max(issued, init);
+    const b = Ensemble.build(doc, { mode: mmMode, t0Ms: t0, ratio: nbmRatio, ratioTimes: (fc.times || []).map((x) => Date.parse(x)) });
+    if (!b.members.length || b.x.length < 3) { chartMsg(el, `<p class="hint">The ECMWF run does not cover the hours after the common start yet.</p>`); return; }
+    const st = Ensemble.summarize(b), sk = Ensemble.staleness(doc, Date.now(), 24);
+    const col = (k) => st.map((s) => s[k]);
+    const xs = b.x.map((t) => C.wall(t, tz));
+    const ink = sk.stale ? "#7a8594" : C.INK, blue = sk.stale ? "#9aa3ad" : C.OI.blue;
+    // ALL members as ONE faint multi-segment trace (null breaks between members): fast on phones
+    const fx = [], fy = [];
+    b.members.forEach((m) => { m.forEach((v, i) => { if (v !== null) { fx.push(xs[i]); fy.push(v); } }); fx.push(null); fy.push(null); });
+    const unit = mmMode === "snow" ? "in of snow" : "in of liquid";
+    const terrain = doc.z_ft ? `ECMWF terrain ${doc.z_ft.toLocaleString()} ft (0.25° grid) vs summit ${Math.round(P.elev_ft).toLocaleString()} ft` : "ECMWF 0.25° grid, not elevation-adjusted";
+    const traces = [
+      { x: fx, y: fy, mode: "lines", line: { color: sk.stale ? "rgba(120,130,140,0.18)" : "rgba(0,114,178,0.13)", width: 1 }, hoverinfo: "skip", connectgaps: false, name: "members" },
+      { x: xs, y: col("p90"), mode: "lines", line: { width: 0 }, hoverinfo: "skip" },
+      { x: xs, y: col("p10"), mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: sk.stale ? "rgba(120,130,140,0.14)" : "rgba(86,180,233,0.22)", hoverinfo: "skip", name: "10–90%" },
+      { x: xs, y: col("p75"), mode: "lines", line: { width: 0 }, hoverinfo: "skip" },
+      { x: xs, y: col("p25"), mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: sk.stale ? "rgba(120,130,140,0.26)" : "rgba(0,114,178,0.28)", hoverinfo: "skip", name: "25–75%" },
+      { x: xs, y: col("p50"), mode: "lines", name: "Median", line: { color: ink, width: 3 }, customdata: st.map((s) => [s.p25, s.p75, s.p10, s.p90, s.n]),
+        hovertemplate: `Median %{y:.2f} ${unit}<br>25–75%: %{customdata[0]:.2f}–%{customdata[1]:.2f} · 10–90%: %{customdata[2]:.2f}–%{customdata[3]:.2f}<br>%{customdata[4]} members<br>${terrain}<extra></extra>` },
+      { x: xs, y: col("mean"), mode: "lines", name: "Mean", line: { color: blue, width: 2, dash: "dot" }, hovertemplate: `Mean %{y:.2f} ${unit}<extra></extra>` },
+    ];
+    if (b.hres) traces.push({ x: xs, y: b.hres, mode: "lines", name: "HRES", line: { color: C.OI.purple, width: 2, dash: "dash" }, connectgaps: false, hovertemplate: `HRES (operational run) %{y:.2f} ${unit}<extra></extra>` });
+    const ymax = Math.max(0.3, ...st.map((s) => s.p90 ?? 0), ...b.members.map((m) => Math.max(0, ...m.filter((v) => v !== null)))) * 1.06;
+    const ax = C.timeAxis(C.wall(b.x[0], tz), C.wall(b.x[b.x.length - 1], tz), el.clientWidth - C.MARGIN.l - 62);
+    const last = (arr) => arr.length - 1 - [...arr].reverse().findIndex((v) => v !== null && v !== undefined);
+    const lbl = [["90%", col("p90"), blue], ["Median", col("p50"), ink], ["10%", col("p10"), blue]];
+    if (b.hres) lbl.push(["HRES", b.hres, C.OI.purple]);
+    const labels = C.endLabels(lbl.map(([text, ys, color]) => ({ xs, ys, text, color })), { yrange: [0, ymax], plotHeight: 230 - C.MARGIN.t - ax.b + 34 });
+    const shapes = [...ax.shapes];
+    const annotations = [C.axisTitle(mmMode === "snow" ? "Snow (in), at NBM's ratio" : "Liquid precipitation (in)"), ...labels];
+    if (sk.stale) annotations.push({ xref: "paper", yref: "paper", x: 0.5, y: 0.92, showarrow: false, text: `Out of date: run started ${Math.round(sk.ageH)} h ago`, font: C.font(13, "#8a1c10") });
+    C.plot(el, traces, C.layout(240, { margin: { r: 62, b: ax.b }, showlegend: false, shapes, annotations, xaxis: ax.axis, yaxis: C.yaxis({ range: [0, ymax] }) }));
+    // headline (also the aria-label), the 72 h mark when the run reaches it
+    const lastH = Math.round((b.x[b.x.length - 1] - b.t0) / 3.6e6), H = Math.min(72, lastH);
+    const endMs = b.t0 + H * 3.6e6;
+    const thr = mmMode === "snow" ? 6 : 1;
+    const sentence = Ensemble.headline(b, st, { mode: mmMode, h: H, thr, weekday: localFmt(new Date(endMs).toISOString(), tz, { weekday: "short" }) });
+    C.summary(el, sentence);
+    const fmtT = (ms) => localDT(new Date(ms).toISOString(), tz);
+    C.tableToggle(el, `ECMWF ensemble, cumulative ${unit} since ${fmtT(b.t0)}: percentiles across ${b.n} members, then the number of members at or above each amount`,
+      ["Time", "10%", "25%", "Median", "75%", "90%", "Mean", "HRES"], Ensemble.tableRows(b, st, { mode: mmMode, fmtTime: fmtT, thresholds: mmMode === "snow" ? [2, 6, 12] : [0.5, 1, 2] }));
+    badge.innerHTML = `ECMWF IFS ENS <b>${new Date(doc.init).toISOString().slice(11, 13)}Z</b> run, started ${esc(localDT(doc.init, tz))} · ${doc.n_members} perturbed members${sk.stale ? ` · <b class="mm-low">out of date</b>` : ""}
+      <span class="hint">(plume = all members faint, bands 25–75% and 10–90%, median and mean across members)</span>`;
+    note.textContent = `Raw ECMWF model guidance on a 0.25° grid (about 28 km): not bias-corrected, not elevation-adjusted and not the same product as NBM. ${terrain}. `
+      + `Cumulative from ${fmtT(b.t0)}; each member is one scenario and the bands are quantiles across the ${b.n} members (no percentiles are added over time). `
+      + `${mmMode === "snow" ? "Snow = ECMWF's snowfall water equivalent times NBM's median snow ratio (inches assume NBM SLR). " : "Liquid = total precipitation (rain and melted snow). "}`
+      + `The control member is not part of the open data files, so there are ${doc.n_members} members. Adapted from "ECMWF IFS 15-day Forecast Data" by ECMWF, licensed under `
+      + `CC BY 4.0 (creativecommons.org/licenses/by/4.0), see the ECMWF Terms of Use (apps.ecmwf.int/datasets/licences/general/).`;
   }
 
   function snowLevelChart(el, fc, keys, tz) {
@@ -998,6 +1073,8 @@ What actually happened (snow measured/seen, where, photos or links welcome):
         <p class="note" id="sl-note"></p></section>
       ${isStation || isRec ? "" : `<section id="mm-sec"><h3>Precipitation by model <a class="info" href="about.html#model-agreement" title="NBM, HRRR, RRFS and GFS precipitation at the summit, cumulative, in liquid-equivalent inches (or snow at NBM's ratio)." aria-label="About the model comparison">ⓘ</a></h3>
         <p class="mm-badge" id="mm-badge" aria-live="polite"></p>
+        <span class="seg mm-view" id="mm-view" role="group" aria-label="View" hidden><button type="button" data-v="models" class="on" aria-pressed="true">Models</button><button type="button" data-v="ens" aria-pressed="false">Ensemble</button></span>
+        <span class="sr" id="mm-announce" role="status" aria-live="polite"></span>
         <span class="seg" id="mm-mode" role="group" aria-label="Units"><button type="button" data-m="liquid" class="on" aria-pressed="true">Liquid (in)</button><button type="button" data-m="snow" aria-pressed="false">Snow (in)</button></span>
         <div class="chart" id="mm-chart" style="height:240px"><p class="hint">Loading chart…</p></div>
         <p class="note" id="mm-note"></p></section>`}
@@ -1109,6 +1186,12 @@ What actually happened (snow measured/seen, where, photos or links welcome):
         C.lazy($("p-chart"), withPlotly(() => snowRateChart($("p-chart"), d, pt, tz)));
         return Promise.resolve();
       };
+      $("mm-view")?.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {
+        mmView = btn.dataset.v;
+        $("mm-view").querySelectorAll("button").forEach((x) => { x.classList.toggle("on", x === btn); x.setAttribute("aria-pressed", String(x === btn)); });
+        $("mm-announce").textContent = mmView === "ens" ? "Showing the ECMWF ensemble plume." : "Showing the model comparison.";
+        modelChart($("mm-chart"), doc(), tz);
+      }));
       $("mm-mode")?.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {
         if (btn.disabled) return;
         mmMode = btn.dataset.m;

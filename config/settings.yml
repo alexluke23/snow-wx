@@ -86,6 +86,15 @@ forecast_overlays:
   enabled: true
   stale_hours: 14
 
+ecmwf:
+  # ECMWF open data (CC BY 4.0) at ski-area summits: IFS HRES line in "Precipitation by model" + IFS ENS plume (pipeline/ecmwf.py, `python -m pipeline ecmwf`).
+  # OFF until the owner wires docs/workflow_snippets/ecmwf.yml into a workflow; `--force` runs it by hand. 0.25 degree ENS carries 50 perturbed members (no control).
+  enabled: false
+  cycles: [0, 12]
+  step_h: 6
+  max_step_h: 240
+  stale_hours: 24
+
 alerts_backend:
   # W6 alerts backend skeleton (pipeline/alerts_backend.py, docs/specs/alerts-backend.md): OFFLINE reference logic + tests only; nothing is deployed and
   # nothing on the site calls it. Needs owner decisions first (e-mail provider, Cloudflare account, sender domain, postal address). Keep false.

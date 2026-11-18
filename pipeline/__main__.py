@@ -17,7 +17,7 @@ import os
 import shutil
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import afd, alerts, asos, avalanche, hazards, snotel
@@ -234,6 +234,14 @@ def main(argv=None) -> int:
     p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("ecmwf", help="ECMWF open data at ski-area summits: IFS HRES line + ENS plume (no-op unless config ecmwf.enabled; dev17)")
+    p.add_argument("--out", default="build/models", help="models folder: writes ecmwf/precip.json, ecmwf/index.json, ecmwf/plume/<area>.json")
+    p.add_argument("--cycle", help="init time YYYYMMDDHH (default: newest complete 00/12Z cycle)")
+    p.add_argument("--force", action="store_true", help="run even when ecmwf.enabled is false (local test)")
+    p.add_argument("--published", default=None, help="tag already on the release; new=false when unchanged")
+    p.add_argument("--github-output", default=None)
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("pages", help="prerendered area pages + sitemap + robots (W2; no-op unless config pages.enabled)")
     p.add_argument("--out", default="build", help="site folder (data/ already merged)")
     p.add_argument("--force", action="store_true", help="write even when pages.enabled is false (local preview)")
@@ -292,6 +300,12 @@ def main(argv=None) -> int:
     cfg = load_config(args.config)
     from .cache import housekeeping
     housekeeping(REPO_ROOT, cfg)                 # prune data_cache (> 2 days), log disk use
+    if args.cmd == "ecmwf":
+        from . import ecmwf
+        cyc = datetime.strptime(args.cycle, "%Y%m%d%H").replace(tzinfo=timezone.utc) if args.cycle else None
+        res = ecmwf.run(cfg, make_session(cfg), Path(args.out), cycle=cyc, force=args.force, published=args.published, github_output=args.github_output)
+        print(json.dumps({k: v for k, v in res.items() if k not in ("attribution", "hours")}))
+        return 0 if res.get("ok") or res.get("skipped") else 1
     if args.cmd == "pages":
         from . import pages
         return pages.run(load_config(args.config), Path(args.out), force=args.force)

@@ -149,7 +149,10 @@ def run(cfg: dict, session, outdir: Path) -> dict:
     states = cfg["region"]["states"]
     r = session.get(URL, params={"area": ",".join(states)}, headers={"Accept": "application/geo+json"}, timeout=60)
     r.raise_for_status()
-    features = r.json().get("features") or []
+    js = r.json()
+    if not isinstance(js, dict) or not isinstance(js.get("features"), list):          # a 200 without a feature list is a broken answer, not "no alerts"
+        raise RuntimeError("alerts: unexpected payload (no features list); keeping the last good files")
+    features = js["features"]
     areas, points = load_sites()
     index, details = build(features, areas, points)
     out = outdir / "alerts"

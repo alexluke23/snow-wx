@@ -1040,6 +1040,76 @@ def check_finder_show_all(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
+def check_ensemble(b: Browser, base: str, log):
+    """dev17 Part 2: the Models / Ensemble toggle on the area page at 1280 and 375 px: real two-option toggle (aria-pressed, >= 40 px, announced), the
+    plume file is NOT requested until Ensemble is selected, the plume is ONE faint multi-segment trace plus bands/median/mean/HRES with direct labels,
+    headline = aria-label, table with percentiles and "N of 50 members" rows, cycle/issue time + terrain + attribution shown, stale greyed."""
+    import datetime as _dt
+    plume = Path(__file__).resolve().parents[1] / "build" / "models" / "ecmwf" / "plume" / "alta-ski-area.json"
+    if not plume.exists():
+        log("  (no ECMWF data in build/: run `python -m pipeline ecmwf --force` and merge multimodel; skipping)")
+        return
+    orig = plume.read_text(encoding="utf-8")
+    try:
+        for width in (1280, 375):
+            b.open(f"{base}/area.html#alta-ski-area", width=width, wait=8)
+            b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(4)
+            pre = b.eval("""(() => { const v = document.getElementById('mm-view');
+              return {shown: !!v && !v.hidden, btns: v ? [...v.querySelectorAll('button')].map(x => [x.textContent.trim(), x.getAttribute('aria-pressed'), Math.round(x.getBoundingClientRect().height)]) : [],
+                      role: v && v.getAttribute('role'), plumeReq: performance.getEntriesByType('resource').filter(r => r.name.includes('ecmwf/plume')).length,
+                      names: (document.getElementById('mm-chart').data || []).map(t => t.name)}; })()""")
+            log(f"  ensemble toggle {width}px (before): {pre}")
+            need(pre["shown"] and pre["role"] == "group" and [x[0] for x in pre["btns"]] == ["Models", "Ensemble"], f"toggle missing: {pre}")
+            need(all(x[2] >= 40 for x in pre["btns"]) and pre["btns"][0][1] == "true" and pre["btns"][1][1] == "false", f"toggle size / aria state: {pre['btns']}")
+            need(pre["plumeReq"] == 0, f"the plume file must not load before Ensemble is selected ({pre['plumeReq']} requests)")
+            need("ECMWF" in pre["names"], f"Models view must include the ECMWF line: {pre['names']}")
+            b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1")
+            time.sleep(3.5)
+            st = b.eval("""(() => { const el = document.getElementById('mm-chart'), d = el.data || [];
+              const tbl = document.querySelector('#mm-chart + details.chart-table');
+              if (tbl) { tbl.open = true; tbl.dispatchEvent(new Event('toggle')); }
+              return {n: d.length, names: d.map(t => t.name), nulls: (d[0] ? d[0].x.filter(v => v === null).length : 0), faintPts: d[0] ? d[0].y.length : 0,
+                aria: el.getAttribute('aria-label'), role: el.getAttribute('role'), badge: document.getElementById('mm-badge').textContent, note: document.getElementById('mm-note').textContent,
+                announce: document.getElementById('mm-announce').textContent, pressed: [...document.querySelectorAll('#mm-view button')].map(x => x.getAttribute('aria-pressed')),
+                plumeReq: performance.getEntriesByType('resource').filter(r => r.name.includes('ecmwf/plume')).length,
+                table: tbl ? tbl.querySelector('.tbl-wrap').textContent : '', hscroll: document.documentElement.scrollWidth > innerWidth + 2,
+                labels: [...el.querySelectorAll('.annotation-text, .annotation text')].map(x => x.textContent).filter(Boolean).slice(0, 12)}; })()""")
+            log(f"  ensemble {width}px: traces {st['n']} {st['names']}, member segments {st['nulls']}, aria: {st['aria']}")
+            need(st["n"] <= 10 and st["nulls"] == 50 and st["faintPts"] > 500, f"the members must be ONE multi-segment trace (<= 10 traces): {st['n']} traces, {st['nulls']} breaks")
+            need({"Median", "Mean", "HRES"} <= set(st["names"]), f"median / mean / HRES missing: {st['names']}")
+            need((st["aria"] or "").startswith("ECMWF ensemble (50 members): median ") and "25–75%" in st["aria"] and "of 50 members above" in st["aria"] and st["role"] == "img", f"headline / aria-label: {st['aria']}")
+            need("ECMWF IFS ENS" in st["badge"] and "00Z" in st["badge"] and "50 perturbed members" in st["badge"], f"cycle / issue time missing: {st['badge']}")
+            need("CC BY 4.0" in st["note"] and "Adapted from" in st["note"] and "not bias-corrected" in st["note"] and "0.25°" in st["note"] and "terrain" in st["note"], f"attribution / caveats missing: {st['note']}")
+            need(st["announce"].startswith("Showing the ECMWF ensemble") and st["pressed"] == ["false", "true"] and st["plumeReq"] == 1, f"announce / state / one fetch: {st['announce']} {st['pressed']} {st['plumeReq']}")
+            need("members" in st["table"] and "Median" in st["table"] and "at least" in st["table"] and not st["hscroll"], f"table rows / layout: {st['table'][:200]} hscroll={st['hscroll']}")
+            if width == 375:
+                b.shot(Path(tempfile.gettempdir()) / "ens_375.png")
+            else:
+                b.shot(Path(tempfile.gettempdir()) / "ens_1280.png")
+            # Snow (in) toggle in the Ensemble view: sf x NBM's ratio; back to Models keeps working
+            b.eval("[...document.querySelectorAll('#mm-mode button')].find(x => x.dataset.m === 'snow').click(); 1"); time.sleep(2.5)
+            sn = b.eval("(() => ({aria: document.getElementById('mm-chart').getAttribute('aria-label'), note: document.getElementById('mm-note').textContent}))()")
+            need("snow" in sn["aria"] and "median snow ratio" in sn["note"] and "inches assume NBM SLR" in sn["note"], f"snow mode in the ensemble: {sn}")
+            b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'models').click(); 1"); time.sleep(2.5)
+            back = b.eval("(() => ({names: (document.getElementById('mm-chart').data || []).map(t => t.name), announce: document.getElementById('mm-announce').textContent}))()")
+            need("NBM" in back["names"] and "ECMWF" in back["names"] and back["announce"].startswith("Showing the model comparison"), f"back to Models: {back}")
+        # stale: a run started 30 h ago is greyed and says so
+        d = json.loads(orig)
+        d["init"] = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=30)).strftime("%Y-%m-%dT%H:00Z")
+        plume.write_text(json.dumps(d), encoding="utf-8")
+        b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=8)
+        b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(4)
+        b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1"); time.sleep(3.5)
+        stale = b.eval("""(() => { const d = document.getElementById('mm-chart').data || [];
+          return {badge: document.getElementById('mm-badge').textContent, line: d.find(t => t.name === 'Median') ? d.find(t => t.name === 'Median').line.color : null,
+                  ann: ((document.getElementById('mm-chart').layout || {}).annotations || []).map(x => x.text).join('|')}; })()""")
+        log(f"  stale ensemble: {stale}")
+        need("out of date" in stale["badge"] and stale["line"] == "#7a8594" and "Out of date" in stale["ann"], f"stale run must be greyed and labelled: {stale}")
+    finally:
+        plume.write_text(orig, encoding="utf-8")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
 def check_multimodel(b: Browser, base: str, log):
     """dev16 M7: precipitation by model on the area page: NBM + HRRR/RRFS/GFS lines, agreement badge (heuristic label), units toggle, table, model terrain in
     the tooltip, graceful when data/multimodel.json is missing, JS rebase == Python rebase."""
@@ -1106,7 +1176,7 @@ def check_mobile_sweep(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "mobile": check_mobile_sweep}
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep}
 
 
 def main(argv=None) -> int:
