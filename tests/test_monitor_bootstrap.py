@@ -129,3 +129,20 @@ def test_unavailable_after_48h_still_alerts(tmp_path, monkeypatch):
     assert meta["sources"]["snotel"].get("unavailable") is True
     res = monitor.evaluate(meta, utcnow(), cfg["monitoring"])["snotel"]
     assert res["problem"] and "BREACH" in res["log"]
+
+
+def test_main_prints_the_per_source_decision_line_the_workflow_logs(monkeypatch, capsys):
+    """`python3 -m pipeline.monitor` is what update-site.yml runs: its stdout must carry one decision line per source, in a fixed format."""
+    import re
+    now = datetime.now(timezone.utc)
+    ago = lambda h: (now - timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731
+    meta = {"sources": {"snotel": {"ok": False, "stale": True, "observed_through": ago(9), "at": ago(0), "consecutive_failures": 1},
+                        "asos": {"ok": True, "at": ago(0), "last_success_at": ago(0), "consecutive_failures": 0}}}
+    monkeypatch.setattr(monitor, "fetch_meta", lambda origin, **k: meta)
+    assert monitor.main(["--dry-run", "--origin", "https://example.test"]) == 0
+    out = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("monitor: ") and "state=" in ln]
+    pat = re.compile(r"^monitor: (\w+): state=(ok|failed|stale|unavailable) failures=\d+/(\d+|-) age=(\?|\d+\.\dh)\(([a-z ]+)\)/(\d+|-)h -> (ok|BREACH: .+) \| action: (open issue|issue already open|close issue|none)$")
+    assert len(out) >= 2 and all(pat.match(ln) for ln in out), out
+    by = {pat.match(ln).group(1): ln for ln in out}
+    assert "state=stale" in by["snotel"] and "BREACH" in by["snotel"] and "action: open issue" in by["snotel"]
+    assert "state=ok" in by["asos"] and "action: none" in by["asos"]

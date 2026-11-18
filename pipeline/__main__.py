@@ -163,6 +163,8 @@ def build_site(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
         write_catalog(outdir / "models", list(load_models_config()["models"]))
         from .models.ridge import merge as merge_ridge
         merge_ridge(outdir / "models", outdir / "data" / "ridge.json")
+        from .models.multimodel import merge as merge_multimodel
+        merge_multimodel(outdir / "models", outdir / "data" / "multimodel.json")
     except Exception:
         logging.getLogger("snow-wx").exception("model catalog failed")
     write_meta(cfg, outdir / "data", product_status(outdir))
@@ -234,6 +236,12 @@ def main(argv=None) -> int:
     p.add_argument("--force", action="store_true", help="write even when pages.enabled is false (local preview)")
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("verify", help="M9-prep: score archived 24-h snow forecasts vs SNOTEL (outage window and stale obs excluded)")
+    p.add_argument("--dir", required=True, help="folder with nbm-*.csv.gz, ndfd-*.csv.gz, snotel-*.csv.gz (gh release download verification)")
+    p.add_argument("--out", required=True, help="output folder for the CSVs and README.md")
+    p.add_argument("--min-hours", type=int, default=20, help="minimum hourly reports in the 24 h for an observation to count")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("pwa", help="PWA build step: manifest, icons, sw.js (no-op unless config pwa.enabled; pwa.kill writes the kill-switch worker)")
     p.add_argument("--out", default="build", help="site folder")
     p.add_argument("--force", action="store_true", help="write even when pwa.enabled is false (local test builds only)")
@@ -284,6 +292,10 @@ def main(argv=None) -> int:
     if args.cmd == "pages":
         from . import pages
         return pages.run(load_config(args.config), Path(args.out), force=args.force)
+    if args.cmd == "verify":
+        from . import verify
+        print(json.dumps(verify.run(Path(args.dir), Path(args.out), load_config(args.config), args.min_hours), indent=1))
+        return 0
     if args.cmd == "pwa":
         from . import pwa
         return pwa.run(load_config(args.config), Path(args.out), force=args.force)
@@ -319,8 +331,11 @@ def main(argv=None) -> int:
         if args.snotel:
             return catalog.build_snotel_points(make_session(cfg), catalog.load_catalog_config(), Path(args.obs_dir))
         if args.rec:
-            from .rec import build_rec_points
-            return build_rec_points(make_session(cfg), cfg, catalog.load_catalog_config(), Path(args.obs_dir))
+            from .rec import build_rec_points, write_review
+            code = build_rec_points(make_session(cfg), cfg, catalog.load_catalog_config(), Path(args.obs_dir))
+            if not code:
+                print(f"owner review: {len(write_review())} Sno-Park points flagged in data/rec_points_review.csv")
+            return code
         return catalog.run(cfg, make_session(cfg), Path(args.out), Path(args.obs_dir), args.refresh)
     if args.cmd == "obs":
         return run_obs(cfg, Path(args.out), args.only)

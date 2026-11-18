@@ -26,6 +26,11 @@ domains:
 field_domains:
   h500: [west]                 # synoptic field; subregions add nothing
 
+# Precipitation by model at each ski area's summit (M7, pipeline/models/multimodel.py -> data/multimodel.json). Samples the run-total APCP the
+# QPF maps already derive: no extra download. enabled: false = no sampling and no file (the area page then says the comparison is unavailable).
+multi_model:
+  enabled: true
+
 models:
   hrrr:
     enabled: true

@@ -1,0 +1,69 @@
+id,name,state,source,subtype,reasons,near_ski_area,near_ski_km,elev_ft,cell_elev_ft,lat,lon
+sp-bvac-ski-and-sledding-area-trailhead,BVAC Ski and Sledding Area Trailhead,CA,osm,nordic,osm_only,,,7064,7107,38.4608,-120.04213
+sp-balsam-meadows-sno-park,Balsam Meadows Sno-Park,CA,osm,snopark,osm_only,,,6735,7157,37.15939,-119.24352
+sp-coyote-sno-park,Coyote Sno-Park,CA,osm,snopark,osm_only,,,7459,7430,37.1675,-119.20637
+sp-crabtree-x-country-trailhead,Crabtree X-Country Trailhead,CA,usfs-edw,trailhead,near_ski_area,Dodge Ridge Ski Area,0.75,6399,6530,38.18958,-119.96593
+sp-donner-summit-california-state-snopark,Donner Summit California State Snopark,CA,osm,snopark,near_ski_area;osm_only,Boreal Mountain Resort,0.74,7214,7348,39.33911,-120.34328
+sp-eastwood-sno-park,Eastwood Sno-Park,CA,osm,snopark,osm_only,,,6985,7138,37.25558,-119.16076
+sp-hope-valley-sno-park,Hope Valley Sno-Park,CA,osm,snopark,osm_only,,,7141,7289,38.74822,-119.93955
+sp-huntington-lake-sno-park,Huntington Lake Sno-Park,CA,osm,snopark,osm_only,,,6966,7138,37.25092,-119.17371
+sp-onion-valley-warming-hut,Onion Valley Warming Hut,CA,usfs-edw,snowplay,duplicate_nearby,,,6070,6382,39.75322,-120.86888
+sp-sawmill-ridge-warming-hut,Sawmill Ridge Warming Hut,CA,usfs-edw,snowplay,duplicate_nearby,,,6341,6382,39.754,-120.865
+sp-snow-park-restroom,Snow Park Restroom,CA,osm,snopark,osm_only,,,19,16,37.80692,-122.26448
+sp-tamarack-ridge-sno-park,Tamarack Ridge Sno-Park,CA,osm,snopark,osm_only,,,7570,7430,37.16238,-119.20179
+sp-hinman-skiing-parking-lot,Hinman Skiing Parking Lot,CO,usfs-edw,snopark,duplicate_nearby,,,7689,7891,40.7536,-106.8217
+sp-hinman-snowmobile-parking-lot,Hinman Snowmobile Parking Lot,CO,usfs-edw,snopark,duplicate_nearby,,,7672,7891,40.7525,-106.82551
+sp-wellington-snow-park,Wellington Snow Park,ID,osm,snopark,osm_only,,,4548,4985,44.29763,-116.0903
+sp-grave-creek-sno314,Grave Creek Sno314,MT,usfs-edw,snopark,duplicate_nearby,,,3539,4528,48.85599,-114.82785
+sp-grave-creek-sno314a,Grave Creek Sno314a,MT,usfs-edw,snopark,duplicate_nearby,,,3947,4604,48.89047,-114.80009
+sp-snow-park-chair,Snow Park Chair,MT,osm,snopark,osm_only,,,6212,5832,47.01627,-114.0223
+sp-snow-park-ski-area,Snow Park Ski Area,MT,osm,snopark,osm_only,,,5590,5832,47.01437,-114.02955
+sp-embudo-snow-park-crossing,Embudo Snow Park Crossing,NM,osm,snopark,osm_only,,,5378,5369,35.09949,-106.54644
+sp-snow-park,Snow Park,NM,osm,snopark,osm_only,,,5437,5369,35.10254,-106.53919
+sp-snow-park-nm,Snow Park,NM,osm,snopark,osm_only,,,9962,9152,33.25974,-108.5795
+sp-snowpark-drive,Snowpark Drive,NM,osm,snopark,osm_only,,,7462,7391,33.41316,-105.67718
+sp-william-clark-snow-park,William Clark Snow Park,NM,osm,snopark,osm_only,,,3751,3794,31.85602,-106.6271
+sp-annie-creek-sno-park,Annie Creek Sno-Park,OR,osm,snopark,osm_only,,,4372,4381,42.76168,-122.0595
+sp-barlow-pass-sno-park,Barlow Pass Sno-Park,OR,osm,snopark,osm_only;duplicate_nearby,,,4158,4181,45.28245,-121.68552
+sp-barlow-pass-snow-park-trailhead,Barlow Pass Snow Park & Trailhead,OR,usfs-edw,snopark,duplicate_nearby,,,4069,3972,45.26583,-121.68417
+sp-big-springs-snow-park,Big Springs Snow Park,OR,usfs-edw,snopark,duplicate_nearby,,,3710,3712,44.46278,-121.97921
+sp-boy-scout-camp-sno-park-white-river,Boy Scout Camp Sno-Park (White River),OR,usfs-edw,snopark,duplicate_nearby,,,4243,4245,45.3023,-121.6725
+sp-buck-prairie-2-snow-park,Buck Prairie 2 Snow Park,OR,osm,snopark,osm_only,,,4740,4757,42.25035,-122.47101
+sp-corbett-snow-park,Corbett Snow Park,OR,osm,snopark,osm_only;duplicate_nearby,,,4204,4141,44.40527,-121.79772
+sp-corbett-snow-park-or,Corbett Snow Park,OR,osm,snopark,osm_only;duplicate_nearby,,,4228,4553,44.42065,-121.79069
+sp-emily-sno-park,Emily Sno-Park,OR,osm,snopark,osm_only,,,4130,4015,45.44326,-118.33093
+sp-four-mile-lake-road-snow-park,Four Mile Lake Road Snow Park,OR,usfs-edw,snopark,duplicate_nearby,,,5000,5085,42.38895,-122.22622
+sp-glacier-view-snowpark,Glacier View Snowpark,OR,usfs-edw,snopark,near_ski_area,Mt. Hood Skibowl,0.39,3674,3813,45.30417,-121.7775
+sp-government-camp-summit-snow-park,Government Camp Summit Snow Park,OR,usfs-edw,snopark,near_ski_area,Timberline Lodge Ski Area,0.14,3984,4359,45.3025,-121.74444
+sp-ichabod-springs-snow-park,Ichabod Springs Snow Park,OR,usfs-edw,snopark,duplicate_nearby,,,4995,5085,42.38612,-122.22872
+sp-maxwell-snow-park,Maxwell Snow Park,OR,usfs-edw,snopark,duplicate_nearby,,,3712,4023,44.46185,-121.97581
+sp-ray-benson-snow-park,Ray Benson Snow Park,OR,usfs-edw,snopark,near_ski_area,Hoodoo Ski Area,0.97,4773,4799,44.40475,-121.86177
+sp-snow-bunny-sliding-area-sno-park,Snow Bunny Sliding Area Sno-Park,OR,usfs-edw,snopark,duplicate_nearby,,,3834,3877,45.28778,-121.72722
+sp-snow-park-or,Snow Park,OR,osm,snopark,osm_only,,,5008,4887,45.69403,-118.04053
+sp-snow-park-accees-trail,Snow Park Accees Trail,OR,osm,snopark,osm_only,,,4359,4566,45.3195,-121.62603
+sp-trillium-snow-park,Trillium Snow Park,OR,usfs-edw,snopark,duplicate_nearby,,,3804,3877,45.28611,-121.72722
+sp-white-river-west-snow-park,White River West Snow Park,OR,usfs-edw,snopark,duplicate_nearby,,,4281,4245,45.30417,-121.67361
+sp-bear-river-snow-park-road,Bear River Snow Park Road,UT,osm,snopark,osm_only,,,8378,8453,40.91484,-110.82648
+sp-jc-snow-park,JC Snow Park,UT,osm,snopark,osm_only,,,2584,2670,37.09043,-113.57828
+sp-snow-park-ut,Snow Park,UT,osm,snopark,osm_only,,,4347,4329,41.5214,-112.01636
+sp-snow-park-court,Snow Park Court,UT,osm,snopark,osm_only,,,4685,4617,40.5214,-111.99186
+sp-snow-park-gondola,Snow Park Gondola,UT,osm,snopark,osm_only,,,8290,7947,40.61912,-111.48487
+sp-snow-park-lodge,Snow Park Lodge,UT,osm,snopark,osm_only,,,7218,7498,40.6373,-111.47831
+sp-snow-park-trail,Snow Park Trail,UT,osm,snopark,osm_only,,,7049,7075,40.6454,-111.49492
+sp-1-road-sno-park-lower,1 Road Sno-Park (Lower),WA,osm,snopark,osm_only,,,2348,2800,46.70603,-121.99312
+sp-boulder-creek-sno-park,Boulder Creek Sno-Park,WA,osm,snopark,osm_only,,,2043,2465,48.5715,-120.17103
+sp-chiwawa-sno-park,Chiwawa Sno-Park,WA,osm,snopark,osm_only;duplicate_nearby,,,2007,2029,47.81107,-120.67396
+sp-chiwawa-snow-park,Chiwawa Snow Park,WA,usfs-edw,snopark,duplicate_nearby,,,1919,2003,47.8189,-120.698
+sp-cold-creek-sno-park,Cold Creek Sno-Park,WA,usfs-edw,snopark,duplicate_nearby,,,3338,3152,46.62662,-121.25563
+sp-deer-creek-summit-snow-park,Deer Creek Summit Snow Park,WA,usfs-edw,snopark,duplicate_nearby,,,4590,4504,48.86378,-118.39502
+sp-deer-creek-summit-snow-park-wa,Deer Creek Summit Snow Park,WA,usfs-edw,snopark,duplicate_nearby,,,4580,4504,48.86482,-118.39736
+sp-easton-reload-sno-park,Easton Reload Sno-Park,WA,osm,snopark,osm_only,,,2275,2666,47.23541,-121.22331
+sp-flowery-trail-snow-park,Flowery Trail Snow Park,WA,usfs-edw,snopark,near_ski_area,49° North Mountain Resort,0.69,4007,4073,48.30818,-117.56959
+sp-french-cabin-sno-park,French Cabin Sno Park,WA,osm,snopark,osm_only,,,2255,2579,47.35626,-121.10958
+sp-hyak-sno-parks,Hyak Sno-Parks,WA,osm,snopark,near_ski_area;osm_only,The Summit at Snoqualmie,0.3,2561,2924,47.39151,-121.3926
+sp-kendall-peak-sno-park,Kendall Peak Sno-Park,WA,usfs-edw,snopark,near_ski_area,The Summit at Snoqualmie,0.86,2595,3019,47.39795,-121.3947
+sp-nason-ridge-sno-park,Nason Ridge Sno-Park,WA,osm,snopark,osm_only,,,1967,2324,47.79561,-120.71588
+sp-pinegrass-sno-park,Pinegrass Sno-Park,WA,usfs-edw,snopark,duplicate_nearby,,,3346,3169,46.6254,-121.25899
+sp-south-fork-tieton-sno-park,South Fork Tieton Sno-Park,WA,usfs-edw,snopark,duplicate_nearby,,,3440,3152,46.62329,-121.25563
+sp-upper-92-road-sno-park,Upper 92 Road Sno-Park,WA,osm,snopark,osm_only,,,3470,3279,46.78294,-122.05008
+sp-lower-whitepine-cross-country-ski-trailh,Lower Whitepine Cross Country Ski Trailh,WY,usfs-edw,trailhead,near_ski_area,White Pine Resort,0.25,8421,8065,42.97742,-109.76091

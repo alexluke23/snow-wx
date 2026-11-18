@@ -340,3 +340,74 @@ def build_rec_points(session, cfg: dict, ccfg: dict, obs_dir: Path, out: Path = 
                      "areas": recs}, ndigits=6)
     log.info("wrote %s: %d winter recreation points", out, len(recs))
     return 0
+
+
+# ---------------------------------------------------------------- owner review (dev16)
+
+REVIEW_COLS = ("id", "name", "state", "source", "subtype", "reasons", "near_ski_area", "near_ski_km", "elev_ft", "cell_elev_ft", "lat", "lon")
+GENERIC_NAME = re.compile(r"^(trail\s?head|th|site|parking|lot|unit)\b[\s#\d.-]*$", re.I)
+
+
+def review_flags(rec: dict, ski_areas: list[dict], others: list[dict] | None = None) -> dict:
+    """Why a Sno-Park point deserves an owner look (dev16 M4.5). Pure. Returns {reasons: [...], near_ski_area, near_ski_km}.
+    Reasons: near_ski_area (< 1 km from a ski area's base or summit: a resort Nordic/trailhead that may duplicate it), osm_only (gap-fill
+    source, no USFS record), generic_name, elevation_mismatch (trailhead vs its 2.5 km NBM cell > 2,500 ft: forecast may not represent it),
+    no_nws_grid (no NWS point: no NDFD or alerts), duplicate_nearby (another recreation point within 0.4 km or the same name within 5 km)."""
+    reasons = []
+    b = rec.get("base") or {}
+    best, best_km = None, None
+    for a in ski_areas:
+        for k in ("base", "summit"):
+            p = a.get(k) or {}
+            if p.get("lat") is None or b.get("lat") is None:
+                continue
+            d = haversine_km(b["lat"], b["lon"], p["lat"], p["lon"])
+            if best_km is None or d < best_km:
+                best, best_km = a["name"], d
+    if best_km is not None and best_km < 1.0:
+        reasons.append("near_ski_area")
+    if rec.get("source") == "osm":
+        reasons.append("osm_only")
+    if GENERIC_NAME.match(rec.get("name") or ""):
+        reasons.append("generic_name")
+    cell = ((rec.get("nbm_grid") or {}).get("base") or {}).get("elev_ft")
+    if cell is not None and b.get("elev_ft") is not None and abs(cell - b["elev_ft"]) > 2500:
+        reasons.append("elevation_mismatch")
+    if not ((rec.get("nws") or {}).get("base") or {}).get("wfo"):
+        reasons.append("no_nws_grid")
+    nm = _tokens(rec.get("name") or "")
+    for o in (others or []) if b.get("lat") is not None else []:
+        if o is rec or o.get("id") == rec.get("id") or (o.get("base") or {}).get("lat") is None:
+            continue
+        d = haversine_km(b["lat"], b["lon"], o["base"]["lat"], o["base"]["lon"])
+        if d < 0.4 or (d < 5.0 and nm and nm == _tokens(o.get("name") or "")):
+            reasons.append("duplicate_nearby")
+            break
+    return {"reasons": reasons, "near_ski_area": best if best_km is not None and best_km < 1.0 else None,
+            "near_ski_km": round(best_km, 2) if best_km is not None and best_km < 1.0 else None}
+
+
+def review_rows(rec_doc: dict, ski_doc: dict) -> list[dict]:
+    areas = rec_doc["areas"]
+    rows = []
+    for r in areas:
+        f = review_flags(r, ski_doc["areas"], areas)
+        if f["reasons"]:
+            rows.append({"id": r["id"], "name": r["name"], "state": r["state"], "source": r.get("source"), "subtype": r.get("subtype"),
+                         "reasons": ";".join(f["reasons"]), "near_ski_area": f["near_ski_area"], "near_ski_km": f["near_ski_km"],
+                         "elev_ft": r["base"]["elev_ft"], "cell_elev_ft": ((r.get("nbm_grid") or {}).get("base") or {}).get("elev_ft"),
+                         "lat": r["base"]["lat"], "lon": r["base"]["lon"]})
+    return rows
+
+
+def write_review(rec_path: Path = OUT, ski_path: Path | None = None, out: Path | None = None) -> list[dict]:
+    """data/rec_points_review.csv for the owner (committed next to the catalog, like ski_areas_verify.csv)."""
+    import csv
+    ski = json.loads((ski_path or REPO_ROOT / "data" / "ski_areas.json").read_text(encoding="utf-8"))
+    rows = review_rows(json.loads(Path(rec_path).read_text(encoding="utf-8")), ski)
+    out = out or Path(rec_path).with_name("rec_points_review.csv")
+    with open(out, "w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=REVIEW_COLS)
+        w.writeheader()
+        w.writerows(rows)
+    return rows

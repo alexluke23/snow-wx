@@ -49,3 +49,37 @@ def test_high_point_within_radius():
     bbox = (-121.064, 43.955, -120.936, 44.045)      # ~10 x 10 km around (44.0, -121.0)
     lat, lon, ft = R.high_point(a, (44.0, -121.0), bbox)
     assert round(ft) == round(3000 * 3.28084) and lon > -121.0 and abs(lat - 44.0) < 0.001
+
+
+def _rec(i, name, lat, lon, source="usfs-edw", elev=6000, cell=6200, wfo="SLC"):
+    return {"id": i, "name": name, "state": "UT", "source": source, "subtype": "snopark", "base": {"lat": lat, "lon": lon, "elev_ft": elev},
+            "nbm_grid": {"base": {"elev_ft": cell}}, "nws": {"base": {"wfo": wfo} if wfo else {}}}
+
+
+SKI = [{"name": "Alta Ski Area", "base": {"lat": 40.58, "lon": -111.64}, "summit": {"lat": 40.59, "lon": -111.63}}]
+
+
+def test_review_flags_each_reason_from_fixtures():
+    from pipeline.rec import review_flags
+    ok = _rec("a", "Quiet Meadow Sno-Park", 41.5, -112.5)
+    assert review_flags(ok, SKI, [ok])["reasons"] == []
+    near = review_flags(_rec("b", "Cottonwood Nordic", 40.585, -111.64), SKI)
+    assert "near_ski_area" in near["reasons"] and near["near_ski_area"] == "Alta Ski Area" and near["near_ski_km"] < 1
+    assert "osm_only" in review_flags(_rec("c", "Gap Fill Sno-Park", 41.5, -112.5, source="osm"), SKI)["reasons"]
+    assert "generic_name" in review_flags(_rec("d", "Trailhead 12", 41.5, -112.5), SKI)["reasons"]
+    assert "elevation_mismatch" in review_flags(_rec("e", "Deep Valley", 41.5, -112.5, elev=5000, cell=8000), SKI)["reasons"]
+    assert "no_nws_grid" in review_flags(_rec("f", "Offgrid", 41.5, -112.5, wfo=None), SKI)["reasons"]
+    a, b = _rec("g", "Twin Sno-Park", 41.5, -112.5), _rec("h", "Twin Sno-Park Lot", 41.5, -112.503)
+    assert "duplicate_nearby" in review_flags(a, SKI, [a, b])["reasons"]
+
+
+def test_review_rows_lists_only_flagged_points_and_keeps_the_source():
+    from pipeline.rec import review_rows
+    rows = review_rows({"areas": [_rec("a", "Quiet", 41.5, -112.5), _rec("c", "Gap", 41.6, -112.6, source="osm")]}, {"areas": SKI})
+    assert [r["id"] for r in rows] == ["c"] and rows[0]["source"] == "osm" and rows[0]["reasons"] == "osm_only"
+
+
+def test_review_flags_tolerates_a_record_without_a_base():
+    from pipeline.rec import review_flags
+    odd = {"id": "x", "name": "No Base", "source": "osm", "nws": {}}
+    assert "osm_only" in review_flags(odd, SKI, [odd, _rec("a", "Other", 41.5, -112.5)])["reasons"]

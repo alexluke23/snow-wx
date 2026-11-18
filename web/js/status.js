@@ -58,6 +58,7 @@
     .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
     .then(render)
     .catch((e) => {
+      $("st-table").style.minHeight = "0";                       // nothing to reserve space for
       $("st-table").innerHTML = `<p class="snotel-note" role="status">The status file (data/meta.json) could not be read (${esc(e.message)}). The site may be updating or temporarily unavailable; try again in a few minutes.</p>`;
     });
 })();
