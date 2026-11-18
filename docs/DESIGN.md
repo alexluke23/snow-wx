@@ -66,3 +66,8 @@ fail over to a fallback provider (update attribution; check each provider's
 terms); log tile failures in debug.
 
 ---
+
+**Probability palette audit (dev17).** `colors.js` `PROB` (Finder, heat tables, forecast chance overlays) is a single-hue sequential blue ramp whose lightness falls monotonically
+(L* 97 → 14). The previous top two steps (purple, magenta) had the same lightness (L* 33/34) and were only ΔE 6 apart under deuteranopia; they are now dark blues
+(`#1d3f7c`, `#0f2150`). Adjacent-step ΔE under simulated deuteranopia / protanopia / tritanopia (Machado 2009, severity 1): minimum 9.2 / 7.8 / 8.5 (the pale end is the tightest; the % is printed in every
+heat-table cell, so colour is never the only channel).

@@ -162,6 +162,6 @@ function snowPale(hex) {
 const PROB = {
   label: "Chance (%)",
   bins: [5, 10, 20, 30, 50, 70, 90],
-  colors: ["#f4f6f8", "#dbe9f6", "#b3d3ea", "#7fb2d9", "#4a8cc4", "#2b5fa6", "#5b3a9c", "#8e1f7a"],
+  colors: ["#f4f6f8", "#dbe9f6", "#b3d3ea", "#7fb2d9", "#4a8cc4", "#2b5fa6", "#1d3f7c", "#0f2150"],
   digits: 0,
 };

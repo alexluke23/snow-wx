@@ -52,6 +52,9 @@ def write_meta(cfg: dict, outdir: Path, updates: dict) -> None:
         # the limits the data-health monitor uses (config monitoring.sources), for the public status page (status.html)
         "monitoring": {"sources": (cfg.get("monitoring") or {}).get("sources") or {}},
         # public settings the pages read (web/js/site-config.js): only the feedback address, from config site.feedback_email
+        # NBM forecast overlays on the obs map (config forecast_overlays): enabled=false hides the Forecast group; layers older than stale_hours are greyed
+        "forecast_overlays": {"enabled": bool((cfg.get("forecast_overlays") or {}).get("enabled", True)),
+                              "stale_hours": float((cfg.get("forecast_overlays") or {}).get("stale_hours", 14))},
         "site": {"feedback_email": os.environ.get("SNOWWX_FEEDBACK_EMAIL") or (cfg.get("site") or {}).get("feedback_email") or ""},
     })
 

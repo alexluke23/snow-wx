@@ -514,6 +514,37 @@ def check_forecast_overlays(b: Browser, base: str, log):
       return {legend: !!l, first: l ? l.querySelector('.sw').textContent : null, nws: SNOWFALL.colors[7] === '#fffe95' && SNOWFALL.bins[6] === 6}; })()""")
     log(f"  snowfall overlay legend: {leg}")
     need(leg["legend"] and leg["first"] == "0.1" and leg["nws"], f"snowfall overlay legend / NWS colours: {leg}")
+    # dev17 Part 1: default OFF, lazy (no layer PNG is requested until one is chosen), cycle + issue time shown, stale data greyed
+    b.open(f"{base}/index.html", wait=7)
+    lazy = b.eval(r"""(() => ({png: performance.getEntriesByType('resource').filter(r => /points\/layers\/.*\.png/.test(r.name)).length,
+        active: window.snowwx.overlays.current(), sel: (document.querySelector('#overlay-select') || {}).value}))()""")
+    log(f"  forecast overlays at load: {lazy}")
+    need(lazy["png"] == 0 and not lazy["active"] and lazy["sel"] == "", f"forecast overlays must be off and not fetched until toggled: {lazy}")
+    import datetime as _dt
+    ixp = Path(__file__).resolve().parents[1] / "build" / "data" / "points" / "layers" / "index.json"
+    orig = ixp.read_text(encoding="utf-8")
+    try:
+        for hours_old, want_stale in ((3, False), (30, True)):
+            ix = json.loads(orig)
+            cyc = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=hours_old)).strftime("%Y%m%d%H")
+            for l in ix["layers"]:
+                l["cycle"] = cyc
+            ixp.write_text(json.dumps(ix), encoding="utf-8")
+            b.open(f"{base}/index.html#v=depth_24h&map=7/46.0/-121.0", wait=7)
+            b.eval("(() => { const s = document.querySelector('#overlay-select'); s.value = 'nbm72'; s.dispatchEvent(new Event('change')); return 1; })()")
+            time.sleep(3)
+            st = b.eval("""(() => { const o = window.snowwx.overlays.layer(), c = o && o._canvas;
+              return {stale: window.snowwx.overlays.isStale('nbm72'), filter: c ? c.style.filter : null, opacity: c ? Number(c.style.opacity) : null,
+                      note: (document.querySelector('.stale-note') || {}).textContent || '', meta: (document.querySelector('.overlay-meta .hint') || {}).textContent}; })()""")
+            log(f"  forecast overlay {hours_old} h old: {st}")
+            need(st["stale"] == want_stale, f"{hours_old} h old layer: stale={st['stale']}")
+            need("started" in (st["meta"] or "") and "run" in (st["meta"] or ""), f"cycle / issue time missing: {st['meta']}")
+            if want_stale:
+                need("grayscale" in (st["filter"] or "") and st["opacity"] <= 0.4 and "Out of date" in st["note"], f"stale layer is not greyed with a note: {st}")
+            else:
+                need(not st["filter"] and not st["note"], f"fresh layer must not be greyed: {st}")
+    finally:
+        ixp.write_text(orig, encoding="utf-8")
     need(not b.errors, f"JS errors: {b.errors}")
 
 

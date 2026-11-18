@@ -45,3 +45,18 @@ confidence signal powder chasers want.
 - **Budget (Nov 17, 3 models):** measured on a full HRRR run (29 frames) 27.6 KB for 160 areas (172 B per area); three models ~95 KB for the whole `multimodel.json` (~0.6 KB per area; gzip far less); sampling cost ~16 ms per frame plus a one-time
   ~0.9 s KD-tree nearest-cell index per model run on a 1000x1400 grid (the models.yml renders take 100-180 s), so under +1% runtime. Neither breaks a budget: enabled.
 - ECMWF (M8) is not part of this step.
+
+### Agreement-badge calibration (dev17 Part 0e)
+Method: real runs (HRRR / RRFS / GFS `qpf_total` at summit points, `pipeline models --fields qpf_total --domains west`) merged into `multimodel.json`, NBM series from the committed points files,
+the page's own `MultiModel.build` executed in Node over all 160 areas (`node tools/agreement_calibration.js <label> [multimodel.js]`, env `CALIB_FILE` = a multimodel.json, `SCRATCH` = output folder). Results, 160 areas:
+
+| Cycle | High | Medium | Low | all-dry | window used |
+|---|---|---|---|---|---|
+| 2026-11-18 06Z (before = after: no change) | 74 (46%) | 62 (39%) | 24 (15%) | 20 | 72 h for all 160 |
+| 2026-11-18 00Z | 73 (46%) | 60 (38%) | 27 (17%) | 16 | 72 h for all 160 |
+
+Terrain gap: the largest |model terrain - summit| among the models in the window is NOT larger for Low areas (median 1,453-1,457 ft) than for High (1,614-1,939 ft); a model is outside the +-25% band in
+37-39% of pairs with a gap < 1,000 ft vs 21-35% at >= 2,000-3,000 ft (RRFS median gap ~1,000 ft, GFS ~1,600 ft, p90 3,256 ft). Only 4-8 of the 24-27 Low areas have an outlier model > 2,000 ft off the summit.
+Conclusion: neither trigger fired (no class > ~70%, terrain gap does not dominate), so the metric and thresholds are unchanged and no extra tooltip note was added; the finding is stated on about.html.
+Observation: HRRR ends at 48 h, so the 72-h window (chosen because it is the longest that >= 3 sources reach) never includes it. A fixed 48-h window with all four sources was tried and
+rejected: it made 71% of areas High (more windows are "all dry"). Single-cycle caveat: both cycles are the same storm period; re-check after a few weeks of archived multimodel files.
