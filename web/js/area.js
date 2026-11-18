@@ -678,6 +678,41 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     });
   }
 
+  /** Storm total (observed, W-tracker dev15): snow over a selectable window from the nearest SNOTEL station (snow depth change and SWE change from
+   *  its hourly series) and the NOHRSC National Snowfall Analysis at the summit/base (24/48/72 h windows only; NOHRSC publishes no 7-day product).
+   *  A depth change includes compaction: it is NOT snowfall (owner Nov 16). A stale SNOTEL copy older than the window shows "–", never an old value as current. */
+  async function stormTotal(host, a, depthSeries, sweSeries, info, st) {
+    const WINS = [["24h", 24], ["48h", 48], ["72h", 72], ["7d", 168]];
+    let win = "72h", nohrsc = null;
+    try { nohrsc = (await getJSON("data/nohrsc/ski.json")).areas?.[a.id] || null; } catch { /* optional */ }
+    const change = (arr, h) => {
+      let i = arr.length - 1;
+      while (i >= 0 && (arr[i] === null || arr[i] === undefined)) i--;
+      return i >= h && arr[i - h] !== null && arr[i - h] !== undefined ? arr[i] - arr[i - h] : null;
+    };
+    const sw = (v) => `<i class="sw${v !== null && snowPale(colorFor(SNOWFALL, v) || "#fff") ? " pale" : ""}" style="background:${v !== null && v > 0 ? colorFor(SNOWFALL, v) || "#f4f6f8" : "#f4f6f8"}"></i>`;
+    const fmt = (v, d = 0, sign = true) => (v === null || v === undefined ? "–" : `${sign && v > 0 ? "+" : ""}${v.toFixed(d)}"`);
+    function render() {
+      const h = Object.fromEntries(WINS)[win];
+      const closed = info.state === "stale" && (info.ageH ?? 0) > h;            // the stale copy is older than the window
+      const dep = closed ? null : change(depthSeries, h), swe = closed ? null : change(sweSeries, h);
+      const key = h === 24 ? "sf24" : h === 48 ? "sf48" : h === 72 ? "sf72" : null;
+      const nrow = (k) => (nohrsc?.[k] && key ? `<tr><th scope="row">NOHRSC snowfall analysis, ${POINT_LABEL[k].toLowerCase()}</th><td>${sw(nohrsc[k][key])}${fmt(nohrsc[k][key], 1, false)}</td></tr>` : "");
+      host.innerHTML = `<h4>Storm total (observed)</h4>
+        <span class="seg" role="group" aria-label="Storm-total window">${WINS.map(([n]) => `<button type="button" data-w="${n}" class="${n === win ? "on" : ""}" aria-pressed="${n === win}">${n === "7d" ? "7 days" : n.replace("h", " h")}</button>`).join("")}</span>
+        <table class="metrics"><tbody>
+          <tr><th scope="row">${esc(st.name)} SNOTEL: snow depth change</th><td>${sw(dep)}${fmt(dep)}</td></tr>
+          <tr><th scope="row">${esc(st.name)} SNOTEL: SWE change</th><td>${fmt(swe, 1)}</td></tr>
+          ${nrow("summit")}${nrow("base")}
+        </tbody></table>
+        <p class="note">${closed ? `The SNOTEL copy is ${Math.round(info.ageH)} h old, older than this window, so no change is shown. ` : ""}Depth change includes compaction and settling, so it is <b>not snowfall</b>;
+          SWE change is the water in the snowpack. ${key ? "NOHRSC: NOAA/NWS National Snowfall Analysis for the grid cell, not a measurement at the lifts." : "NOHRSC publishes snowfall for 24–72 h only."}
+          Source: USDA NRCS SNOTEL${key ? ", NOAA/NWS NOHRSC" : ""}.</p>`;
+      host.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { win = b.dataset.w; render(); }));
+    }
+    render();
+  }
+
   async function recentObs(el, a) {
     const st = a.nearest?.snotel?.[0];
     if (!st) { el.innerHTML = `<p class="hint">No SNOTEL station within range.</p>`; return; }
@@ -696,6 +731,8 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     el.innerHTML = `${staleNote}<p><strong>${esc(st.name)}</strong> SNOTEL, ${ft(st.elev_ft)}${st.dist_km !== undefined ? ` (${st.dist_km} km away)` : ""}:
       snow depth <strong>${depth === null ? "–" : `${Math.round(depth)} in`}</strong>${chg === null ? "" :
       ` (${chg >= 0 ? "+" : ""}${Math.round(chg)} in in 72 h)`}.</p><div class="chart" id="obs-chart" style="height:220px"><p class="hint">Loading chart…</p></div>`;
+    $("obs-chart").insertAdjacentHTML("beforebegin", `<div id="storm" class="storm"></div>`);
+    stormTotal($("storm"), a, series, d.WTEQ || [], info, st);
     // SNOTEL times are the station's local standard time (wall clock already)
     const xs = d.times.map((t) => t.slice(0, 16));
     const swe = d.WTEQ || [];

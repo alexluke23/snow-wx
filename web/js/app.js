@@ -385,10 +385,10 @@
       ${p.stale ? `<p class="snotel-note">Observations are ${Math.max(1, Math.round(p.age_h))} h old (SNOTEL data service not responding).</p>` : ""}
       <table class="metrics">
         <tr><td>Snow depth</td><td>${num(p.depth_in, 0, '"')}</td></tr>
-        <tr><td>Depth change 24 / 72 hr</td><td>${signed(p.depth_24h, 0, '"')} / ${signed(p.depth_72h, 0, '"')}</td></tr>
+        <tr><td>Depth change 24 / 48 / 72 hr / 7 d</td><td>${signed(p.depth_24h, 0, '"')} / ${signed(p.depth_48h, 0, '"')} / ${signed(p.depth_72h, 0, '"')} / ${signed(p.depth_7d, 0, '"')}</td></tr>
         <tr><td>SWE</td><td>${num(p.swe_in, 1, '"')} (${num(p.pct_median, 0)}% of median${
           p.pct_median == null && p.median_swe_in != null ? `; median ${num(p.median_swe_in, 1, '"')}` : ""})</td></tr>
-        <tr><td>SWE change 24 / 72 hr</td><td>${signed(p.swe_24h, 1, '"')} / ${signed(p.swe_72h, 1, '"')}</td></tr>
+        <tr><td>SWE change 24 / 48 / 72 hr / 7 d</td><td>${signed(p.swe_24h, 1, '"')} / ${signed(p.swe_48h, 1, '"')} / ${signed(p.swe_72h, 1, '"')} / ${signed(p.swe_7d, 1, '"')}</td></tr>
         <tr><td>Precip 24 hr</td><td>${num(p.precip_24h, 2, '"')}</td></tr>
         <tr><td>Temp now (24-hr hi / lo)</td><td>${num(p.temp_f, 0, "°")} (${num(p.tmax_24h, 0, "°")} / ${num(p.tmin_24h, 0, "°")})</td></tr>
       </table>
