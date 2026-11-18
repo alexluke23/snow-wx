@@ -7,7 +7,7 @@ SNOTEL observation for the same window end (12Z): the 24-h change in the 3-h-med
 of snowfall (settling, melt and wind take it away), so BIAS is expected to be positive (forecast > observed); read it with that in mind.
 
 Excluded before scoring, and counted in the output:
-  * observations inside the NRCS SNOTEL outage window (config verification.snotel_outage: start .. first CONFIRMED live recovery, PLAN §2);
+  * observations whose 24-h window overlaps the NRCS SNOTEL outage window (config verification.snotel_outage: start .. first CONFIRMED live recovery, PLAN §2);
   * observations with fewer than `min_hours` hourly reports in the 24 h (stale / carried / patchy stations; `hours_present`);
   * pairs with a missing forecast or observation.
 Scores are by lead bucket and by state / elevation band: n, bias, MAE, and the event skill (POD, FAR) for >= 1 in and >= 4 in; NBM also gets
@@ -54,12 +54,15 @@ def pair(forecasts: pd.DataFrame, obs: pd.DataFrame, outage: tuple[str, str] | N
     f["end_ts"] = pd.to_datetime(f["end"], utc=True)
     o = obs.copy()
     o["end_ts"] = pd.to_datetime(o["end"], utc=True)
+    o = o.drop_duplicates(["triplet", "end_ts"], keep="last")                    # overlapping monthly files must not duplicate forecast rows
     both = f.merge(o[["triplet", "end_ts", "d_depth_med3_24h", "hours_present"]], on=["triplet", "end_ts"], how="left")
-    ex["no_observation"] = int(both["d_depth_med3_24h"].isna().sum() + 0)
+    ex["no_observation"] = int(both["d_depth_med3_24h"].isna().sum())
     keep = both
     if outage:
         a, b = _ts(outage[0]), _ts(outage[1])
-        inside = (keep["end_ts"] >= a) & (keep["end_ts"] <= b)
+        # OVERLAP test: a 24-h window that touches the outage at all is excluded (it would use stale / carried depths), including the
+        # window ending at the outage start and the first windows ending after the recovery
+        inside = (keep["end_ts"] >= a) & ((keep["end_ts"] - pd.Timedelta(hours=24)) < b)
         ex["outage_window"] = int(inside.sum())
         keep = keep[~inside]
     low = keep["hours_present"].fillna(0) < min_hours

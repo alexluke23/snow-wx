@@ -77,3 +77,14 @@ def test_run_writes_csvs_and_a_readme_that_states_the_limits(tmp_path):
     assert "2026-11-18T00:45Z" in text and "Temperature is not scored" in text and "10 days of archive" in text and "NWS (NDFD)" in text
     assert json.loads((out / "summary.json").read_text(encoding="utf-8"))["outage_excluded"] == list(OUTAGE)
     assert not pd.read_csv(out / "scores_by_lead.csv").empty
+
+
+def test_outage_exclusion_is_an_overlap_test_and_duplicate_observations_do_not_inflate_n(tmp_path):
+    rows = [nbm("snotel-1-OR-SNTL", e, 2.0, 2.0, 10) for e in ("2026-11-16T12:00Z", "2026-11-18T12:00Z", "2026-11-19T12:00Z", "2026-11-15T12:00Z")]
+    write_gz(tmp_path / "nbm-202611.csv.gz", FC, rows)
+    ob = [obs("1:OR:SNTL", e, 1.0) for e in ("2026-11-16T12:00Z", "2026-11-18T12:00Z", "2026-11-19T12:00Z", "2026-11-15T12:00Z")]
+    write_gz(tmp_path / "snotel-202611.csv.gz", OB, ob + [obs("1:OR:SNTL", "2026-11-19T12:00Z", 1.0)])      # one duplicated observation row
+    nb, _, o = verify.load_archive(tmp_path)
+    pairs, ex = verify.pair(nb, o, OUTAGE)
+    # 11-15T12Z window ends before the outage and is kept; 11-16T12Z (ends at the start), 11-18T12Z (starts before the recovery) are excluded; 11-19T12Z kept once
+    assert sorted(pairs["end"]) == ["2026-11-15T12:00Z", "2026-11-19T12:00Z"] and ex["outage_window"] == 2

@@ -45,6 +45,11 @@ const MultiModel = (() => {
    * ("inches assume NBM SLR"); the NBM line is NBM's own expected snowfall.
    */
   function build({ doc, areaId, nbm, mode = "liquid" }) {
+    const liquid = buildOne({ doc, areaId, nbm, mode: "liquid" });
+    if (mode !== "snow") return liquid;
+    return { ...liquid, series: buildOne({ doc, areaId, nbm, mode: "snow" }).series };        // the badge always comes from the liquid series
+  }
+  function buildOne({ doc, areaId, nbm, mode }) {
     const nb = nbmCumulative(nbm.precip, nbm.initMs);
     const per = [];
     for (const m of doc?.models || []) {
@@ -79,13 +84,13 @@ const MultiModel = (() => {
         ys = pts.map(([x, y], i) => {
           if (i === 0) return 0;
           const mid = (x + pts[i - 1][0]) / 2, d = Math.max(0, y - pts[i - 1][1]);
-          cum += d * (at(nbm.ratio, mid) ?? 10) * (at(nbm.psnow, mid) ?? 1);
+          cum += d * (at(nbm.ratio, mid) ?? 0) * (at(nbm.psnow, mid) ?? 0);      // both series are required (the page disables the toggle without them)
           return Math.round(cum * 100) / 100;
         });
       }
       series.push({ key: p.key, label: p.label, x: pts.map((q) => q[0]), y: ys, z: p.z, init: p.initMs });
     }
-    return { t0, series, agreement: agreement(series, t0, mode, doc, areaId, nbm, per) };
+    return { t0, series, agreement: mode === "liquid" ? agreement(series, t0) : null };
   }
 
   /** value of a built series at t0 + h hours (null if the series does not reach it) */
@@ -97,12 +102,8 @@ const MultiModel = (() => {
    * median is small). share >= 75% -> High, >= 50% -> Medium, else Low; a window where every model is under 0.10 in is "High (dry)".
    * Always computed from LIQUID amounts so the toggle does not change it.
    */
-  function agreement(series, t0, mode, doc, areaId, nbm, per) {
-    let liquid = series;
-    if (mode === "snow") {                                      // recompute the liquid series for the badge
-      const lq = build({ doc, areaId, nbm, mode: "liquid" });
-      liquid = lq.series;
-    }
+  function agreement(series, t0) {
+    const liquid = series;
     for (const H of [72, 48, 36, 24, 12, 6]) {
       const totals = liquid.map((s) => [s.label, valueAt(s, t0, H)]).filter(([, v]) => v !== null);
       if (totals.length < 3) continue;

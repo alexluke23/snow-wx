@@ -77,3 +77,9 @@ def test_review_rows_lists_only_flagged_points_and_keeps_the_source():
     from pipeline.rec import review_rows
     rows = review_rows({"areas": [_rec("a", "Quiet", 41.5, -112.5), _rec("c", "Gap", 41.6, -112.6, source="osm")]}, {"areas": SKI})
     assert [r["id"] for r in rows] == ["c"] and rows[0]["source"] == "osm" and rows[0]["reasons"] == "osm_only"
+
+
+def test_review_flags_tolerates_a_record_without_a_base():
+    from pipeline.rec import review_flags
+    odd = {"id": "x", "name": "No Base", "source": "osm", "nws": {}}
+    assert "osm_only" in review_flags(odd, SKI, [odd, _rec("a", "Other", 41.5, -112.5)])["reasons"]

@@ -376,7 +376,7 @@ def review_flags(rec: dict, ski_areas: list[dict], others: list[dict] | None = N
     if not ((rec.get("nws") or {}).get("base") or {}).get("wfo"):
         reasons.append("no_nws_grid")
     nm = _tokens(rec.get("name") or "")
-    for o in others or []:
+    for o in (others or []) if b.get("lat") is not None else []:
         if o is rec or o.get("id") == rec.get("id") or (o.get("base") or {}).get("lat") is None:
             continue
         d = haversine_km(b["lat"], b["lon"], o["base"]["lat"], o["base"]["lon"])
