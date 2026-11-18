@@ -22,7 +22,7 @@
   `pipeline/pages.py`: `<title>`, meta description (= daily summary), `<h1>`,
   summary text, canonical, JSON-LD (WebPage/Place), OG image; JS hydrates charts
   from `data.<domain>`. Plus `sitemap.xml`, `robots.txt`, a data-status page,
-  and `#id` → path redirects. ~161 + ~450 pages × < 15 KB.
+  and `#id` → path redirects. ~160 + ~450 pages × < 15 KB.
 - **OG share cards:** 1200×630 per area (name, 72 h expected, snow level); top
   60 areas first.
 - **Performance:** area page LCP < 2.5 s on 4G; obs map Lighthouse mobile ≥ 85.

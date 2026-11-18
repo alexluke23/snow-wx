@@ -360,7 +360,7 @@ def point_forecast(data: dict[int, dict], hours: list[int], init: datetime, i: i
         return x or 0.0
 
     def slr_in(s, e):
-        """Mean NBM SNOWLR over snowy steps. NBM SNOWLR shrinks toward 0 where snow is
+        """Mean NBM SNOWLR over snowy steps. in a few warm, low cells NBM SNOWLR is 0 or near 0 (elsewhere it is populated in dry hours too) where snow is
         unlikely (it is not conditional on snow), so without deterministic snow use the
         window's highest SNOWLR; clamp_slr later bounds it to 4-25. A fixed default
         here made a dry cell (10:1) outrank a marginal one (Ski Apache base vs summit)."""

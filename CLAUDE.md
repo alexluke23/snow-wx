@@ -159,7 +159,7 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
   messages are missing data (`required_keys` counted; fail > 20 %; summary.json `quality`).
   Percentiles match the GSL NBM 1-D viewer exactly at the nearest cell (KMLP, KSMP; see
   docs/nbm_inventory.md); its exceedance probabilities are not reproducible.
-  SNOWLVL is metres MSL; SNOWLR is ~0 where no snow falls (average over snowy steps).
+  SNOWLVL is metres MSL; SNOWLR is populated in dry hours too (valid percentiles at 99.6 % of cell-hours; zeros only in ~38 warm, low cells, Nov 17 check).
   ecCodes names these `unknown`. **core GRIB uses alternativeRowScanning** (odd rows
   stored reversed; qmd does not): index with `run.flat_index`. Check decodes against the
   NBS text bulletins (`blend.YYYYMMDD/HH/text/blend_nbstx.tHHz`: TMP, Q06, SLV).

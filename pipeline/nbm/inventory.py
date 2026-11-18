@@ -13,7 +13,7 @@ Inventory facts (checked 7 Nov 2026, core + qmd, blend v4.x on AWS):
 - core messages use alternativeRowScanning=1 (odd rows stored east-to-west; ecCodes
   returns storage order), qmd does not: see run.flat_index. Decoded values were
   checked against the NBS text bulletins (TMP, Q06, SLV) at 8 airports.
-- SNOWLVL is metres MSL; SNOWLR is ~0 where no snow falls.
+- SNOWLVL is metres MSL; SNOWLR is populated in dry hours too; zeros only in a few warm, low cells.
 """
 
 from __future__ import annotations

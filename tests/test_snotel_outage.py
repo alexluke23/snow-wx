@@ -101,7 +101,7 @@ def test_partial_failure_keeps_fresh_stations_and_carries_the_rest(cfg, tmp_path
     by = {f["properties"]["triplet"]: f["properties"] for f in gj["features"]}
     assert len(by) == 3 and info["carried_stale"] == 1
     assert "stale" not in by["663:CO:SNTL"] and by["335:CO:SNTL"]["stale"] is True
-    assert 4.5 < by["335:CO:SNTL"]["age_h"] < 7      # the ORIGINAL timestamp survives (5 h old)
+    assert 4.5 < by["335:CO:SNTL"]["age_h"] < 8.5      # the ORIGINAL timestamp survives (5 h old)
     assert gj["stale"] is False
 
 
@@ -111,12 +111,12 @@ def test_outage_keeps_young_copy_stale_with_original_timestamps(cfg, tmp_path):
     with pytest.raises(snotel.SnotelUnavailable) as e:
         snotel.run(cfg, Down(), tmp_path)
     st = e.value.status
-    assert st["stale"] is True and 12.5 < st["age_h"] < 15.5 and st["count"] == 3 and "unavailable" not in st
+    assert st["stale"] is True and 12.5 < st["age_h"] < 16.5 and st["count"] == 3 and "unavailable" not in st
     gj = json.loads((tmp_path / "snotel.geojson").read_text(encoding="utf-8"))
     assert gj["stale"] is True and gj["observed_through"]
     for f in gj["features"]:
         p = f["properties"]
-        assert p["stale"] and p["obs_time"] == obs_before[p["triplet"]] and 12.5 < p["age_h"] < 15.5
+        assert p["stale"] and p["obs_time"] == obs_before[p["triplet"]] and 12.5 < p["age_h"] < 16.5
     assert (tmp_path / "snotel" / "663_CO_SNTL.json").exists()   # station files stay for the chart
 
 

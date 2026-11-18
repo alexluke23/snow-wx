@@ -154,7 +154,7 @@ analytics, pipeline monitoring.
 ### 8.3 Milestone catalogue (acceptance criteria)
 
 **W1 Domain & hosting** — custom domain on Cloudflare Pages + R2; ≤ 20,000 files, no file > 25 MiB; old URL redirects;
-Lighthouse not worse; rollback plan. **W2 Indexable pages** — ≥ 161 server-rendered area pages (title/description/summary
+Lighthouse not worse; rollback plan. **W2 Indexable pages** — ≥ 160 server-rendered area pages (title/description/summary
 without JS); sitemap; `#id` redirects; OG cards for top 60. **W3 Daily summaries** ✅ (dev14; apart from the "Low confidence" rule (needs M7) and `<meta description>` (W2)) — every point has a summary in
 `points/<id>.json`; fixture-tested rules; shown on cards, Finder rows, meta descriptions. **W4 PWA** — §5.8 tests pass on
 real iPhone + Android; staleness banners; install event. **W5 Analytics/monitoring** (public status page + "Report a bust" done dev14; analytics not wired) — cookieless events (favorite,
