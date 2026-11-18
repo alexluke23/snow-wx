@@ -304,8 +304,9 @@
    *  powder-quality heuristic (Dense < 10:1, Medium 10-15, Blower >= 15; PLAN §5.2, about.html#powder-quality);
    *  a marker where summit gusts exceed 30 mph while it snows ("wind-affected"). A heuristic, not an accuracy claim.
    *  Band colors are Okabe-Ito categories (never the NWS snowfall palette); every band is also labelled in text. */
-  const POWDER = [["Dense", 0, 10, "#CC79A7"], ["Medium", 10, 15, "#009E73"], ["Blower", 15, Infinity, "#56B4E9"]];
-  const POWDER_WIND_MPH = 30;
+  const POWDER = [["Dense", 0, POWDER_Q.dense_below, "#CC79A7"], ["Medium", POWDER_Q.dense_below, POWDER_Q.blower_at, "#009E73"],
+    ["Blower", POWDER_Q.blower_at, Infinity, "#56B4E9"]];
+  const POWDER_WIND_MPH = POWDER_Q.wind_gust_mph;
   function snowingMask(fc, pt) {
     // time i is "snowing" when the precipitation window containing it has snow (hourly to 36 h, then 6-hourly)
     const pr = fc.points[pt].precip;

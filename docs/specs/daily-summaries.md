@@ -21,7 +21,7 @@ A deterministic rules engine, **not** an LLM, run in the points pipeline.
 
 | Tag | Condition (starting point) | Copy intent |
 |---|---|---|
-| Deep powder day | p50 24 h ≥ 8" **and** P(≥ 12") ≥ 30% **and** SLR p50 ≥ 14 **and** summit gust < 25 mph | "Deep, light snow likely…" |
+| Deep powder day | p50 24 h ≥ 8" **and** P(≥ 12") ≥ 30% **and** snow ratio in the Blower class (`powder_quality.blower_at`, 15:1 — the one shared definition, `config/settings.yml`) **and** summit gust < 25 mph | "Deep, light snow likely…" |
 | Storm cycle | 72 h p50 ≥ 18" | "Multi-day storm: X–Y in by …" |
 
 > **Native windows only (owner Nov 16):** any summary rule that uses p50 or P(≥X) must require a native NBM window

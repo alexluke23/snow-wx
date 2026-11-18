@@ -83,6 +83,10 @@ const expectedInfo = () => `<a class="info" href="about.html#nbm" title="${EXPEC
 // NAADS danger colors (match pipeline/avalanche.py)
 const DANGER_TEXT = { 0: "#333", 1: "#fff", 2: "#333", 3: "#111", 4: "#fff", 5: "#fff" };
 
+// Powder quality (documented heuristic on NBM's snow-to-liquid ratio): the ONE definition, mirroring config/settings.yml
+// `powder_quality` (tests/test_points.py checks they match). Dense < dense_below, Medium dense_below..blower_at, Blower >= blower_at.
+const POWDER_Q = { dense_below: 10, blower_at: 15, wind_gust_mph: 30 };
+
 // Snowfall (in): the NWS snowfall colour table (owner S11), one definition for the whole site: area-page
 // bars and tiles, Powder Finder markers and swatches, My mountains, the forecast and observed (NOHRSC)
 // snowfall overlays and every legend. Colours and class limits exactly as the legend of NOAA/NWS NOHRSC's

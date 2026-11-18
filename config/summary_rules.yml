@@ -8,7 +8,7 @@ priority: [alert, rain_base, deep_powder, storm_cycle, wind, dry, baseline]
 deep_powder:
   p50_24h_in: 8        # NBM native median (exceedance-window p50) for the first 24 h window
   p_ge12_pct: 30       # native chance of >= 12 in
-  slr_p50: 14          # snow ratio of the snowiest period
+  # snow ratio must reach the shared powder-quality Blower threshold (config/settings.yml powder_quality.blower_at)
   gust_mph: 25         # summit gusts must stay below this
 
 storm_cycle:

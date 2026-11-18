@@ -145,17 +145,18 @@
         pack snow). This is a heuristic from a forecast, <b>not an accuracy claim, a measurement or an avalanche rating</b>: real
         snow quality also depends on crystal type, settling, sun and the snow already on the ground. The thresholds may be tuned
         once we can verify them. Colours are chosen to be distinct from the snowfall colours; each band is also labelled in text.</p>
-      <p id="snow-type"><b>"Type" in Powder Finder and My mountains</b> uses a finer four-step version of the same idea
-        (Wet/heavy below 8:1, Average 8–12, Dry/light 12–18, Very dry/blower 18 and up, from the 12-hour periods with at least
-        half an inch of snow) and is also a heuristic; its thresholds live in the site configuration.</p>
+      <p id="snow-type"><b>"Type" in Powder Finder and My mountains</b> uses exactly the same three classes and
+        thresholds (Dense below 10:1, Medium 10–15, Blower 15 and up), taken from the 12-hour periods with at least half an inch of
+        snow. There is one definition for the whole site (the Finder, My mountains, the chart and the daily summary); it is a
+        heuristic and its thresholds live in the site configuration.</p>
     </section>
 
     <section id="daily-summary">
       <h3>Daily Snow summary</h3>
       <p>The sentence at the top of each forecast page is written by fixed rules, not by a person or an AI model. The rules and
         thresholds are in the open (<code>config/summary_rules.yml</code> in the project) and use only NBM numbers shown on the page:
-        a deep-powder day needs NBM's own median (24 h) of at least 8 in, at least a 30% chance of 12 in or more, a snow ratio of
-        about 14:1 or higher and calm summit gusts; a storm cycle needs a 72-hour median of at least 18 in and quotes NBM's own 72-hour
+        a deep-powder day needs NBM's own median (24 h) of at least 8 in, at least a 30% chance of 12 in or more, a snow ratio in the
+        Blower class (15:1 or higher) and calm summit gusts; a storm cycle needs a 72-hour median of at least 18 in and quotes NBM's own 72-hour
         10–90% range; rain at the base, wind-affected snow and a dry stretch have their own rules. One headline wins by priority
         (alerts, rain at the base, powder day, storm cycle, wind, dry); the rest are bullets. Rules that use medians or chances only run
         when NBM publishes that window directly; otherwise the summary says so and uses the expected amount only. Powder quality and

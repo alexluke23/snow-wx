@@ -20,9 +20,16 @@ import yaml
 RULES_PATH = Path(__file__).resolve().parent.parent / "config" / "summary_rules.yml"
 
 
+SETTINGS_PATH = RULES_PATH.parent / "settings.yml"
+
+
 def load_rules(path: Path | None = None) -> dict:
+    """Rules file plus the ONE shared powder-quality thresholds from settings.yml (owner Nov 17)."""
     with open(path or RULES_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        rules = yaml.safe_load(f)
+    with open(SETTINGS_PATH, encoding="utf-8") as f:
+        rules["powder_quality"] = (yaml.safe_load(f) or {}).get("powder_quality") or {}
+    return rules
 
 
 def _num(v, d=0):
@@ -112,10 +119,10 @@ def summarize(doc: dict, alerts: list[dict] | None = None, obs: dict | None = No
     else:
         p12 = w24["p_ge"].get(12.0)
         if (w24["p50"] is not None and w24["p50"] >= r["p50_24h_in"] and p12 is not None and p12 >= r["p_ge12_pct"]
-                and f["slr_24h"] is not None and f["slr_24h"] >= r["slr_p50"] and (f["gust_24h"] or 0) < r["gust_mph"]):
+                and f["slr_24h"] is not None and f["slr_24h"] >= rules["powder_quality"]["blower_at"] and (f["gust_24h"] or 0) < r["gust_mph"]):
             fired.append(("deep_powder", "Deep powder day",
                           f"Deep, light snow likely: NBM's median for the next 24 h is {_inch(w24['p50'])} in with a {p12}% chance of 12 in or more"
-                          f" (snow ratio about {round(f['slr_24h'])}:1, a heuristic), summit gusts under {r['gust_mph']} mph."))
+                          f" (snow ratio about {round(f['slr_24h'])}:1, the Blower class, a heuristic), summit gusts under {r['gust_mph']} mph."))
 
     # storm cycle: native 72 h window (p50 and the native p10-p90 range); never a summed range
     r = rules["storm_cycle"]

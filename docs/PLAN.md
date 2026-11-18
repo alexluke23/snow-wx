@@ -1,6 +1,6 @@
 # Snow-Wx — Development Plan (v1.1, Nov 15 2026)
 
-> Lean plan read by Claude Code at the start of every session. Detail lives in `docs/specs/`, `docs/DESIGN.md`, `docs/BUSINESS.md` and `docs/ARCHIVE.md` (see "Where things live"). Tick milestones in §8 as they land.
+> Lean plan read by Claude Code at the start of every session (soft size cap ~20 KB). Detail lives in `docs/specs/`, `docs/DESIGN.md`, `docs/BUSINESS.md` and `docs/ARCHIVE.md` (see "Where things live"). Tick milestones in §8 as they land.
 > Conventions: **[verify]** = re-check at source before relying on it; **◇** = stretch, drop first if behind.
 
 ---
@@ -42,7 +42,7 @@ A free, open-data snow forecasting site for the western US — point forecasts f
 1. Safety info (avalanche danger, NWS alerts, snow level/rain-at-base, data freshness) is never gated or hidden.
 2. Never present a heuristic as an accuracy claim or an avalanche rating. Label heuristics.
 3. Open, license-clean data only; keep attribution (§10.2) on pages and charts.
-4. One accumulation period per chart axis; **never sum, scale or interpolate percentiles across windows** (ranges come from one native NBM window); uncertainty shown by default (p25–p75 on snowfall by day, 10–90% elsewhere, see DESIGN §6); sources + issue times on every module.
+4. One accumulation period per chart axis; **never sum, scale or interpolate percentiles across windows** (ranges come from one native NBM window); uncertainty shown by default as **p25–p75 ("likely", the middle half of NBM's outcomes) for snowfall, snow level and snow ratio**; 10–90% only where explicitly noted (DESIGN §6); sources + issue times on every module.
 5. Sources fail independently; fetch separate from pure functions; offline tests with fakes.
 6. Stay within static-host limits (20,000 files/deploy, 25 MiB/file) — bulk data goes to R2.
 
@@ -72,9 +72,11 @@ centers). Full text: `docs/ARCHIVE.md`.
   hourly build created ≈ 11:25 UTC Nov 16 (archive SNOTEL asset written 11:27:55 UTC); first failing run seen: 22:07 UTC
   Nov 16 (live meta.json; GitHub's cron gaps mean runs between those were not inspected); still down Nov 17 02:21 UTC. The
   archive's last SNOTEL day is 2026-11-16 12Z but it holds only 9 stations (a partial day; 15 Nov 12Z has 820). **M9 must exclude
-  SNOTEL obs from 2026-11-16 12Z (whole day, conservative) until recovery** (end date to be added). Handling (branch
+  SNOTEL obs from 2026-11-16 12Z (whole day, conservative) through 2026-11-18 00:45Z.** **Recovered:** the live meta.json
+  of the 00:45 UTC Nov 18 run shows `ok`, 836 stations, 0 failed chunks (first success seen; the exact first recovery lies between
+  22:53 UTC Nov 17 and then, so the exclusion ends at 2026-11-18 00:45Z, conservative). Handling (branch
   fix-snotel): fail-fast probe, last good copy ≤ 48 h flagged stale, then "unavailable"; auto-recovery. Other sources are fresh (points, NDFD, NOHRSC, models). Obs map Lighthouse mobile 71–88
-  (bimodal run to run; target: median of ≥ 3 interleaved runs ≥ 85); site ≈ 240 MB (recheck vs §5.10); GitHub's scheduled runs are best-effort.
+  (bimodal run to run; target: no worse than main, baseline ≈ 82, median of ≥ 3 interleaved runs); site ≈ 240 MB (recheck vs §5.10); GitHub's scheduled runs are best-effort.
 
 ---
 
@@ -108,6 +110,7 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
 | Nov 16 | SNOTEL 24 h depth change on the obs map: gains use NWS colors, losses stay brown, legend titled "Snow depth change" (compaction ≠ snowfall). |
 | Nov 17 | **dev13 UX package (overnight, assumptions flagged in the session report):** NBM-native P(≥2″) row for 24/48 h only (never derived); one combined snow-ratio + powder-quality panel; linked Finder state/region menus with counts; obs-map defaults (reference layer, ski areas, Sno-Parks, avalanche, **NWS winter hazards** ON; SNOTEL/ASOS/NOHRSC OFF, remembered, URL `ly=` overrides, Reset button), red alert rings removed; hazards from NOAA/NWS WWA map service with a visible fallback to our alerts index; config `hazards.enabled`. |
 | Nov 17 | **SNOTEL outage handling accepted:** previous good copy from the live site (option A, `SITE_ORIGIN`/`site.origin`, on the W1 cutover checklist); stale ≤ 48 h with original timestamps (never re-stamped), 24/72 h changes hidden when older than their window; data-health GitHub issues per source with limits from each source's real cadence (config `monitoring`), assigned to the owner, monitor can never fail the deploy. Independent "workflow did not run" check proposed in `docs/specs/data-pipeline.md` 5.2c (heartbeat service recommended). |
+| Nov 17 | **Owner feedback (live review) → dev14:** the **default uncertainty range for snowfall, snow level and snow ratio is 25–75% ("likely", the middle half of NBM's outcomes)**; 10–90% is kept only where explicitly noted (Finder/W3 chance fields, M9 archive). Inline text says "likely X–Y in" with no "NBM 10–90%" label (source and issue time stay in run lines and captions). **One powder-quality definition** (config `powder_quality`: Dense < 10:1, Blower ≥ 15:1). Obs map first-load layers: relief + roads + ski areas + NWS winter hazards only; avalanche, Sno-Parks, SNOTEL, ASOS, NOHRSC off. W3 "Dry stretch" outranks "Wind-affected"; alert tag computed client-side from alerts/index.json. Obs-map Lighthouse target: no worse than main (≈ 82). |
 | Nov 16 | **Composite ranges are never shown:** where a 24/48/72 h total would add several 6 h percentile windows (fallback cycles), show the expected total only; points JSON marks totals `native: true/false`. Archive columns unchanged (they never carry composite ranges). Lighthouse target: median of ≥ 3 interleaved runs ≥ 85. |
 | Nov 16 | Model-map snowfall colors stay as is for now (backlog §8.4). **Guard:** points JSON and the forecast archive keep their existing fields (p10/p50/p90, P(≥4/8/12″), 24/48/72 h). |
 

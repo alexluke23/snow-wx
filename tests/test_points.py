@@ -387,14 +387,25 @@ def test_series_pop_uses_synoptic_window_ends_for_odd_cycles():
 
 def test_snow_type_thresholds_and_window_main_type():
     from pipeline import points as P
-    P.configure_snow_type({"snow_type": {"wet_max": 8, "average_max": 12, "dry_max": 18, "wind_gust_mph": 30}})
-    assert P.snow_type(7.5, 10, 2.0)["type"] == "wet" and P.snow_type(12, 10, 2.0)["type"] == "dry"
+    import re
+    from pathlib import Path
+    import yaml
+    root = Path(__file__).resolve().parent.parent
+    cfg = yaml.safe_load((root / "config" / "settings.yml").read_text(encoding="utf-8"))
+    P.configure_powder_quality(cfg)
+    assert P.snow_type(9.9, 10, 2.0)["type"] == "dense" and P.snow_type(10, 10, 2.0)["type"] == "medium"
+    assert P.snow_type(14.9, 10, 2.0)["type"] == "medium"
     t = P.snow_type(19, 35, 3.0)
-    assert t == {"type": "very_dry", "label": "Very dry/blower", "wind": True}
+    assert t == {"type": "blower", "label": "Blower", "wind": True}
     assert P.snow_type(15, 10, 0.2) is None and P.snow_type(None, 10, 3) is None
-    per = [{"start": "a1", "end": "a2", "snow_in": 1.0, "snow_type": {"type": "wet"}},
-           {"start": "a2", "end": "a3", "snow_in": 4.0, "snow_type": {"type": "dry"}}]
-    assert P.window_snow_type(per, "a0", "a9") == "dry" and P.window_snow_type(per, "b", "c") is None
+    # one definition: the web mirror (colors.js POWDER_Q) must equal config/settings.yml
+    js = (root / "web" / "js" / "colors.js").read_text(encoding="utf-8")
+    m = re.search(r"POWDER_Q = \{ dense_below: (\d+), blower_at: (\d+), wind_gust_mph: (\d+) \}", js)
+    pq = cfg["powder_quality"]
+    assert m and tuple(map(int, m.groups())) == (pq["dense_below"], pq["blower_at"], pq["wind_gust_mph"])
+    per = [{"start": "a1", "end": "a2", "snow_in": 1.0, "snow_type": {"type": "dense"}},
+           {"start": "a2", "end": "a3", "snow_in": 4.0, "snow_type": {"type": "blower"}}]
+    assert P.window_snow_type(per, "a0", "a9") == "blower" and P.window_snow_type(per, "b", "c") is None
 
 
 def test_day_spans_and_native_windows():
