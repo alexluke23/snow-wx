@@ -559,3 +559,13 @@ main.status { max-width: 980px; width: 100%; box-sizing: border-box; } .status .
 .seg.mm-view { margin: 0 8px 6px 0; }
 .seg.mm-view button { min-height: 40px; min-width: 88px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* area page: reserve the summary-tiles height before the data arrive (measured 247 px at 2 columns, 139 px at 4): removes the 0.17 layout shift */
+#tiles { min-height: 247px; }
+@media (min-width: 640px) { #tiles { min-height: 139px; } }
+/* the blocks above the tiles also fill in after the forecast file arrives: reserve their usual heights (measured at 412 px and 1280 px) */
+.area-page #summary-card { min-height: 171px; }
+.area-page #headline { min-height: 50px; }
+.area-page #fresh { min-height: 16px; }
+.area-page #bust { min-height: 42px; }
+@media (min-width: 640px) { .area-page #summary-card { min-height: 89px; } .area-page #headline { min-height: 25px; } .area-page #bust { min-height: 21px; } }
