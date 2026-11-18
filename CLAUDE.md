@@ -20,7 +20,7 @@ alerts backend will add a small one; see docs/specs/alerts-backend.md).
   - `docs/verification.md` — forecast archive and M9 verification
   - `docs/nbm_inventory.md`, `docs/nbm_prob_consistency_*.md`, `docs/nbm_validation_gsl_*.md` — NBM GRIB layouts, exceedance-probability consistency, GSL viewer validation (NBM fetch/decode work)
   - `docs/sources_recreation.md` — Sno-Park / recreation source research and licences
-- Hard rules for all code are in PLAN §0 (safety info never gated or hidden; label heuristics, never present
+- Hard rules for all code are in PLAN §0 (safety info never gated or hidden; **percentiles are never summed across days or into 7/10-day totals; the 12-h day/night ranges add 6-h windows rank by rank, a documented, conservative approximation (slightly wide)**; label heuristics, never present
   them as accuracy or avalanche ratings; license-clean data with attribution; one accumulation period per
   chart axis and NEVER add, scale or interpolate percentiles across windows; offline tests; static-host
   limits of 20,000 files/deploy and 25 MiB/file, so bulk data goes to R2).

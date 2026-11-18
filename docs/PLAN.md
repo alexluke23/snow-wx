@@ -159,7 +159,7 @@ analytics, pipeline monitoring.
 **W1 Domain & hosting** — custom domain on Cloudflare Pages + R2; ≤ 20,000 files, no file > 25 MiB; old URL redirects;
 Lighthouse not worse; rollback plan. **W2 Indexable pages** — ≥ 160 server-rendered area pages (title/description/summary
 without JS); sitemap; `#id` redirects; OG cards for top 60. **W3 Daily summaries** ✅ (dev14; apart from the "Low confidence" rule (needs M7) and `<meta description>` (W2)) — every point has a summary in
-`points/<id>.json`; fixture-tested rules; shown on cards, Finder rows, meta descriptions. **W4 PWA** — §5.8 tests pass on
+`points/<id>.json`; fixture-tested rules; shown on cards, Finder rows, meta descriptions. **W4 PWA** (built dev15 behind `pwa.enabled=false`; enable only after W1) — §5.8 tests pass on
 real iPhone + Android; staleness banners; install event. **W5 Analytics/monitoring** (public status page + "Report a bust" done dev14; analytics not wired) — cookieless events (favorite,
 install, signup, alert, avalanche-center click, "view as table"); feedback link; failure notifications; public status
 page. **W6 Alerts** — double opt-in, one-click unsubscribe, test alert by email + push within one points run, rate
@@ -173,7 +173,7 @@ badge documented in about.html.
 manual spot check for 3 areas; attribution live); synoptic charts later; AIFS/ENS
 plumes in M10.
 
-**M9 Verification & bias correction** — score NBM/NDFD/models vs SNOTEL 24 h snow &
+**M9 Verification & bias correction** — **check whether the rank-by-rank 12-h day/night ranges (points file `periods[].snow_lo/hi/q1/q3`) are over-wide against observed SNOTEL snowfall** (dev15 note); score NBM/NDFD/models vs SNOTEL 24 h snow &
 temps by area/elevation; publish on about.html; later per-site bias correction
 (MOS-lite). A "point verification panel" ("how did forecasts do here this
 season?") ships first.
