@@ -362,7 +362,7 @@ def check_charts(b: Browser, base: str, log):
                   bands: (L.shapes || []).filter(s => s.fillcolor && s.xref === 'paper' && s.type === 'rect' && s.y0 !== 0).length,
                   dashed: (L.shapes || []).filter(s => s.type === 'line' && s.line && s.line.dash === 'dash' && s.xref === 'paper').length,
                   nTraces: (el.data || []).length, bandTrace: (el.data || []).some(t => t.fill === 'tonexty'),
-                  median: ((el.data || []).find(t => t.mode === 'lines' && t.line && t.line.width > 2) || {y: []}).y.filter(v => v !== null).length,
+                  median: ((el.data || []).find(t => t.mode === 'lines' && t.line && t.line.dash === 'dot') || {y: []}).y.filter(v => v !== null).length,
                   head: (document.querySelector('#slr-chart + .chart-table th') || {textContent: ''}).textContent,
                   labels: ['Dense', 'Medium', 'Blower'].every(n => anns.some(t => t.includes(n))),
                   slider: !!(L.xaxis && L.xaxis.rangeslider && L.xaxis.rangeslider.visible),

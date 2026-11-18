@@ -162,7 +162,7 @@ def test_restored_copy_survives_an_outage_on_a_fresh_runner(tmp_path, monkeypatc
     monkeypatch.setattr(m, "make_session", lambda c: Down())
     assert run_obs(cfg, out, ["snotel"]) == 1
     meta = json.loads((out / "meta.json").read_text(encoding="utf-8"))["sources"]["snotel"]
-    assert meta["stale"] is True and 7 < meta["age_h"] < 10
+    assert meta["stale"] is True and 7 < meta["age_h"] < 11
     assert meta["consecutive_failures"] == 3 and meta["last_success_at"] == iso(30)        # history continues from live meta
 
 

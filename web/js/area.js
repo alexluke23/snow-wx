@@ -387,15 +387,21 @@ What actually happened (snow measured/seen, where, photos or links welcome):
       shapes.push({ type: "rect", xref: "x", yref: "paper", x0: xs[a], x1, y0: 0, y1: 1, fillcolor: "rgba(120,130,140,0.12)", line: { width: 0 }, layer: "below" });
       if (b - a >= 6) annotations.push({ xref: "x", x: xs[Math.floor((a + b) / 2)], yref: "paper", y: 0.5, showarrow: false, text: "no snow forecast", font: C.font(12, C.MUTED) });
     }
+    // like the snow-level chart: solid line and darker band where precipitation is likely (chance >= 20 %), lighter and dotted elsewhere
+    const chance = precipChance(fc, pt);
+    const wetAt = (arr) => arr.map((v, i) => ((chance[i] ?? 0) >= WET ? v : null));
     const traces = [];
     if (band) {
       traces.push({ x: xs, y: p75, mode: "lines", line: { width: 0 }, hoverinfo: "skip", connectgaps: false },
-        { x: xs, y: p25, mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: "rgba(0,114,178,0.25)", hoverinfo: "skip", connectgaps: false });
+        { x: xs, y: p25, mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: "rgba(0,114,178,0.10)", hoverinfo: "skip", connectgaps: false },
+        { x: xs, y: wetAt(p75), mode: "lines", line: { width: 0 }, hoverinfo: "skip", connectgaps: false },
+        { x: xs, y: wetAt(p25), mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: "rgba(0,114,178,0.25)", hoverinfo: "skip", connectgaps: false });
     }
-    traces.push({ x: xs, y: p50, mode: "lines", line: { color: "#111827", width: 2.6 }, connectgaps: false,
+    traces.push({ x: xs, y: p50, mode: "lines", line: { color: "#6b7280", width: 2, dash: "dot" }, connectgaps: false,
       customdata: p25.map((v, i) => [v, p75[i], powderClass(p50[i])]),
       hovertemplate: band ? "median %{y:.0f}:1 (%{customdata[2]}) · likely %{customdata[0]:.0f}–%{customdata[1]:.0f}:1<extra></extra>"
-        : "ratio %{y:.0f}:1 (%{customdata[2]})<extra></extra>" });
+        : "ratio %{y:.0f}:1 (%{customdata[2]})<extra></extra>" },
+      { x: xs, y: wetAt(p50), mode: "lines", line: { color: "#111827", width: 2.8 }, connectgaps: false, hoverinfo: "skip" });
     if (windy.length) {
       traces.push({ x: windy.map((i) => xs[i]), y: windy.map(() => ymax * 0.93), mode: "markers", hovertemplate: `wind-affected: summit gusts ${POWDER_WIND_MPH} mph or more while snowing<extra></extra>`,
         marker: { symbol: "diamond", size: 9, color: C.OI.vermillion, line: { color: "#111827", width: 1 } } });
@@ -889,7 +895,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
         <p class="note" id="acc-note"></p></section>
       <section><h3>Snow ratio and powder quality <a class="info" href="about.html#powder-quality" title="Powder quality is a documented heuristic from NBM's snow-to-liquid ratio (Dense below 10:1, Medium 10–15, Blower 15 and up; wind-affected when summit gusts exceed 30 mph while it snows). Not an accuracy claim or an avalanche rating." aria-label="How powder quality works">ⓘ</a></h3>
         <div class="chart" id="slr-chart" style="height:280px"><p class="hint">Loading chart…</p></div>
-        <p class="note">NBM's forecast snow ratio over the whole forecast: the line is the median, the blue shading the <b>likely range</b> (the middle half of NBM's outcomes). The dashed lines mark the powder-quality classes, a <b>documented heuristic</b>, not an accuracy claim. <a href="about.html#powder-quality">How it works →</a></p></section>
+        <p class="note">NBM's forecast snow ratio over the whole forecast: the line is the median, the blue shading the <b>likely range</b> (the middle half of NBM's outcomes); both are solid and darker where precipitation is likely (at least a 20% chance) and lighter and dotted where it is not. The dashed lines mark the powder-quality classes, a <b>documented heuristic</b>, not an accuracy claim. <a href="about.html#powder-quality">How it works →</a></p></section>
       <section id="ex-sec"><h3>Chance of at least…</h3>
         <div class="seg" role="group" aria-label="Window" id="ex-win"><button type="button" class="on" data-w="24h" aria-pressed="true">24 h</button><button type="button" data-w="48h" aria-pressed="false">48 h</button><button type="button" data-w="72h" aria-pressed="false">72 h</button></div>
         <div id="ex-chart" class="heat-box"><p class="hint">Loading…</p></div>
