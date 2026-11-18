@@ -646,13 +646,28 @@ def check_hazards(b: Browser, base: str, log):
     LAYERS = """(() => Object.fromEntries([...document.querySelectorAll('.leaflet-control-layers-overlays label')]
       .map(l => [l.textContent.trim(), l.querySelector('input').checked])))()"""
     b.open(f"{base}/about.html", wait=2)
-    b.eval("localStorage.removeItem('snowwx.layers'); 1")
+    b.eval("localStorage.removeItem('snowwx.layers'); localStorage.removeItem('snowwx.layers.v'); 1")
     b.open(f"{base}/index.html#map=6/42/-112", wait=10)
     d = b.eval(LAYERS)
     log(f"  defaults: {d}")
     on = {k for k, v in d.items() if v}
-    need({"Roads, towns & peaks", "Ski areas", "Avalanche danger", "NWS winter hazards"} <= on and not ({"SNOTEL", "ASOS / AWOS (wind, temp)"} & on),
-         f"layer defaults wrong: {d}")
+    need(on == {"Roads, towns & peaks", "Ski areas", "NWS winter hazards"}, f"first-load layer defaults wrong (owner Nov 17): {d}")
+    # nothing may be DRAWN from an unchecked layer: items of the canvas groups, and the Leaflet layers, must equal the checked set
+    drawn = b.eval("""(() => { const p = window.snowwx.points, items = p._items(), g = {};
+        for (const it of items) g[it.group] = (g[it.group] || 0) + 1;
+        return {groups: g, layers: window.snowwx.currentLayers(), minor: items.filter(i => i.group === 'ski' && i.area && !i.area.major).length,
+                major: items.filter(i => i.group === 'ski' && i.area && i.area.major).length}; })()""")
+    log(f"  drawn: {drawn}")
+    need(set(drawn["groups"]) <= {"ski"} and drawn["groups"].get("ski", 0) > 0, f"canvas draws unchecked groups (ASOS/SNOTEL/Sno-Park): {drawn}")
+    need(set(drawn["layers"]) == {"ref", "ski", "haz"}, f"Leaflet layer set differs from the checked set: {drawn}")
+    need(drawn["minor"] == 0 and drawn["major"] > 0, f"low zoom must show only major ski areas: {drawn}")
+    # a saved choice from before the defaults changed is ignored once (version key), then remembered again
+    b.open(f"{base}/about.html", wait=2)
+    b.eval("localStorage.setItem('snowwx.layers', JSON.stringify(['ref','ski','sp','avy','haz'])); localStorage.removeItem('snowwx.layers.v'); 1")
+    b.open(f"{base}/index.html#map=6/42/-112", wait=9)
+    need({k for k, v in b.eval(LAYERS).items() if v} == {"Roads, towns & peaks", "Ski areas", "NWS winter hazards"}, "old saved layers must not override the new defaults")
+    b.eval("localStorage.removeItem('snowwx.layers'); localStorage.removeItem('snowwx.layers.v'); 1")
+    b.open(f"{base}/index.html#map=6/42/-112", wait=9)
     hz = b.eval("(() => ({status: window.snowwx.hazards.state.status, count: window.snowwx.hazards.state.count, panel: document.getElementById('hazards').textContent.trim(),"
                 " hidden: document.getElementById('hazards').hidden}))()")
     log(f"  hazards: {hz['status']} {hz['count']} | {hz['panel'][:110]!r}")

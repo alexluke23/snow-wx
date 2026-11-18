@@ -28,8 +28,8 @@ function SnowHazards(map, { dataBase = "data/", bbox = [-125, 31, -102, 49.5], o
   const style = (f) => {
     const name = f.properties.prod_type, level = levelOf(name), c = colorOf(name);
     // level is not carried by color alone: warnings have the heaviest outline, watches are dashed, advisories thin
-    return { pane: "hazards", color: c, weight: level === "warning" ? 2.6 : level === "watch" ? 2 : 1.2, opacity: 0.95,
-      dashArray: level === "watch" ? "7 5" : null, fillColor: c, fillOpacity: level === "advisory" ? 0.2 : 0.3 };
+    return { pane: "hazards", color: c, weight: level === "warning" ? 1.6 : level === "watch" ? 1.3 : 0.8, opacity: 0.85,
+      dashArray: level === "watch" ? "7 5" : null, fillColor: c, fillOpacity: level === "advisory" ? 0.25 : level === "watch" ? 0.28 : 0.32 };
   };
   const popup = (f) => {
     const p = f.properties, wfo = String(p.wfo || "").replace(/^K/, "").toLowerCase();
