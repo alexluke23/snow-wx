@@ -79,6 +79,11 @@ pwa:
   kill: false
   version: ""        # salt for the cache version (the version is also a hash of the shell files)
 
+verification:
+  # M9 scoring (tools/verify_forecasts.py) excludes SNOTEL observations inside this window (the NRCS AWDB outage; end = first CONFIRMED live
+  # recovery, owner Nov 17) and any stale/unavailable observation.
+  snotel_outage: {start: "2026-11-16T12:00Z", end: "2026-11-18T00:45Z"}
+
 monitoring:
   # Data-health issues (pipeline/monitor.py, update-site.yml `monitor` job): one GitHub issue per source, assigned
   # below so GitHub e-mails the owner; closed automatically on recovery. Limits come from each source's REAL cadence:

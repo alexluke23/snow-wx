@@ -65,11 +65,11 @@ centers). Full text: `docs/ARCHIVE.md`.
   overlays, dev10 basemap (relief + OSM reference layer), **dev11–dev14** (merged: "likely" p25–p75 wording, one powder-quality definition, W3, status page, obs-map defaults), **dev15** (PR open: monitor bootstrap fix, W4 PWA built but off, obs-map lazy station files, storm-total tracker). Details: `docs/ARCHIVE.md`.
 - **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas,
   Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
-- **Known issues:** NRCS AWDB (SNOTEL) outage **over**. Last good run before it ≈ 11:25 UTC Nov 16; first failing run seen 22:07 UTC Nov 16; still down
-  02:21 UTC Nov 17. The forecast archive now holds 821 stations for 2026-11-17 12Z, so a fetch succeeded after 12Z Nov 17: recovery lies between
-  02:21 UTC and ≈ 13:26 UTC Nov 17 (the earlier "00:45Z Nov 18" was only the first success I looked at). The Nov 16 12Z row was later backfilled (820
-  stations). **M9 still excludes SNOTEL obs 2026-11-16 12Z through 2026-11-17 12Z** until the backfilled rows are checked. No Data-health issue opened because the
-  monitor (merged 13:26 UTC Nov 17) most likely started after recovery; dev15 hardens the bootstrap anyway (§3). Handling: probe, last good copy ≤ 48 h flagged stale, auto-recovery.
+- **Known issues:** NRCS AWDB (SNOTEL) outage over. Last good run before it ≈ 11:25 UTC Nov 16; first failing run seen 22:07 UTC Nov 16; still down
+  02:21 UTC Nov 17. **Recovery time unconfirmed; first confirmed live 00:45Z Nov 18; Actions logs are not readable from the dev session; the owner is
+  checking them.** (The archive's 821 stations at 2026-11-17 12Z may be carried-forward data and do not prove a live fetch.) **M9 excludes SNOTEL obs from
+  2026-11-16 12Z through 2026-11-18 00:45Z** (enforced in `config/settings.yml` `verification.snotel_outage`, used by the M9 scorer). No Data-health issue opened:
+  the monitor (merged 13:26 UTC Nov 17) probably started after recovery, or history was lost; dev15 hardened the bootstrap (§3). Handling: probe, last good copy ≤ 48 h flagged stale, auto-recovery.
   Obs map Lighthouse mobile 71–88 (bimodal; target: no worse than main, baseline ≈ 82, median of ≥ 3 interleaved runs); site ≈ 220 MB / 5.6 k files.
 
 ---
