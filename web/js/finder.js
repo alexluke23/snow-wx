@@ -31,8 +31,8 @@
                state: pick("st", ""), region: pick("r", ""), sort: pick("sort", "snow"), fav: pick("fav", "0") === "1",
                pw: pick("pw", "24h"), px: Number(pick("px", "6")), pd: Number(pick("pd", "0")), t: pick("t", "ski"),
                ty: pick("ty", "0") === "1", dir: pick("dir", "") };
-  const TYPE_SHORT = { wet: "Wet", average: "Avg", dry: "Dry", very_dry: "Blower" };
-  const TYPE_LONG = { wet: "Wet/heavy (< 8:1)", average: "Average (8–12:1)", dry: "Dry/light (12–18:1)", very_dry: "Very dry/blower (≥ 18:1)" };
+  const TYPE_SHORT = { dense: "Dense", medium: "Medium", blower: "Blower" };
+  const TYPE_LONG = { dense: `Dense (< ${POWDER_Q.dense_below}:1)`, medium: `Medium (${POWDER_Q.dense_below}–${POWDER_Q.blower_at}:1)`, blower: `Blower (≥ ${POWDER_Q.blower_at}:1)` };
   // Sno-Parks (kind "snopark") reuse the ski-area fields: summit = high terrain, base = trailhead
   const isRec = (a) => a.kind === "snopark";
   const ELEV_LABEL = { ski: ["Summit", "Base"], snopark: ["High terrain", "Trailhead"], all: ["Summit / high terrain", "Base / trailhead"] };

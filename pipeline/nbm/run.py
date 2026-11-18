@@ -749,7 +749,7 @@ def run_points(cfg: dict, session, out: Path, *, cycle: datetime | None = None,
                github_output: str | None = None, catalog: Path = CATALOG, now=None) -> int:
     cat = json.loads(Path(catalog).read_text(encoding="utf-8"))
     grid = cat["nbm_grid"]          # grid definition stored with the catalog
-    P.configure_snow_type(cfg)      # snow-type thresholds (config/settings.yml snow_type)
+    P.configure_powder_quality(cfg)      # powder-quality thresholds (config/settings.yml powder_quality)
     rp = Path(catalog).with_name("rec_points.json")      # Sno-Parks / winter recreation (M4.5), same shape
     if rp.exists():
         cat["areas"] = cat["areas"] + json.loads(rp.read_text(encoding="utf-8"))["areas"]

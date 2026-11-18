@@ -35,9 +35,10 @@ grid_x, grid_y}` for base & summit, `nbm_grid {i, j, elev_ft}` for base & summit
   P(snow at base/summit) from snow-level percentiles; flag mixed/rain.
 - **Periods:** 6 AM–6 PM / 6 PM–6 AM local; p50 with 10–90 range per period and
   for 24 h / 72 h / 7 d / 10 d.
-- **Powder quality** (documented heuristic, not an accuracy claim): SLR median ≥ 15
-  "Blower", 10–15 "Medium", < 10 "Dense"; add "wind-affected" when summit gusts
-  > 30 mph during snowfall.
+- **Powder quality** (documented heuristic, not an accuracy claim): ONE definition, `config/settings.yml` `powder_quality`
+  (`dense_below: 10`, `blower_at: 15`; mirrored by `web/js/colors.js` `POWDER_Q`, a test keeps them equal): SLR median ≥ 15
+  "Blower", 10–15 "Medium", < 10 "Dense"; add "wind-affected" when summit gusts ≥ 30 mph during snowfall. The same three
+  classes drive the SLR/powder panel, the Finder and My mountains "Type", the W3 rules and about.html.
 - Output: `data/points/<id>.json` (hourly + period summaries) and
   `data/points/summary.json`. Target < 150 KB per area.
 

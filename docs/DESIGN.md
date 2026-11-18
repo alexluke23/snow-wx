@@ -21,8 +21,9 @@
   only carrier of meaning.
 - **Numbers first:** each chart has a headline sentence above it (also its
   aria-label). **Uncertainty everywhere:** the **snowfall-by-day** chart uses floating **p25–p75 range bars** labelled "low–high″",
-  colored by the median (no expected tick, no whiskers); 10–90% bands/ranges remain on the 24/48/72 h totals, snow
-  level, snow ratio and Finder/My mountains 24–72 h ranges. Accumulated snow shows expected amounts only.
+  colored by the median (no expected tick, no whiskers); **the default range everywhere is p25–p75, worded "likely X–Y in"** (owner Nov 17: the middle half of NBM's outcomes, about a
+  1-in-4 chance of more than the high number and of less than the low number): 24/48/72 h totals, snow level, snow ratio,
+  Finder, My mountains, summaries. 10–90% only where a chart or tooltip explicitly says so; no inline "NBM 10–90%" label. Accumulated snow shows expected amounts only.
   **Never sum, scale or interpolate percentiles across windows** (a range must come from one native NBM window).
 - **Units:** in, °F, mph (kt on ASOS/model maps), ft; local time with zone;
   relative times ("issued 2 h ago").
