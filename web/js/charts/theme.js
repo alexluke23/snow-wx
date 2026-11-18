@@ -200,7 +200,7 @@ const SnowCharts = (() => {
   };
 
   /** Probability heat table: rows = thresholds, columns = windows, % in every cell. */
-  function heatTable(el, { caption, rowLabels, colLabels, colTitles, values, palette }) {
+  function heatTable(el, { caption, rowLabels, colLabels, colTitles, values, palette, naRows = {} }) {
     const cell = (v) => {
       if (v === null || v === undefined) return `<td class="na">–</td>`;
       let i = 0;
@@ -212,7 +212,9 @@ const SnowCharts = (() => {
     el.style.height = "";
     el.innerHTML = `<div class="tbl-wrap heat"><table><caption class="sr">${escHtml(caption)}</caption>
       <thead><tr><th scope="col">At least</th>${colLabels.map((c, j) => `<th scope="col"${colTitles ? ` title="${escHtml(colTitles[j])}"` : ""}>${c}</th>`).join("")}</tr></thead>
-      <tbody>${rowLabels.map((r, i) => `<tr><th scope="row">${escHtml(r)}</th>${values[i].map(cell).join("")}</tr>`).join("")}</tbody>
+      <tbody>${rowLabels.map((r, i) => (naRows[i]
+        ? `<tr><th scope="row" title="${escHtml(naRows[i])}">${escHtml(r)}</th>${values[i].map(() => `<td class="na" title="${escHtml(naRows[i])}">n/a</td>`).join("")}</tr>`
+        : `<tr><th scope="row">${escHtml(r)}</th>${values[i].map(cell).join("")}</tr>`)).join("")}</tbody>
     </table></div>`;
   }
 

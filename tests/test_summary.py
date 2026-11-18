@@ -27,7 +27,7 @@ def doc(p50_24=0.0, p12=0, slr=15, gust=15, p50_72=0.0, native=True, lo=None, hi
     summit = {"periods": per, "exceed": ex,
               "totals": {"24h": {"snow_in": p50_24, "native": True},
                          "72h": {"snow_in": expected_72 if expected_72 is not None else p50_72, "native": native,
-                                 "snow_lo": lo, "snow_hi": hi}}}
+                                 "snow_lo": lo, "snow_hi": hi, "snow_q1": None if lo is None else lo + 3, "snow_q3": None if hi is None else hi - 4}}}
     out = {"points": {"summit": summit}}
     if base_rain:
         out["points"]["base"] = {"periods": [period("2026-11-18T00:00Z", snow=0.2, p_snow=0.2, qpf=0.4, lvl=5200)], "exceed": {}, "totals": {}}
@@ -50,10 +50,10 @@ def test_deep_powder_needs_every_condition():
 
 def test_storm_cycle_uses_native_72h_range_and_never_a_composite():
     out = S.summarize(doc(p50_24=5, p12=5, slr=10, p50_72=20, lo=14, hi=30), rules=RULES)
-    assert out["tag"] == "Storm cycle" and "14–30 in" in out["sentence"]
+    assert out["tag"] == "Storm cycle" and "likely 17–26 in" in out["sentence"] and "10–90" not in out["sentence"] and "NBM" not in out["sentence"]
     composite = S.summarize(doc(p50_24=5, p12=5, slr=10, p50_72=20, native=False, lo=14, hi=30, expected_72=19), rules=RULES)
     assert "storm_cycle" not in composite["rule_ids"] and composite["confidence"] == "medium" and composite["native"] is False
-    assert "14–30" not in composite["sentence"] and not any("14–30" in b for b in composite["bullets"])
+    assert "17–26" not in composite["sentence"] and not any("17–26" in b for b in composite["bullets"])
 
 
 def test_rain_at_the_base_outranks_powder_and_wind_is_a_bullet():
@@ -82,6 +82,13 @@ def test_wind_affected_snow_and_dry_stretch_and_baseline():
     assert base["tag"] == "Snow expected" and "about 4 in" in base["sentence"]
 
 
+def test_dry_stretch_outranks_wind_affected():
+    # native 72 h median under 1 in but an expected total over the 3 in wind bar: Dry stretch is the headline, wind a bullet
+    out = S.summarize(doc(p50_24=1.2, slr=12, gust=40, wind=True, p50_72=0.8, lo=0, hi=2, expected_72=3.5), rules=RULES)
+    assert out["tag"] == "Dry stretch" and {"dry", "wind"} <= set(out["rule_ids"]) and out["rule_ids"].index("dry") < out["rule_ids"].index("wind")
+    assert any("Wind-affected" in b for b in out["bullets"])
+
+
 def test_no_native_windows_means_skipped_rules_and_lower_confidence():
     d = doc(p50_24=10, p12=40, slr=16, p50_72=20, lo=6, hi=20)
     d2 = copy.deepcopy(d)
@@ -90,7 +97,7 @@ def test_no_native_windows_means_skipped_rules_and_lower_confidence():
     out = S.summarize(d2, rules=RULES)
     assert out["confidence"] == "low" and out["native"] is False
     assert not {"deep_powder", "storm_cycle"} & set(out["rule_ids"])
-    assert out["tag"] in ("Snow expected", "Little snow") and "NBM's average" in out["sentence"]
+    assert out["tag"] in ("Snow expected", "Little snow") and "average of possible outcomes" in out["sentence"]
     assert S.summarize({"points": {}}, rules=RULES)["tag"] == "No forecast"
 
 

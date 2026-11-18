@@ -59,6 +59,13 @@ site:
   # Live site origin (override with the SITE_ORIGIN env var). `pipeline restore` reads the previous good SNOTEL copy
   # from here before every build. CHANGE AT THE W1 DOMAIN CUTOVER (docs/specs/hosting-seo.md).
   origin: "https://alexluke23.github.io/snow-wx"
+  # The ONE place the public feedback address lives (owner Nov 17): the footer "Send feedback" link, "Report a bad summary" and
+  # "Report a bust" all read it via data/meta.json -> web/js/site-config.js. No address is hard-coded in any page or script.
+  # Empty = those links are hidden (no default address). Value = what the footer used before this change.
+  # Folder the site is served from ("" = root; "/snow-wx" on GitHub Pages today). Pages emit scripts as "<base_path>/js/...", and
+  # web/js/site-config.js loads data/meta.json relative to its own location, so nested pages (W2) work. Used by pages.py (W2).
+  base_path: ""
+  feedback_email: "alexluke2323@gmail.com"
 
 monitoring:
   # Data-health issues (pipeline/monitor.py, update-site.yml `monitor` job): one GitHub issue per source, assigned

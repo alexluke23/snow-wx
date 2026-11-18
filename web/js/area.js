@@ -45,11 +45,10 @@
   };
   const localFmt = (iso, tz, opts) => new Date(iso).toLocaleString([], { timeZone: tz, ...opts });
   const TYPE_LABEL = { snow: "snow", mixed: "mixed rain and snow", "mostly rain": "mostly rain" };
-  // Range wording (owner S3): NBM probabilistic guidance to 48 h, "likely range" beyond.
-  // NBM's own snowfall percentiles normally; the derived range is only a labelled fallback
-  const rangeName = (t) => (t?.range === "derived 25-75" || t?.range === "likely 25-75" ? "derived range (fallback)" : "NBM 10–90%");
-  const outside = (t) => t && t.snow_lo !== null && t.snow_lo !== undefined && t.snow_hi !== null && t.snow_hi !== undefined
-    && t.snow_in !== null && (t.snow_in < t.snow_lo - 0.05 || t.snow_in > t.snow_hi + 0.05);
+  // Range wording (owner Nov 17): "likely X–Y in" = NBM's own p25-p75 of ONE native window (snow_q1/snow_q3, only when t.native);
+  // otherwise the expected amount alone. The 10-90 % (snow_lo/hi) stays in the files for other uses, never inline text.
+  const likely = (t) => (t && t.native === true && t.snow_q1 != null && t.snow_q3 != null ? [t.snow_q1, t.snow_q3] : null);
+  const outside = (t) => { const r = likely(t); return !!r && t.snow_in !== null && (t.snow_in < r[0] - 0.05 || t.snow_in > r[1] + 0.05); };
   const SEPARATE = "NBM's expected amount (its deterministic forecast) and its probabilistic forecasts are calibrated separately, " +
     "so the expected amount can fall outside the range.";
 
@@ -58,12 +57,12 @@
     if (!s) return "";
     const where = keys.length > 1 ? ` at the ${POINT_LABEL[pt].toLowerCase()}` : "";
     let txt;
-    const rng = (t) => (t.snow_hi === null || t.snow_hi === undefined || t.native !== true ? "" : ` (${rangeName(t)} ${range(t.snow_lo, t.snow_hi)})`);
-    if (((s.native === true ? s.snow_hi : null) ?? s.snow_in ?? 0) < 0.5) {
+    const rng = (t) => { const r = likely(t); return r ? ` (likely ${range(r[0], r[1])})` : ""; };
+    if ((likely(s)?.[1] ?? s.snow_in ?? 0) < 0.5) {
       txt = `No significant snow in the next 72 hours${where}.`;
     } else {
       txt = `Next 72 h${where}: expected <strong>${inches(s.snow_in)} in</strong> ${expectedInfo()}` +
-            `<span class="rng">${rng(s)}</span>.`;
+            `<span class="rng">${rng(s)}${likely(s) ? " " + likelyInfo() : ""}</span>.`;
       const other = keys.find((k) => k !== pt);
       const b = other ? fc.points[other].totals["72h"] : null;
       if (b) txt += ` ${POINT_LABEL[other]}: ${inches(b.snow_in)} in${rng(b)}.`;
@@ -85,13 +84,43 @@
     return txt;
   }
 
+  /** "Report a bad summary" mailto with the place, rule ids and the text prefilled (W3 quality loop, docs/specs/daily-summaries.md). */
+  const summaryReport = (sm) => `<span data-mailto-wrap hidden>· <a ${SiteConfig.attrs("Snow-Wx: bad summary",
+    `Place: ${document.title.replace("Snow-Wx · ", "")}
+Page: ${location.href}
+Tag: ${sm.tag}
+Rules: ${(sm.rule_ids || []).join(", ")}
+Text: ${sm.sentence}
+
+What was wrong (and what happened):
+`)}>Report a bad summary</a></span>`;
+
+  /** "Report a bust" (W5): prefilled e-mail with place, date, issue time and what was forecast; hidden when no feedback address is configured. */
+  function bustLink(d, a, keys, tz) {
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: tz });
+    const t = d.points[keys[0]]?.totals || {};
+    const fc = ["24h", "72h"].filter((k) => t[k]).map((k) => `${k}: expected ${inches(t[k].snow_in)} in${likely(t[k]) ? `, likely ${range(...likely(t[k]))}` : ""}`).join("; ");
+    const body = `Place: ${a.name}
+Page: ${location.href}
+Date of the miss: ${today}
+Forecast issued: ${d.issued}
+Forecast (${POINT_LABEL[keys[0]]}): ${fc}
+
+What actually happened (snow measured/seen, where, photos or links welcome):
+`;
+    return `<span data-mailto-wrap hidden>Forecast missed badly? <a ${SiteConfig.attrs(`Snow-Wx bust report: ${a.name} ${today}`, body)}>Report a bust</a> (busts are published, not hidden).</span>`;
+  }
+
   /** Daily Snow summary (W3: pipeline/summary.py, rules in config/summary_rules.yml): deterministic, hedged, never an LLM. */
   function summaryCard(sm) {
     if (!sm || !sm.sentence) return "";
+    if (sm.alert) return `<p class="summary-line"><b class="summary-tag alert">${esc(sm.tag)}</b> ${esc(sm.sentence)}</p>
+      ${sm.bullets?.length ? `<ul class="summary-bullets">${sm.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : ""}
+      <p class="hint summary-note">Active NWS alerts always come first. <a href="about.html#daily-summary">How the summary works →</a> ${summaryReport(sm)}</p>`;
     const conf = { high: "", medium: " · medium confidence (no native NBM window for part of the forecast)", low: " · low confidence (NBM ranges unavailable)" }[sm.confidence] || "";
     return `<p class="summary-line"><b class="summary-tag">${esc(sm.tag)}</b> ${esc(sm.sentence)}</p>
       ${sm.bullets?.length ? `<ul class="summary-bullets">${sm.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : ""}
-      <p class="hint summary-note">Automatic summary from the numbers below (rules, not a person)${esc(conf)}. <a href="about.html#daily-summary">How it works →</a></p>`;
+      <p class="hint summary-note">Automatic summary from the numbers below (rules, not a person)${esc(conf)}. <a href="about.html#daily-summary">How it works →</a> ${summaryReport(sm)}</p>`;
   }
 
   function tiles(fc, pt, elev) {
@@ -102,11 +131,12 @@
       const c = colorFor(SNOWFALL, t.snow_in) || "#f4f6f8";
       // ranges only from ONE native NBM window (t.native); 7/10-day and composite ones: expected total only (owner Nov 16)
       const long = name === "7d" || name === "10d" || (t.snow_hi != null && t.native !== true);
-      if (long) { t = { ...t, snow_lo: null, snow_hi: null }; }
+      if (long) { t = { ...t, snow_lo: null, snow_hi: null, snow_q1: null, snow_q3: null }; }
+      const lk = likely(t);
       const note = outside(t) ? ` <a class="info" href="about.html#nbm" title="${esc(SEPARATE)}" aria-label="Why the ranges can disagree">ⓘ</a>` : "";
       return `<div class="tile${t.extended ? " ext" : ""}"><span class="label">${label}</span>
         <span class="swatch${snowPale(c) ? " pale" : ""}" style="background:${c}"></span><strong>${inches(t.snow_in)}<small> in</small></strong>
-        <span class="rng">${long ? "expected total only (no native NBM range)" : t.snow_hi === null || t.snow_hi === undefined ? "NWS: no range" : `${rangeName(t)}: ${range(t.snow_lo, t.snow_hi)}${note}`}</span>
+        <span class="rng">${long ? "expected total only (no native NBM range)" : P.raw ? "NWS: amount only, no range" : !lk ? "expected amount only" : `likely ${range(lk[0], lk[1])} ${likelyInfo()}${note}`}</span>
         <span class="rng liquid">${(t.qpf_in ?? 0).toFixed(2)} in liquid</span></div>`;
     };
     const head = P.raw
@@ -127,32 +157,34 @@
   const plain = (v) => (v === null || v === undefined ? "–" : String(v));
 
   // Chance of at least X inches per 24/48/72-h window (NBM probability fields): heat table
-  // 2" is NBM's own >2" exceedance field for 24 h and 48 h windows only (NBM publishes none for 72 h: never derived)
-  const EX_THR = { "24h": [2, 4, 6, 8, 12, 18, 24], "48h": [2, 4, 6, 8, 12, 18, 24, 36], "72h": [4, 6, 8, 12, 18, 24, 36, 48] };
+  // 2" is NBM's own >2" exceedance field for 24 h and 48 h windows only; the 72 h row shows "n/a" with a tooltip (never derived, never blank)
+  const EX_THR = { "24h": [2, 4, 6, 8, 12, 18, 24], "48h": [2, 4, 6, 8, 12, 18, 24, 36], "72h": [2, 4, 6, 8, 12, 18, 24, 36, 48] };
   let exWin = "24h";
   function exceedTable(el, fc, pt, tz) {
     const ex = fc.points[pt].exceed?.[exWin];
     if (!ex || !ex.end?.length) { el.innerHTML = `<p class="hint">No NBM chances for this window.</p>`; return; }
-    const want = EX_THR[exWin].filter((t) => ex.thr.includes(t));
+    const want = EX_THR[exWin].filter((t) => ex.thr.includes(t) || t === 2);      // 2" has no 72 h field: shown as n/a, never blank
     const day = (iso) => C.wall(iso, tz).slice(0, 10);
     const lastDay = (iso) => C.wall(new Date(iso).getTime() - 3.6e6, tz).slice(0, 10);   // window end at ~5 AM -> day before
     const cols = ex.start.map((s0, i) => (exWin === "24h" ? C.dayName(day(s0), true)
       : `${C.dayName(day(s0))}<br>–${C.dayName(lastDay(ex.end[i])).split(" ")[0]}`));
     const titles = ex.start.map((s0, i) => `${localDT(s0, tz)} → ${localDT(ex.end[i], tz)}`);
-    const values = want.map((t) => ex.p.map((row) => row[ex.thr.indexOf(t)]));
+    const values = want.map((t) => ex.p.map((row) => (ex.thr.indexOf(t) < 0 ? null : row[ex.thr.indexOf(t)])));
+    const naRows = Object.fromEntries(want.map((t, i) => [i, ex.thr.indexOf(t) < 0 ? "NBM publishes this for 24 h and 48 h only" : null]).filter(([, v]) => v));
     C.heatTable(el, { caption: `Chance (%) of at least each amount in ${exWin.replace("h", "-hour")} windows`,
-      rowLabels: want.map((t) => `${t}"`), colLabels: cols, colTitles: titles, values, palette: PROB });
+      rowLabels: want.map((t) => `${t}"`), colLabels: cols, colTitles: titles, values, palette: PROB, naRows });
     // summary: the largest amount with a >= 30 % chance somewhere, else the best chance of the smallest
     let best = null;
     want.forEach((t, i) => values[i].forEach((v, j) => {
       if (v !== null && v >= 30 && (!best || t > best.t || (t === best.t && v > best.v))) best = { t, v, j };
     }));
-    const w0 = values[0] ? Math.max(...values[0].map((v) => v ?? 0)) : 0;
-    const j0 = values[0] ? values[0].indexOf(w0) : 0;
+    const first = values.findIndex((_, i) => !naRows[i]);
+    const w0 = values[first] ? Math.max(...values[first].map((v) => v ?? 0)) : 0;
+    const j0 = values[first] ? values[first].indexOf(w0) : 0;
     const txt = best
       ? `Best odds: ${best.v}% chance of at least ${best.t} in during ${titles[best.j]} (${exWin.replace("h", " h")}).`
-      : w0 > 0 ? `Low odds: at most ${w0}% chance of ${want[0]} in or more in any ${exWin.replace("h", "-hour")} window (${titles[j0]}).`
-        : `No meaningful chance of ${want[0]} in or more in any ${exWin.replace("h", "-hour")} window.`;
+      : w0 > 0 ? `Low odds: at most ${w0}% chance of ${want[first]} in or more in any ${exWin.replace("h", "-hour")} window (${titles[j0]}).`
+        : `No meaningful chance of ${want[first]} in or more in any ${exWin.replace("h", "-hour")} window.`;
     C.summary(el, txt);
     el.removeAttribute("role");               // a real table: keep its own semantics
   }
@@ -299,14 +331,15 @@
       steps.map((s) => [s.d.label, endTxt(s), plain(s.add), plain(s.run)]));
   }
 
-  /** Snow ratio + powder quality in ONE panel (dev13 item 4). NBM's snow-to-liquid ratio (SNOWLR): p50 line and
-   *  p10-p90 band, drawn only where snow is falling (SNOWLR is ~0 otherwise). Background bands = the documented
-   *  powder-quality heuristic (Dense < 10:1, Medium 10-15, Blower >= 15; PLAN §5.2, about.html#powder-quality);
-   *  a marker where summit gusts exceed 30 mph while it snows ("wind-affected"). A heuristic, not an accuracy claim.
-   *  Band colors are Okabe-Ito categories (never the NWS snowfall palette); every band is also labelled in text. */
-  const POWDER = [["Dense", 0, POWDER_Q.dense_below, "#CC79A7"], ["Medium", POWDER_Q.dense_below, POWDER_Q.blower_at, "#009E73"],
-    ["Blower", POWDER_Q.blower_at, Infinity, "#56B4E9"]];
+  /** Snow ratio + powder quality in ONE panel (dev13 item 4, redesigned dev14 F3). NBM's snow-to-liquid ratio (SNOWLR):
+   *  the median (p50) and the "likely" 25-75 % band, both from the SAME percentile series over the whole forecast. Thresholds
+   *  of the ONE powder-quality definition (Dense < 10:1, Medium 10-15, Blower >= 15; config powder_quality, colors.js
+   *  POWDER_Q) are thin dashed lines with direct labels at the right edge; the band is a single translucent Okabe-Ito blue (not
+   *  used by the thresholds). Where the series is undefined (a place with no snow forecast at all) nothing is plotted and the
+   *  gap is labelled "no snow forecast". Wind-affected markers where summit gusts reach POWDER_Q.wind_gust_mph while it snows.
+   *  A documented heuristic, never an accuracy claim or an avalanche rating. */
   const POWDER_WIND_MPH = POWDER_Q.wind_gust_mph;
+  const powderClass = (r) => (r === null || r === undefined ? null : r < POWDER_Q.dense_below ? "Dense" : r < POWDER_Q.blower_at ? "Medium" : "Blower");
   function snowingMask(fc, pt) {
     // time i is "snowing" when the precipitation window containing it has snow (hourly to 36 h, then 6-hourly)
     const pr = fc.points[pt].precip;
@@ -319,49 +352,75 @@
       return false;
     });
   }
+  /** runs of consecutive indices where `defined` is false, as [first, last] */
+  function gaps(defined) {
+    const out = []; let a = -1;
+    defined.forEach((d, i) => { if (!d && a < 0) a = i; if ((d || i === defined.length - 1) && a >= 0) { out.push([a, d ? i - 1 : i]); a = -1; } });
+    return out;
+  }
   function slrChart(el, fc, pt, tz) {
     const P = fc.points[pt], s = P.series, xs = fc.times.map((x) => C.wall(x, tz));
+    const pos = (arr) => (arr || fc.times.map(() => null)).map((v) => (v ? v : null));     // 0 / null = undefined: never plotted as a value
+    const hasPct = (s.slr_p50 || []).some(Boolean);
+    const p50 = pos(hasPct ? s.slr_p50 : s.slr), p25 = pos(s.slr_p25), p75 = pos(s.slr_p75);
+    const band = hasPct && p25.some(Boolean) && p75.some(Boolean);
     const snowing = snowingMask(fc, pt);
-    const only = (arr) => arr.map((v, i) => (snowing[i] && v ? v : null));
-    const p50 = only(s.slr), p10 = only(s.slr_p10 || []), p90 = only(s.slr_p90 || []);
-    const windy = fc.times.map((_, i) => (snowing[i] && (s.gust_mph?.[i] ?? 0) > POWDER_WIND_MPH && p50[i] ? i : null)).filter((v) => v !== null);
-    const ymax = Math.max(24, ...p90.filter(Boolean).map((v) => v + 3), ...p50.filter(Boolean).map((v) => v + 3));
-    const ax = C.timeAxis(xs[0], xs[xs.length - 1], el.clientWidth - C.MARGIN.l - 20);
-    const shapes = [...ax.shapes], annotations = [C.axisTitle(C.small() ? "Snow ratio (snow : water)" : "Snow ratio (inches of snow per inch of water)")];
-    for (const [name, lo, hi, col] of POWDER) {
-      const top = Math.min(hi, ymax);
-      shapes.push({ type: "rect", xref: "paper", yref: "y", x0: 0, x1: 1, y0: lo, y1: top, fillcolor: col, opacity: 0.16,
-        line: { width: 0 }, layer: "below" });
-      annotations.push({ xref: "paper", x: 0.995, xanchor: "right", yref: "y", y: (lo + top) / 2, yanchor: "middle", showarrow: false,
-        bgcolor: "rgba(255,255,255,0.8)", borderpad: 2,
-        text: `<b>${name}</b> ${hi === Infinity ? `≥ ${lo}` : lo === 0 ? `< ${hi}` : `${lo}–${hi}`}:1`, font: C.font(12, "#1f2937") });
+    const windy = fc.times.map((_, i) => (snowing[i] && (s.gust_mph?.[i] ?? 0) >= POWDER_WIND_MPH && p50[i] ? i : null)).filter((v) => v !== null);
+    const ymax = Math.max(24, ...p75.filter(Boolean).map((v) => v + 3), ...p50.filter(Boolean).map((v) => v + 3));
+    const small = C.small();
+    const rMargin = small ? 84 : 124;
+    const ax = C.timeAxis(xs[0], xs[xs.length - 1], el.clientWidth - C.MARGIN.l - rMargin);
+    const shapes = [...ax.shapes], annotations = [C.axisTitle(small ? "Snow ratio (snow : water)" : "Snow ratio (inches of snow per inch of water)")];
+    // thresholds: thin dashed lines + direct labels in the right margin (never over the data)
+    const LINE = "#5b6572";
+    for (const y of [POWDER_Q.dense_below, POWDER_Q.blower_at]) {
+      shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: y, y1: y, line: { color: LINE, width: 1, dash: "dash" }, layer: "below" });
     }
-    const hasSnow = p50.some(Boolean);
+    const lab = (y, text) => annotations.push({ xref: "paper", x: 1, xshift: 5, xanchor: "left", yref: "y", y, yanchor: "middle", showarrow: false,
+      text, font: C.font(12, "#1f2937"), align: "left" });
+    lab(POWDER_Q.blower_at + (ymax - POWDER_Q.blower_at) * 0.45, small ? `<b>Blower</b> ≥${POWDER_Q.blower_at}` : `<b>Blower</b> ≥ ${POWDER_Q.blower_at}:1`);
+    lab((POWDER_Q.dense_below + POWDER_Q.blower_at) / 2, small ? `<b>Medium</b>` : `<b>Medium</b> ${POWDER_Q.dense_below}–${POWDER_Q.blower_at}:1`);
+    lab(POWDER_Q.dense_below / 2, small ? `<b>Dense</b> <${POWDER_Q.dense_below}` : `<b>Dense</b> < ${POWDER_Q.dense_below}:1`);
+    // undefined stretches (no snow forecast at all): a light labelled strip, never zeros or invented values
+    for (const [a, b] of gaps(p50.map(Boolean))) {
+      const x1 = b + 1 < xs.length ? xs[b + 1] : xs[b];
+      shapes.push({ type: "rect", xref: "x", yref: "paper", x0: xs[a], x1, y0: 0, y1: 1, fillcolor: "rgba(120,130,140,0.12)", line: { width: 0 }, layer: "below" });
+      if (b - a >= 6) annotations.push({ xref: "x", x: xs[Math.floor((a + b) / 2)], yref: "paper", y: 0.5, showarrow: false, text: "no snow forecast", font: C.font(12, C.MUTED) });
+    }
     const traces = [];
-    if (p10.some(Boolean) && p90.some(Boolean)) {
-      traces.push({ x: xs, y: p90, mode: "lines", line: { width: 0 }, hoverinfo: "skip", connectgaps: false },
-        { x: xs, y: p10, mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: "rgba(31,41,55,0.22)", hoverinfo: "skip", connectgaps: false });
+    if (band) {
+      traces.push({ x: xs, y: p75, mode: "lines", line: { width: 0 }, hoverinfo: "skip", connectgaps: false },
+        { x: xs, y: p25, mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: "rgba(0,114,178,0.25)", hoverinfo: "skip", connectgaps: false });
     }
     traces.push({ x: xs, y: p50, mode: "lines", line: { color: "#111827", width: 2.6 }, connectgaps: false,
-      customdata: p10.map((v, i) => [v, p90[i]]), hovertemplate: "ratio %{y:.0f}:1 (10–90%: %{customdata[0]:.0f}–%{customdata[1]:.0f})<extra></extra>" });
+      customdata: p25.map((v, i) => [v, p75[i], powderClass(p50[i])]),
+      hovertemplate: band ? "median %{y:.0f}:1 (%{customdata[2]}) · likely %{customdata[0]:.0f}–%{customdata[1]:.0f}:1<extra></extra>"
+        : "ratio %{y:.0f}:1 (%{customdata[2]})<extra></extra>" });
     if (windy.length) {
-      traces.push({ x: windy.map((i) => xs[i]), y: windy.map(() => ymax * 0.93), mode: "markers", hovertemplate: "wind-affected: summit gusts over 30 mph while snowing<extra></extra>",
+      traces.push({ x: windy.map((i) => xs[i]), y: windy.map(() => ymax * 0.93), mode: "markers", hovertemplate: `wind-affected: summit gusts ${POWDER_WIND_MPH} mph or more while snowing<extra></extra>`,
         marker: { symbol: "diamond", size: 9, color: C.OI.vermillion, line: { color: "#111827", width: 1 } } });
       annotations.push({ xref: "paper", x: 1, xanchor: "right", yref: "paper", y: 1, yanchor: "bottom", yshift: 4, showarrow: false,
-        text: C.small() ? "◆ wind-affected" : "◆ wind-affected (gusts > 30 mph while snowing)", font: C.font(12, "#7a2e00") });
+        text: small ? "◆ wind-affected" : `◆ wind-affected (gusts ≥ ${POWDER_WIND_MPH} mph while snowing)`, font: C.font(12, "#7a2e00") });
     }
-    if (!hasSnow) annotations.push({ xref: "paper", yref: "paper", x: 0.5, y: 0.5, showarrow: false, text: "No snow expected: no snow ratio", font: C.font(14, C.MUTED) });
-    C.plot(el, traces, C.layout(280, { margin: { r: 20, b: ax.b }, showlegend: false, shapes, annotations, xaxis: ax.axis,
+    C.plot(el, traces, C.layout(280, { margin: { r: rMargin, b: ax.b }, showlegend: false, shapes, annotations, xaxis: ax.axis,
       yaxis: C.yaxis({ range: [0, ymax] }) }));
-    const per = P.periods.filter((p) => p.powder);
-    const label = (p) => `${p.label} ${Math.round(p.slr)}:1 ${p.powder.split(",")[0].toLowerCase()}${/wind/.test(p.powder) ? ", wind-affected" : ""}`;
-    C.summary(el, per.length
-      ? `Snow ratio and powder quality (a documented heuristic): ${per.slice(0, 4).map(label).join("; ")}${per.length > 4 ? "; …" : ""}.`
-      : "No snow expected, so no snow ratio or powder quality.");
-    C.tableToggle(el, "Snow ratio and powder quality by period (documented heuristic)",
-      ["Period", "Snow ratio", "Powder quality", "Wind-affected", "Expected snow (in)"],
-      P.periods.map((p) => [p.label, p.slr && p.powder ? `${Math.round(p.slr)}:1` : "–", p.powder ? p.powder.split(",")[0] : "–",
-        p.powder ? (/wind/.test(p.powder) ? "yes" : "no") : "–", plain(p.snow_in)]));
+    // one complete sentence: the median while snow is forecast (heuristic class), and the likely range
+    const idx = fc.times.map((_, i) => i).filter((i) => snowing[i] && p50[i]);
+    let sentence;
+    if (!idx.length) {
+      sentence = p50.some(Boolean) ? "No snow is forecast in this period, so the snow ratio shown is only what any snow that fell would have."
+        : "No snow ratio is available for this place in this period.";
+    } else {
+      const m = idx.map((i) => p50[i]), lo = Math.round(Math.min(...m)), hi = Math.round(Math.max(...m));
+      const c1 = powderClass(Math.min(...m)), c2 = powderClass(Math.max(...m));
+      const likelyTxt = band ? `, likely ${Math.round(Math.min(...idx.map((i) => p25[i] ?? p50[i])))}–${Math.round(Math.max(...idx.map((i) => p75[i] ?? p50[i])))}:1` : "";
+      sentence = `While snow is forecast the median snow ratio is about ${lo === hi ? `${lo}:1` : `${lo}–${hi}:1`} (${c1 === c2 ? `${c1} class` : `${c1} to ${c2} class`})${likelyTxt}; powder quality is a documented heuristic, not an accuracy claim.`;
+    }
+    C.summary(el, sentence);
+    C.tableToggle(el, "Snow ratio and powder quality over time (documented heuristic)",
+      ["Time", "Median ratio", "Likely low (25%)", "Likely high (75%)", "Powder quality", "Snowing", "Wind-affected"],
+      fc.times.map((x, i) => [localDT(x, tz), p50[i] ? `${Math.round(p50[i])}:1` : "–", band && p25[i] ? `${Math.round(p25[i])}:1` : "–", band && p75[i] ? `${Math.round(p75[i])}:1` : "–",
+        powderClass(p50[i]) || "–", snowing[i] ? "yes" : "no", snowing[i] && (s.gust_mph?.[i] ?? 0) >= POWDER_WIND_MPH ? "yes" : "no"]));
   }
 
   /** Chance of precipitation (0-1) at every forecast time, through the whole forecast (fix 4):
@@ -388,36 +447,47 @@
   function snowLevelChart(el, fc, keys, tz) {
     const s = fc.points[keys[0]].series, t = fc.times;
     const xs = t.map((x) => C.wall(x, tz));
-    let nb = 0;                                  // the 10-90 % band: as long as NBM has the percentiles
-    while (nb < t.length && s.snowlvl_p10[nb] !== null && s.snowlvl_p90[nb] !== null) nb++;
+    // "likely" band = NBM p25-p75 (owner Nov 17) and the median from the SAME percentile series; older files (no p25/p75)
+    // fall back to p10-p90, labelled as such. Where NBM has no snow level at all the gap is labelled, never blank.
+    const has25 = (s.snowlvl_p25 || []).some((v) => v !== null) && (s.snowlvl_p75 || []).some((v) => v !== null);
+    const lo_s = has25 ? s.snowlvl_p25 : s.snowlvl_p10, hi_s = has25 ? s.snowlvl_p75 : s.snowlvl_p90;
+    const med = (s.snowlvl_p50 || []).some((v) => v !== null) ? s.snowlvl_p50 : s.snowlvl_ft;
+    const bandName = has25 ? "likely range" : "10–90% range";
+    let nb = 0;                                  // the band: as long as NBM has the percentiles
+    while (nb < t.length && lo_s[nb] !== null && hi_s[nb] !== null) nb++;
     const chance = precipChance(fc, keys[0]);
-    const wet = s.snowlvl_ft.map((v, i) => ((chance[i] ?? 0) >= WET ? v : null));
+    const wet = med.map((v, i) => ((chance[i] ?? 0) >= WET ? v : null));
     const lines = keys.map((k) => [POINT_LABEL[k], fc.points[k].elev_ft, k === "summit" || k === "point" ? C.INK : "#7a4e12",
       k === "base" ? "dash" : "solid"]);
     const elevs = keys.map((k) => fc.points[k].elev_ft);
     const minBase = Math.min(...elevs);
-    const allV = [...s.snowlvl_ft, ...s.snowlvl_p10.slice(0, nb)].filter((v) => v !== null);
+    const allV = [...med, ...lo_s.slice(0, nb)].filter((v) => v !== null);
     const lo = Math.max(0, Math.min(minBase - 2500, ...allV) - 500), top = Math.max(...elevs, ...allV.slice(0, 400)) + 1500;
     const ax = C.timeAxis(xs[0], xs[xs.length - 1], el.clientWidth - C.MARGIN.l - C.MARGIN.r);
     const traces = [
-      { x: xs.slice(0, nb), y: s.snowlvl_p90.slice(0, nb), mode: "lines", line: { width: 0 }, hoverinfo: "skip" },
-      { x: xs.slice(0, nb), y: s.snowlvl_p10.slice(0, nb), mode: "lines", line: { width: 0 }, fill: "tonexty",
-        fillcolor: "rgba(230,159,0,0.28)", name: "10–90%", hovertemplate: "10–90%%: %{y:,.0f} ft (low end)<extra></extra>" },
-      { x: xs, y: s.snowlvl_ft, mode: "lines", line: { color: "#98a2ae", width: 1.6, dash: "dot" }, name: "Snow level",
-        hovertemplate: "Snow level %{y:,.0f} ft<extra></extra>" },
+      { x: xs.slice(0, nb), y: hi_s.slice(0, nb), mode: "lines", line: { width: 0 }, hoverinfo: "skip" },
+      { x: xs.slice(0, nb), y: lo_s.slice(0, nb), mode: "lines", line: { width: 0 }, fill: "tonexty",
+        fillcolor: "rgba(230,159,0,0.28)", name: bandName, hoverinfo: "skip" },
+      { x: xs, y: med, mode: "lines", line: { color: "#5b6572", width: 2, dash: "dot" }, name: "Snow level (median)", connectgaps: false,
+        customdata: xs.map((_, i) => [lo_s[i], hi_s[i]]),
+        hovertemplate: `Median snow level %{y:,.0f} ft (${bandName} %{customdata[0]:,.0f}–%{customdata[1]:,.0f})<extra></extra>` },
       { x: xs, y: wet, mode: "lines", line: { color: "#9a5300", width: 2.8 }, connectgaps: false, hoverinfo: "skip" },
     ];
     const shapes = [...ax.shapes, { type: "rect", xref: "paper", x0: 0, x1: 1, y0: lo, y1: minBase,
       fillcolor: "rgba(0,114,178,0.10)", line: { width: 0 }, layer: "below" }];
     const annotations = [C.axisTitle("Snow level (ft)")];
+    for (const [a, b] of gaps(med.map((v) => v !== null))) {      // NBM has no snow level here: say so
+      shapes.push({ type: "rect", xref: "x", yref: "paper", x0: xs[a], x1: b + 1 < xs.length ? xs[b + 1] : xs[b], y0: 0, y1: 1, fillcolor: "rgba(120,130,140,0.12)", line: { width: 0 }, layer: "below" });
+      if (b - a >= 4) annotations.push({ xref: "x", x: xs[Math.floor((a + b) / 2)], yref: "paper", y: 0.5, showarrow: false, text: "no snow-level forecast", font: C.font(12, C.MUTED) });
+    }
     for (const [lab, y, c, dash] of lines) {
       const r = C.refLine(y, `${lab} ${ft(y)}`, { color: c, dash, width: 1.6, where: "left" });
       shapes.push(r.shape); annotations.push(r.ann);
     }
     annotations.push({ xref: "paper", x: 0.99, y: lo, yanchor: "bottom", xanchor: "right", yshift: 3, showarrow: false,
       font: C.font(12, "#0b4f80"), text: `Line in the blue zone = snow to the ${keys.includes("base") ? "base" : "station"}` });
-    if (nb > 1) annotations.push({ x: xs[Math.min(nb - 1, Math.floor(nb * 0.85))], y: s.snowlvl_p90[Math.min(nb - 1, Math.floor(nb * 0.85))],
-      xref: "x", yref: "y", yanchor: "bottom", showarrow: false, text: "10–90% range", font: C.font(12, "#8a4b00"), yshift: 2 });
+    if (nb > 1) annotations.push({ x: xs[Math.min(nb - 1, Math.floor(nb * 0.85))], y: hi_s[Math.min(nb - 1, Math.floor(nb * 0.85))],
+      xref: "x", yref: "y", yanchor: "bottom", showarrow: false, text: bandName, font: C.font(12, "#8a4b00"), yshift: 2 });
     C.plot(el, traces, C.layout(260, { shapes, annotations, xaxis: ax.axis, margin: { b: ax.b },
       yaxis: C.yaxis({ range: [lo, top], tickformat: ",.0f" }) }));
     // summary: lowest snow level while precipitation is likely, vs base/summit
@@ -426,12 +496,12 @@
     const base = keys.includes("base") ? fc.points.base.elev_ft : fc.points[keys[0]].elev_ft;
     const rel = (v) => (v <= base ? `below the ${keys.includes("base") ? "base" : "station"} (${ft(base)})`
       : keys.includes("summit") && v >= fc.points.summit.elev_ft ? `above the summit (${ft(fc.points.summit.elev_ft)})` : "between base and summit");
-    const vals = s.snowlvl_ft.filter((v) => v !== null);
+    const vals = med.filter((v) => v !== null);
     C.summary(el, wi >= 0
       ? `Lowest snow level while precipitation is likely: ${ft(wet[wi])} (${localDT(t[wi], tz)}), ${rel(wet[wi])}.`
       : vals.length ? `Little precipitation expected; snow level ${ft(Math.min(...vals))} to ${ft(Math.max(...vals))}.` : "No snow-level forecast.");
-    C.tableToggle(el, "Snow level (ft MSL), NBM", ["Time", "Snow level (ft)", "10th pct", "90th pct", "Chance of precip"],
-      t.map((x, i) => [localDT(x, tz), plain(s.snowlvl_ft[i]), plain(s.snowlvl_p10[i]), plain(s.snowlvl_p90[i]),
+    C.tableToggle(el, "Snow level (ft MSL), NBM", ["Time", "Median snow level (ft)", has25 ? "Likely low (25%)" : "Low (10%)", has25 ? "Likely high (75%)" : "High (90%)", "Chance of precip"],
+      t.map((x, i) => [localDT(x, tz), plain(med[i]), plain(lo_s[i]), plain(hi_s[i]),
         chance[i] === null || chance[i] === undefined ? "–" : `${Math.round(chance[i] * 100)}%`]));
   }
 
@@ -739,6 +809,7 @@
       isStation ? Promise.resolve(null) : getJSON("data/avalanche_ratings.json"),
       getJSON("data/alerts/index.json")]);
     const nbm = fcR.status === "fulfilled" ? fcR.value : null;
+    const alertRefs = alR.status === "fulfilled" ? (isStation ? alR.value.points : alR.value.areas)?.[id] || [] : [];   // client-side alert tag (§5.7)
     const nws = nwsR.status === "fulfilled" ? nwsR.value : null;
     let a = isStation ? (nbm?.station && siteFromStation(nbm.station)) : nbm?.area;
     if (!a && isStation) {
@@ -807,6 +878,7 @@
       ${src ? `<div id="summary-card" class="summary-card" aria-live="polite"></div>
       <p class="headline" id="headline"></p>
       <p class="fresh" id="fresh"></p>
+      <p class="hint bust" id="bust"></p>
       <div class="sec-head seg-row">${srcSeg}<span id="elev-seg"></span></div>
       <div id="tiles"></div>
       <section><h3>Snowfall by day</h3>
@@ -817,7 +889,7 @@
         <p class="note" id="acc-note"></p></section>
       <section><h3>Snow ratio and powder quality <a class="info" href="about.html#powder-quality" title="Powder quality is a documented heuristic from NBM's snow-to-liquid ratio (Dense below 10:1, Medium 10–15, Blower 15 and up; wind-affected when summit gusts exceed 30 mph while it snows). Not an accuracy claim or an avalanche rating." aria-label="How powder quality works">ⓘ</a></h3>
         <div class="chart" id="slr-chart" style="height:280px"><p class="hint">Loading chart…</p></div>
-        <p class="note">NBM's forecast snow ratio (line = median, shading = 10–90%), drawn only while snow is falling. The colored bands are a <b>documented heuristic</b> for powder quality, not an accuracy claim. <a href="about.html#powder-quality">How it works →</a></p></section>
+        <p class="note">NBM's forecast snow ratio over the whole forecast: the line is the median, the blue shading the <b>likely range</b> (the middle half of NBM's outcomes). The dashed lines mark the powder-quality classes, a <b>documented heuristic</b>, not an accuracy claim. <a href="about.html#powder-quality">How it works →</a></p></section>
       <section id="ex-sec"><h3>Chance of at least…</h3>
         <div class="seg" role="group" aria-label="Window" id="ex-win"><button type="button" class="on" data-w="24h" aria-pressed="true">24 h</button><button type="button" data-w="48h" aria-pressed="false">48 h</button><button type="button" data-w="72h" aria-pressed="false">72 h</button></div>
         <div id="ex-chart" class="heat-box"><p class="hint">Loading…</p></div>
@@ -881,7 +953,8 @@
         if (!keys.includes(pt)) pt = keys[0];
         const stale = (Date.now() - new Date(d.issued)) / 3.6e6 > (src === "nws" ? 12 : 18);
         $("headline").innerHTML = headline(d, keys);
-        $("summary-card").innerHTML = src === "nws" ? "" : summaryCard(d.summary);
+        $("summary-card").innerHTML = src === "nws" ? "" : summaryCard(SnowSummary.withAlerts(d.summary, alertRefs));
+        $("bust").innerHTML = bustLink(d, a, keys, tz);
         $("fresh").className = `fresh${stale ? " stale" : ""}`;
         $("fresh").textContent = `${src === "nws" ? "NWS forecast (NDFD) issued" : "NBM"} ${localFmt(d.issued, tz,
           { weekday: "short", hour: "numeric", timeZoneName: "short" })}${src === "nws" ? "" : " run"} · ${ago(d.issued)}${stale ? " — out of date" : ""}`;
@@ -905,7 +978,7 @@
         $("ex-sec").hidden = src === "nws" || !d.points[pt].exceed || !Object.keys(d.points[pt].exceed).length;
         $("ex-note").innerHTML = `NBM's own chance of at least each amount for the 2.5 km grid cell around the ${POINT_LABEL[pt].toLowerCase()}, in ${exWin.replace("h", " h")} windows from about 5 AM (12Z); columns are labelled with the day the window starts (hover for exact times). Separate from the expected-amount bars, so they can disagree. NBM only. <a href="about.html#probabilities">How they work →</a>`;
         $("hbh-sub").textContent = `hourly ${Math.round(HOURS_DETAIL / 24 * 2) / 2} days, then 6-hourly · times ${tzName(tz)}`;
-        $("sl-note").textContent = `Below the line precipitation falls as rain. The line is solid where precipitation is likely (≥ 20% chance) and dotted where it is not; the orange band is NBM's 10–90% range${src === "nws" ? "" : " (as far as NBM provides it, about 10 days)"}. Times ${tzName(tz)}.`;
+        $("sl-note").textContent = `Below the line precipitation falls as rain. The line is solid where precipitation is likely (≥ 20% chance) and dotted where it is not; the line is NBM's median snow level over the whole forecast and the orange band the likely range (the middle half of NBM's outcomes)${src === "nws" ? "" : " (as far as NBM provides it, about 10 days; grey stretches have no NBM snow level)"}. Times ${tzName(tz)}.`;
         $("met-note").textContent = src === "nws"
           ? `NWS forecast for the 2.5 km grid cell (elev. ${ft(d.points[pt].grid_elev_ft)}), as issued — not adjusted to this elevation. Snow in 6-hour amounts, shown as an hourly rate. Days 4–10: see the day/night bars above.`
           : "Temperatures adjusted from the 2.5-km NBM grid to each elevation (6.5 °C/km). Snow: hourly to 36 h, then 6-hour amounts, both shown as a rate (in per hour) so they compare. After 3½ days (shaded) temperature and wind are NBM's 6-hourly values; snow after that: see the day/night bars above.";

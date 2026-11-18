@@ -3,7 +3,7 @@
 version: 1
 
 # one headline tag by priority (first listed wins); the rest become bullets
-priority: [alert, rain_base, deep_powder, storm_cycle, wind, dry, baseline]
+priority: [alert, rain_base, deep_powder, storm_cycle, dry, wind, baseline]     # dry outranks wind (owner Nov 17)
 
 deep_powder:
   p50_24h_in: 8        # NBM native median (exceedance-window p50) for the first 24 h window
@@ -12,7 +12,7 @@ deep_powder:
   gust_mph: 25         # summit gusts must stay below this
 
 storm_cycle:
-  p50_72h_in: 18       # native 72 h median; the quoted range is the native 72 h p10-p90
+  p50_72h_in: 18       # native 72 h median; the quoted "likely" range is the native 72 h p25-p75
 
 rain_base:
   p_snow_max: 0.5      # chance that precipitation falls as snow at the point below this = rain likely

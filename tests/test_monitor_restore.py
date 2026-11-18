@@ -207,3 +207,12 @@ def test_24h_and_72h_changes_are_hidden_once_older_than_their_window():
     assert old["depth_72h"] == 12.0 and old["depth_in"] == 40.0 and old["obs_time"] == props["obs_time"]   # 72 h window still open
     young = dict(props, obs_time=(now - timedelta(hours=5) - timedelta(hours=7)).strftime("%Y-%m-%d %H:%M"))
     assert snotel._stale({**f, "properties": young}, now)["properties"]["depth_24h"] == 6.0
+
+
+def test_meta_json_publishes_monitoring_limits_for_the_status_page(tmp_path):
+    from pipeline.__main__ import write_meta
+    cfg = {"region": {"name": "x"}, "monitoring": {"assignee": "someone", "sources": {"snotel": {"max_failures": 3, "max_age_hours": 6}}}}
+    write_meta(cfg, tmp_path, {"snotel": {"ok": True}})
+    meta = json.loads((tmp_path / "meta.json").read_text(encoding="utf-8"))
+    assert meta["monitoring"] == {"sources": {"snotel": {"max_failures": 3, "max_age_hours": 6}}}      # limits only, never the assignee
+    assert meta["sources"]["snotel"]["ok"] is True
