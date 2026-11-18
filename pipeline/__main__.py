@@ -319,8 +319,11 @@ def main(argv=None) -> int:
         if args.snotel:
             return catalog.build_snotel_points(make_session(cfg), catalog.load_catalog_config(), Path(args.obs_dir))
         if args.rec:
-            from .rec import build_rec_points
-            return build_rec_points(make_session(cfg), cfg, catalog.load_catalog_config(), Path(args.obs_dir))
+            from .rec import build_rec_points, write_review
+            code = build_rec_points(make_session(cfg), cfg, catalog.load_catalog_config(), Path(args.obs_dir))
+            if not code:
+                print(f"owner review: {len(write_review())} Sno-Park points flagged in data/rec_points_review.csv")
+            return code
         return catalog.run(cfg, make_session(cfg), Path(args.out), Path(args.obs_dir), args.refresh)
     if args.cmd == "obs":
         return run_obs(cfg, Path(args.out), args.only)

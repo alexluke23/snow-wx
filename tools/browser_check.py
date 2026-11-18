@@ -864,7 +864,74 @@ def check_storm(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm}
+def check_hazard_popup(b: Browser, base: str, log):
+    """dev16 Part 0b: a hazard popup shows readable product text in the page (fixture alert), escapes hostile text, links only to weather.gov
+    (never an api.weather.gov alert record), and a lookup miss gives a clear message plus the same office link. Works at 375 px."""
+    import hashlib
+    aid = "urn:oid:2.49.0.1.840.0.fixture.001"
+    key = hashlib.sha1(aid.encode()).hexdigest()[:10]
+    idx = {"alerts": {key: {"event": "Winter Storm Warning", "headline": "Winter Storm Warning issued by <b>NWS Salt Lake City</b>", "sender": "NWS Salt Lake City UT",
+           "effective": "2026-11-17T12:00:00-07:00", "expires": "2026-11-19T05:00:00-07:00", "area": "Wasatch Mountains; <img src=x onerror=alert(1)>"}}}
+    det = {key: {"description": "* WHAT...Heavy snow.\n  Totals 12 to 24 inches.\n<script>window.__pwned = 1</script>", "instruction": "Slow down.\nCarry a shovel."}}
+    for width in (1280, 375):
+        b.open(f"{base}/index.html", width=width, wait=6)
+        b.eval(f"window.snowwx.hazards.injectAlertFiles({json.dumps(idx)}, {json.dumps(det)}); 1")
+        res = b.eval("""(async () => {
+          const mkf = (url) => ({properties: {prod_type: 'Winter Storm Warning', wfo: 'KSLC', expiration: '2026-11-19T12:00:00Z', url}});
+          const out = {};
+          for (const [name, url] of [['known', 'https://api.weather.gov/alerts/%s'], ['unknown', 'https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.nothing.999']]) {
+            const host = document.createElement('div'); host.className = 'leaflet-popup-content'; host.style.cssText = 'position:fixed;top:60px;left:8px;width:300px;background:#fff;z-index:99999';
+            const dom = window.snowwx.hazards.popupFor(mkf(url)); host.append(dom); document.body.append(host);
+            await new Promise(r => setTimeout(r, name === 'unknown' ? 6000 : 800));
+            const body = dom.querySelector('.hz-body');
+            out[name] = {text: body.textContent, html: dom.innerHTML, links: [...dom.querySelectorAll('a')].map(a => a.href), scripts: dom.querySelectorAll('script, img').length,
+                         pre: getComputedStyle(dom.querySelector('.hz-text') || dom).whiteSpace, maxH: getComputedStyle(body).maxHeight, w: host.getBoundingClientRect().width, vw: innerWidth};
+            if (name === 'known') out.known.shot = host.getBoundingClientRect().bottom;
+            if (name === 'known') host.id = 'hz-fixture'; else host.remove();
+          }
+          out.pwned = !!window.__pwned;
+          return out; })()""" % aid)
+        log(f"  hazard popup {width}px: {json.dumps(res)[:700]}")
+        k, u = res["known"], res["unknown"]
+        need("Totals 12 to 24 inches." in k["text"] and "Slow down." in k["text"] and "NWS Salt Lake City UT" in k["text"] and "Wasatch Mountains" in k["text"], f"readable text missing: {k['text'][:200]}")
+        need("<script>" in k["text"] and "&lt;script&gt;" in k["html"] and k["scripts"] == 0 and not res["pwned"], f"alert text was not escaped: {k['html'][:300]}")
+        need(k["links"] == ["https://www.weather.gov/slc/"] and k["pre"] == "pre-wrap" and k["maxH"] != "none", f"links/layout: {k['links']} {k['pre']} {k['maxH']}")
+        need(all("api.weather.gov" not in l and not l.endswith(".json") for l in k["links"] + u["links"]), "a popup link points at an API/JSON endpoint")
+        need("could not be loaded" in u["text"] and u["links"] == ["https://www.weather.gov/slc/"], f"lookup miss needs a clear message and the office link: {u}")
+        need(k["w"] <= k["vw"], f"popup wider than the viewport: {k['w']} > {k['vw']}")
+        if width == 375:
+            b.shot(Path(tempfile.gettempdir()) / "hz_popup_375.png")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_snopark_finder_mobile(b: Browser, base: str, log):
+    """dev16 M4.5: the Finder Type filter (Ski areas / Sno-Parks / All) at 375 px: tappable (>= 40 px), no sideways scroll, state/region menus
+    follow the type with counts, a Sno-Park row links to its forecast page and shows its source/attribution there."""
+    b.open(f"{base}/finder.html#t=ski", width=375, wait=6)
+    st = b.eval("""(() => ({types: [...document.querySelectorAll('#type button')].map(x => [x.textContent.trim(), Math.round(x.getBoundingClientRect().height), Math.round(x.getBoundingClientRect().width)]),
+        rows: document.querySelectorAll('#rows .frow').length, hscroll: document.documentElement.scrollWidth > innerWidth + 2,
+        states: [...document.querySelectorAll('#state option')].length}))()""")
+    log(f"  finder 375 type filter: {st}")
+    need([t[0] for t in st["types"]] == ["Ski areas", "Sno-Parks", "All"] and all(t[1] >= 40 for t in st["types"]), f"type filter not tappable at 375 px: {st}")
+    need(not st["hscroll"], f"finder scrolls sideways at 375 px: {st}")
+    ski_rows = st["rows"]
+    b.eval("[...document.querySelectorAll('#type button')].find(x => x.textContent.trim() === 'Sno-Parks').click(); 1")
+    time.sleep(1.2)
+    sp = b.eval("""(() => ({rows: document.querySelectorAll('#rows .frow').length, sp: document.querySelectorAll('#rows .frow .kind-sp').length,
+        states: [...document.querySelectorAll('#state option')].map(o => o.textContent), first: (document.querySelector('#rows .frow a') || {}).href || ''}))()""")
+    log(f"  finder 375 sno-parks: rows {sp['rows']} (ski {ski_rows}) states {sp['states'][:4]}")
+    need(sp["rows"] > ski_rows and sp["sp"] == sp["rows"], f"Sno-Park type shows the wrong rows: {sp['rows']} vs ski {ski_rows}")
+    need(sp["states"][0].startswith("All (") and any(x.startswith("WA (") for x in sp["states"]), f"state menu does not follow the type: {sp['states'][:5]}")
+    b.eval("window.scrollTo(0, 0); 1")
+    b.shot(Path(tempfile.gettempdir()) / "finder_sp_375.png")
+    area = sp["first"].split("#")[-1]
+    b.open(f"{base}/area.html#{area}", width=375, wait=6)
+    pg = b.eval("""(() => ({txt: document.getElementById('area').textContent, hscroll: document.documentElement.scrollWidth > innerWidth + 2}))()""")
+    need(("USDA Forest Service" in pg["txt"] or "OpenStreetMap" in pg["txt"]) and not pg["hscroll"], "Sno-Park page lacks its source/attribution or scrolls sideways")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile}
 
 
 def main(argv=None) -> int:
