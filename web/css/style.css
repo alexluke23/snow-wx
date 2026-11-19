@@ -135,7 +135,7 @@ footer a, #panel a { color: var(--accent); }
 @media (max-width: 800px) {
   header { flex-wrap: wrap; row-gap: 4px; }
   .site-nav { margin-left: 8px; }
-  .hour-label { min-width: 0; }
+  .hour-label { min-width: 0; flex: 1 1 100%; min-height: 2.9em; }       /* own row from the first paint, two lines reserved: the label text arrives after the catalog and must not re-wrap the row (CLS) */
   .frame img { max-height: none; }
   main { flex-direction: column; }
   #map { flex: none; height: 60vh; }
