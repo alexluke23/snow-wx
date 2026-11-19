@@ -27,6 +27,7 @@
 | NBM exceedance probabilities vs percentiles | `docs/nbm_prob_consistency_*.md` — read when changing "Chance of ≥ X" |
 | NBM percentiles vs the GSL 1-D viewer | `docs/nbm_validation_gsl_*.md` — read when validating NBM decodes |
 | Sno-Park / recreation sources and licences | `docs/sources_recreation.md` — read before adding or changing a recreation source |
+| Resort-reported snowfall licensing (research only) | `docs/sources_resort_snowfall.md` — questions to ask Mountain News / TWC / OpenSnow |
 
 When a task starts, read this file, then only the spec(s) for the active milestone.
 
@@ -58,11 +59,11 @@ centers). Full text: `docs/ARCHIVE.md`.
 
 ---
 
-## 2. Status (Nov 17 2026, through dev14)
+## 2. Status (Nov 18 2026, through dev17)
 
 - **Live:** https://alexluke23.github.io/snow-wx/ — repo `alexluke23/snow-wx` (custom domain: W1).
 - **Done:** M0–M5, M3.5, M3.6, M4.5 Sno-Parks, M9-prep archive (running), "My mountains", NBM forecast
-  overlays, dev10 basemap (relief + OSM reference layer), **dev11–dev14** (merged: "likely" p25–p75 wording, one powder-quality definition, W3, status page, obs-map defaults), **dev15** (PR open: monitor bootstrap fix, W4 PWA built but off, obs-map lazy station files, storm-total tracker). Details: `docs/ARCHIVE.md`.
+  overlays, dev10 basemap (relief + OSM reference layer), **dev11–dev14** (merged: "likely" p25–p75 wording, one powder-quality definition, W3, status page, obs-map defaults), **dev15/16** (merged: monitor bootstrap, W4 PWA built but off, storm-total tracker, in-page hazard text, M7 precipitation by model, M9 scorer), **dev17** (branch: `hazard_text.json`, ECMWF HRES + ENS plume built but off, W7 wind flag and W6 alerts skeleton built but off, forecast-overlay stale/flag, Sno-Park review decisions). Details: `docs/ARCHIVE.md`.
 - **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas,
   Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
 - **Known issues:** NRCS AWDB (SNOTEL) outage over. Last good run before it ≈ 11:25 UTC Nov 16; first failing run seen 22:07 UTC Nov 16; still down
@@ -102,11 +103,11 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
 | Nov 16 | **Drop the 7/10-day 10–90% ranges** (Finder, My mountains, area tiles): expected total only; keep native 24/48/72 h ranges. |
 | Nov 16 | Partial first day keeps the **hatched grey expected bar**; legend/tooltip/aria: "partial day — expected amount, no range". |
 | Nov 16 | SNOTEL 24 h depth change on the obs map: gains use NWS colors, losses stay brown, legend titled "Snow depth change" (compaction ≠ snowfall). |
-| Nov 17 | **dev13 UX package** (NBM-native P(≥2″), combined snow-ratio/powder panel, linked Finder menus, obs-map layer defaults + NWS hazards layer): details in `docs/ARCHIVE.md`. |
-| Nov 17 | **SNOTEL outage handling accepted:** previous good copy from the live site (option A, `SITE_ORIGIN`/`site.origin`, on the W1 cutover checklist); stale ≤ 48 h with original timestamps (never re-stamped), 24/72 h changes hidden when older than their window; data-health GitHub issues per source with limits from each source's real cadence (config `monitoring`), assigned to the owner, monitor can never fail the deploy. Independent "workflow did not run" check proposed in `docs/specs/data-pipeline.md` 5.2c (heartbeat service recommended). |
-| Nov 17 | **Owner feedback (live review) → dev14:** the **default uncertainty range for snowfall, snow level and snow ratio is 25–75% ("likely", the middle half of NBM's outcomes)**; 10–90% is kept only where explicitly noted (Finder/W3 chance fields, M9 archive). Inline text says "likely X–Y in" with no "NBM 10–90%" label (source and issue time stay in run lines and captions). **One powder-quality definition** (config `powder_quality`: Dense < 10:1, Blower ≥ 15:1). Obs map first-load layers: relief + roads + ski areas + NWS winter hazards only; avalanche, Sno-Parks, SNOTEL, ASOS, NOHRSC off. W3 "Dry stretch" outranks "Wind-affected"; alert tag computed client-side from alerts/index.json. Obs-map Lighthouse target: no worse than main (≈ 82). |
+| Nov 17 | **SNOTEL outage handling accepted** (stale ≤ 48 h flagged, per-source data-health issues, never fails the deploy): details in `docs/ARCHIVE.md`. |
+| Nov 17 | **Owner feedback → dev14:** default uncertainty range for snowfall, snow level and snow ratio = **25–75% ("likely")**; 10–90% only where noted; ONE powder-quality definition (config `powder_quality`); obs-map first-load layers: relief, roads, ski areas, NWS winter hazards. Full text: `docs/ARCHIVE.md`. |
 | Nov 17 | **Monitor bootstrap (dev15):** a failing/stale/unavailable source is judged by the data's own age, last success and `outage_since`, not only the restarted failure counter; one decision log line per source. |
 | Nov 17 | **dev16:** hazard popups show the NWS product text in-page (never an api.weather.gov link; untrusted text escaped); M7 precipitation by model built (agreement badge = documented heuristic); M9 scorer excludes the SNOTEL outage window and stale obs. |
+| Nov 18 | **dev17:** ECMWF (HRES line + IFS ENS plume, 50 members: the mirror has no control) built behind `ecmwf.enabled=false`; W7 wind flag (`wind_exposure.enabled=false`, reviewer checklist in the spec) and W6 alerts skeleton (`alerts_backend.enabled=false`) are offline-built only: **never enable without the owner/reviewer**; agreement badge now ≥ 80 % High / ≥ 66 % Medium (4 sources). |
 | Nov 16 | **Composite ranges are never shown:** where a 24/48/72 h total would add several 6 h percentile windows (fallback cycles), show the expected total only; points JSON marks totals `native: true/false`. Archive columns unchanged (they never carry composite ranges). Lighthouse target: median of ≥ 3 interleaved runs ≥ 85. |
 | Nov 16 | Model-map snowfall colors stay as is for now (backlog §8.4). **Guard:** points JSON and the forecast archive keep their existing fields (p10/p50/p90, P(≥4/8/12″), 24/48/72 h). |
 
@@ -161,16 +162,14 @@ without JS); sitemap; `#id` redirects; OG cards for top 60. **W3 Daily summaries
 `points/<id>.json`; fixture-tested rules; shown on cards, Finder rows, meta descriptions. **W4 PWA** (built dev15 behind `pwa.enabled=false`; enable only after W1) — §5.8 tests pass on
 real iPhone + Android; staleness banners; install event. **W5 Analytics/monitoring** (public status page + "Report a bust" done dev14; analytics not wired) — cookieless events (favorite,
 install, signup, alert, avalanche-center click, "view as table"); feedback link; failure notifications; public status
-page. **W6 Alerts** — double opt-in, one-click unsubscribe, test alert by email + push within one points run, rate
-limits. **W7 ◇ Wind flag** — renders for 5 test cases, reviewed by an avalanche-literate person.
+page. **W6 Alerts** — offline skeleton + tests dev17 (owner decisions listed in the spec); double opt-in, one-click unsubscribe, test alert by email + push within one points run, rate
+limits. **W7 ◇ Wind flag** — built dev17 behind `wind_exposure.enabled=false` (5 cases tested); waits for the reviewer checklist in the spec.
 
-**M7 Precipitation by model** (built dev16 for NBM/HRRR/RRFS/GFS; ECMWF waits for M8-lite) — ✅ when: per-area chart of HRRR/RRFS/GFS/NBM
+**M7 Precipitation by model** (built dev16; ECMWF HRES line added dev17) — ✅ when: per-area chart of HRRR/RRFS/GFS/NBM
 (+ ECMWF when M8-lite lands) in liquid-equivalent with inches toggle; agreement
 badge documented in about.html.
 
-**M8 ECMWF** — point sampling first (✅ when ECMWF series validate against a
-manual spot check for 3 areas; attribution live); synoptic charts later; AIFS/ENS
-plumes in M10.
+**M8 ECMWF** — ✅ built dev17 (HRES line + ENS plume, spot-checked on 3 areas, attribution in place) but OFF until the owner wires `docs/workflow_snippets/ecmwf.yml`; synoptic charts later; AIFS in M10.
 
 **M9 Verification & bias correction** — **check whether the rank-by-rank 12-h day/night ranges (points file `periods[].snow_lo/hi/q1/q3`) are over-wide against observed SNOTEL snowfall** (dev15 note); score NBM/NDFD/models vs SNOTEL 24 h snow &
 temps by area/elevation; publish on about.html; later per-site bias correction

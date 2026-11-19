@@ -79,6 +79,42 @@ pwa:
   kill: false
   version: ""        # salt for the cache version (the version is also a hash of the shell files)
 
+forecast_overlays:
+  # NBM expected snowfall (24 h / 72 h / 7 d) and chance of >= 4 / 6 / 12 in on the obs map (pipeline/nbm/layers.py, web/js/overlays.js). Default OFF in the
+  # UI (the user picks a layer). enabled: false removes the whole "Forecast" group (the reversible switch if a budget breaks); layers whose model cycle
+  # started more than stale_hours ago are drawn grey with a note (the points job runs every 6 h; the status monitor allows 14 h).
+  enabled: true
+  stale_hours: 14
+
+ecmwf:
+  # ECMWF open data (CC BY 4.0) at ski-area summits: IFS HRES line in "Precipitation by model" + IFS ENS plume (pipeline/ecmwf.py, `python -m pipeline ecmwf`).
+  # OFF until the owner wires docs/workflow_snippets/ecmwf.yml into a workflow; `--force` runs it by hand. 0.25 degree ENS carries 50 perturbed members (no control).
+  enabled: false
+  cycles: [0, 12]
+  step_h: 6
+  max_step_h: 240
+  stale_hours: 24
+
+alerts_backend:
+  # W6 alerts backend skeleton (pipeline/alerts_backend.py, docs/specs/alerts-backend.md): OFFLINE reference logic + tests only; nothing is deployed and
+  # nothing on the site calls it. Needs owner decisions first (e-mail provider, Cloudflare account, sender domain, postal address). Keep false.
+  enabled: false
+  postal_address: ""     # CAN-SPAM: required in every e-mail; the service sends nothing while this or base_url is empty
+  base_url: ""
+
+wind_exposure:
+  # W7 Phase A (pipeline/wind_exposure.py, docs/specs/wind-exposure.md): an INFORMATIONAL "wind-affected snow likely" flag, never an avalanche
+  # rating. BUILT BEHIND THIS FLAG; do NOT enable before an avalanche-literate reviewer has signed the checklist in the spec. While false,
+  # no point file carries a `wind_exposure` field and the page renders nothing.
+  enabled: false
+  sustained_mph: 25      # [thresholds to tune after M9]
+  gust_mph: 35
+  min_window_snow_in: 0.2
+  min_episode_snow_in: 0.5
+  after_h: 12
+  min_windy_hours: 2
+  horizon_h: 72
+
 verification:
   # M9 scoring (tools/verify_forecasts.py) excludes SNOTEL observations inside this window (the NRCS AWDB outage; end = first CONFIRMED live
   # recovery, owner Nov 17) and any stale/unavailable observation.

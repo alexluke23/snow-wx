@@ -34,9 +34,10 @@ function SnowHazards(map, { dataBase = "data/", bbox = [-125, 31, -102, 49.5], o
   // ---- popup: readable product text IN the page (never a link to the api.weather.gov JSON record). Alert text is untrusted external
   // content: everything is written with textContent (no innerHTML), line breaks via CSS pre-wrap, long text scrolls inside the popup.
   const FIELD_LABEL = [["headline", "Headline"], ["area", "Area"], ["description", "Details"], ["instruction", "Instructions"]];
-  let idxP = null, detP = null;
+  let idxP = null, detP = null, htP = null;
   const getIdx = () => (idxP ||= fetchJSON(`${dataBase}alerts/index.json`, 10000).catch(() => null));
   const getDet = () => (detP ||= fetchJSON(`${dataBase}alerts/details.json`, 15000).catch(() => null));
+  const getHT = () => (htP ||= fetchJSON(`${dataBase}alerts/hazard_text.json`, 15000).catch(() => null));
   const remote = new Map();                             // alert id -> promise (one live fetch per alert, kept in memory)
   /** the alert id ("urn:oid:...") from the service's url field; used ONLY to look the alert up, never as an href */
   const alertId = (u) => { try { return decodeURIComponent(String(u || "").split("/alerts/")[1] || "").split(/[?#]/)[0]; } catch { return ""; } };
@@ -44,10 +45,14 @@ function SnowHazards(map, { dataBase = "data/", bbox = [-125, 31, -102, 49.5], o
     const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(text));
     return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 10);
   }
-  /** {event, headline, sender, effective, expires, area, description, instruction} from our own alert files (same origin), else null */
+  /** {event, headline, sender, effective, expires, area, description, instruction} from our own alert files (same origin), else null.
+   *  hazard_text.json (every active alert of the layer's event types, built from the pipeline's one /alerts/active call) first, then the
+   *  older index/details pair (alerts touching a ski area or SNOTEL site). */
   async function localAlert(id) {
     if (!id || !crypto?.subtle) return null;
-    const key = await sha10(id), [idx, det] = await Promise.all([getIdx(), getDet()]);
+    const key = await sha10(id), ht = (await getHT())?.alerts?.[key];
+    if (ht) return { event: ht.e, headline: ht.h, sender: ht.o, effective: ht.f, expires: ht.x, area: ht.a, description: ht.d, instruction: ht.i };
+    const [idx, det] = await Promise.all([getIdx(), getDet()]);
     const a = idx?.alerts?.[key];
     if (!a) return null;
     return { event: a.event, headline: a.headline, sender: a.sender, effective: a.effective, expires: a.expires || a.ends, area: a.area,
@@ -181,6 +186,6 @@ function SnowHazards(map, { dataBase = "data/", bbox = [-125, 31, -102, 49.5], o
     refresh: () => load(true),
     /** test hooks (tools/browser_check.py): the popup DOM for a feature, and alert files injected in place of the network */
     popupFor: buildPopup,
-    injectAlertFiles(idx, det) { idxP = Promise.resolve(idx); detP = Promise.resolve(det); },
+    injectAlertFiles(idx, det, ht = null) { idxP = Promise.resolve(idx); detP = Promise.resolve(det); htP = Promise.resolve(ht); },
   };
 }

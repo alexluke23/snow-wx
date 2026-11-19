@@ -35,6 +35,7 @@ from .common import REPO_ROOT, utcnow, write_json
 
 log = logging.getLogger("snow-wx.rec")
 OUT = REPO_ROOT / "data" / "rec_points.json"
+REVIEW_CSV = REPO_ROOT / "data" / "rec_points_review.csv"
 EDW = "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_RecInfraRecreationSites_02/MapServer/0/query"
 OVERPASS = "https://overpass-api.de/api/interpreter"
 EDW_TYPES = ("SNOWPARK", "SNOWPLAY AREA", "SKI AREA NORDIC", "TRAILHEAD")
@@ -332,6 +333,11 @@ def build_rec_points(session, cfg: dict, ccfg: dict, obs_dir: Path, out: Path = 
                                                 "county": v.get("county")}) for k, v in (("base", nb), ("summit", nh))},
             "nbm_grid": nbm, "source": s["source"], "source_id": s["source_id"],
         })
+    recs, applied = apply_decisions(recs, read_decisions(REVIEW_CSV))       # owner decisions (keep / drop / merge); none = no change
+    if applied["drop"] or applied["merge"]:
+        log.info("owner review decisions applied: %d dropped, %d merged, %d kept", len(applied["drop"]), len(applied["merge"]), len(applied["keep"]))
+    for w in applied["warnings"]:
+        log.warning("owner review: %s", w)
     write_json(out, {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                      "source": "USDA Forest Service EDW Recreation Sites (public domain); OpenStreetMap contributors (ODbL); "
                                "elevations USGS 3DEP",
@@ -345,6 +351,72 @@ def build_rec_points(session, cfg: dict, ccfg: dict, obs_dir: Path, out: Path = 
 # ---------------------------------------------------------------- owner review (dev16)
 
 REVIEW_COLS = ("id", "name", "state", "source", "subtype", "reasons", "near_ski_area", "near_ski_km", "elev_ft", "cell_elev_ft", "lat", "lon")
+DECISION_COLS = ("decision", "merge_into", "note")          # owner-filled (dev17): keep | drop | merge (+ merge_into = the id to keep)
+DECISIONS = ("keep", "drop", "merge")
+
+
+def read_decisions(path: Path = REVIEW_CSV) -> dict[str, dict]:
+    """{id: {decision, merge_into, note}} from the owner's review CSV. Rows with an empty or unknown decision are ignored, so a CSV with no
+    decisions (the default) changes nothing. Values are case-insensitive and stripped."""
+    import csv
+    path = Path(path)
+    if not path.exists():
+        return {}
+    out = {}
+    with open(path, encoding="utf-8", newline="") as f:
+        for row in csv.DictReader(f):
+            d = (row.get("decision") or "").strip().lower()
+            if d in DECISIONS and row.get("id"):
+                out[row["id"].strip()] = {"decision": d, "merge_into": (row.get("merge_into") or "").strip(), "note": (row.get("note") or "").strip()}
+    return out
+
+
+def apply_decisions(recs: list[dict], decisions: dict[str, dict]) -> tuple[list[dict], dict]:
+    """Pure. keep = no change; drop = remove the point; merge = remove it and list its id in the target's `merged_ids` (target = `merge_into`, which
+    must exist, not be dropped / merged itself and not be the point itself; otherwise the point is kept and a warning is returned).
+    Returns (recs, {keep: [ids], drop: [ids], merge: [(id, target)], warnings: [..]}). With no decisions the SAME list content is returned."""
+    rep = {"keep": [], "drop": [], "merge": [], "warnings": []}
+    if not decisions:
+        return recs, rep
+    ids = {r["id"] for r in recs}
+    drops = {i for i, d in decisions.items() if i in ids and d["decision"] == "drop"}
+    merges = {i: d["merge_into"] for i, d in decisions.items() if i in ids and d["decision"] == "merge"}
+    # a merge is valid when its target exists, is not itself, and is KEPT (not dropped, and not itself merged away). Resolved by recursion over the
+    # chain so the result never depends on CSV row order: A -> B -> C: B merges into C, A -> B is invalid (B is gone) and A stays; if B's own merge is
+    # invalid, B stays and A -> B is valid. A cycle (A -> B -> A) makes both merges invalid.
+    memo: dict[str, bool] = {}
+
+    def is_gone(i: str, seen: tuple = ()) -> bool:
+        if i in drops:
+            return True
+        if i not in merges or i in seen:
+            return False
+        if i not in memo:
+            t = merges[i]
+            memo[i] = bool(t) and t != i and t in ids and not is_gone(t, seen + (i,))
+        return memo[i]
+
+    valid = {i: t for i, t in merges.items() if is_gone(i)}
+    gone = drops | set(valid)
+    merged: dict[str, list[str]] = {}
+    for i, d in decisions.items():
+        if i not in ids:
+            rep["warnings"].append(f"decision for unknown id {i} ignored")
+        elif d["decision"] == "keep":
+            rep["keep"].append(i)
+        elif d["decision"] == "drop":
+            rep["drop"].append(i)
+        elif i in valid:
+            rep["merge"].append((i, valid[i]))
+            merged.setdefault(valid[i], []).append(i)
+        else:
+            rep["warnings"].append(f"merge of {i} needs a valid merge_into (got {d['merge_into']!r}); kept")
+    out = []
+    for r in recs:
+        if r["id"] in gone:
+            continue
+        out.append({**r, "merged_ids": sorted(merged[r["id"]])} if r["id"] in merged else r)
+    return out, rep
 GENERIC_NAME = re.compile(r"^(trail\s?head|th|site|parking|lot|unit)\b[\s#\d.-]*$", re.I)
 
 
@@ -387,7 +459,7 @@ def review_flags(rec: dict, ski_areas: list[dict], others: list[dict] | None = N
             "near_ski_km": round(best_km, 2) if best_km is not None and best_km < 1.0 else None}
 
 
-def review_rows(rec_doc: dict, ski_doc: dict) -> list[dict]:
+def review_rows(rec_doc: dict, ski_doc: dict, decisions: dict[str, dict] | None = None) -> list[dict]:
     areas = rec_doc["areas"]
     rows = []
     for r in areas:
@@ -397,6 +469,10 @@ def review_rows(rec_doc: dict, ski_doc: dict) -> list[dict]:
                          "reasons": ";".join(f["reasons"]), "near_ski_area": f["near_ski_area"], "near_ski_km": f["near_ski_km"],
                          "elev_ft": r["base"]["elev_ft"], "cell_elev_ft": ((r.get("nbm_grid") or {}).get("base") or {}).get("elev_ft"),
                          "lat": r["base"]["lat"], "lon": r["base"]["lon"]})
+    decisions = decisions or {}
+    for row in rows:                                                # keep what the owner already decided when the CSV is regenerated
+        d = decisions.get(row["id"], {})
+        row.update(decision=d.get("decision", ""), merge_into=d.get("merge_into", ""), note=d.get("note", ""))
     return rows
 
 
@@ -404,10 +480,19 @@ def write_review(rec_path: Path = OUT, ski_path: Path | None = None, out: Path |
     """data/rec_points_review.csv for the owner (committed next to the catalog, like ski_areas_verify.csv)."""
     import csv
     ski = json.loads((ski_path or REPO_ROOT / "data" / "ski_areas.json").read_text(encoding="utf-8"))
-    rows = review_rows(json.loads(Path(rec_path).read_text(encoding="utf-8")), ski)
     out = out or Path(rec_path).with_name("rec_points_review.csv")
+    old = read_decisions(out)
+    rows = review_rows(json.loads(Path(rec_path).read_text(encoding="utf-8")), ski, old)
+    # rows the owner dropped / merged are no longer in rec_points.json: carry them (and their decision) forward so a regenerated CSV never
+    # forgets a decision; they are removed again on every catalog build
+    seen = {r["id"] for r in rows}
+    if Path(out).exists():
+        with open(out, encoding="utf-8", newline="") as f:
+            for r in csv.DictReader(f):
+                if r.get("id") not in seen and (r.get("decision") or "").strip().lower() in ("drop", "merge"):
+                    rows.append({k: r.get(k, "") for k in REVIEW_COLS + DECISION_COLS})
     with open(out, "w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=REVIEW_COLS)
+        w = csv.DictWriter(f, fieldnames=REVIEW_COLS + DECISION_COLS)
         w.writeheader()
         w.writerows(rows)
     return rows

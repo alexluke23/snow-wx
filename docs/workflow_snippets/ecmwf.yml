@@ -1,0 +1,94 @@
+# ECMWF open data (IFS HRES line + IFS ENS plume) — the job the OWNER adds. NOT in .github/ (dev sessions never edit workflows).
+# Status: the code is built and tested (pipeline/ecmwf.py); config `ecmwf.enabled` is false. To go live:
+#   1. set `ecmwf.enabled: true` in config/settings.yml (commit);
+#   2. add `ecmwf` to the `model:` matrix of .github/workflows/models.yml and the step below to its "Render maps" `run:` (one more elif branch);
+#   3. add the schedule line below to models.yml `on.schedule`;
+#   4. nothing to change in update-site.yml: it already unpacks `<product>-<YYYYMMDDHH>-<8hex>.tar` assets into build/models/ (only points|nohrsc|ndfd go to build/data),
+#      so ecmwf-<cycle>.tar -> build/models/ecmwf/{precip.json,index.json,plume/<area>.json}; the site build's existing `multimodel.merge` picks up
+#      models/ecmwf/precip.json and the page fetches models/ecmwf/plume/<area>.json only when the Ensemble view is chosen.
+#
+# --- 1. schedule (add under `on.schedule` in models.yml) ---------------------------------------------------------------
+#   ENS 00Z/12Z land ~7-9 h after the nominal time (ECMWF: "available between 7 and 9 hours after the forecast starting date and time"); the pipeline
+#   takes the newest 00/12Z cycle whose LAST step index (240 h, HRES and ENS) exists, and exits new=false when it is already published. Two attempts
+#   per cycle absorb late releases:
+#     - cron: "40 9,11,21,23 * * *"
+#
+# --- 2. matrix entry + run step (models.yml) ----------------------------------------------------------------------------
+#   matrix:
+#     model: [hrrr, rrfs, gfs, points, nohrsc, ndfd, ecmwf]
+#   ...
+#   in the "Selected?" step add:  if [ "${{ github.event.schedule }}" = "40 9,11,21,23 * * *" ]; then want="ecmwf"; fi
+#   in "Render maps":
+#           elif [ "$MODEL" = ecmwf ]; then
+#             # ~1.2 GB of byte-range GETs from the AWS mirror (tp + sf for 50 members, 41 steps) and ~5 min on a runner
+#             python -m pipeline ecmwf --out out/models --published "${{ steps.pub.outputs.cycle }}" --github-output "$GITHUB_OUTPUT"
+#   The existing "Upload to the model-maps release" step then does `tar -C out/models -cf ecmwf-<cycle>.tar ecmwf`, replaces the older ecmwf asset, and
+#   dispatches update-site.yml. (render's `timeout-minutes: 30` is enough; measured 300 s on a laptop.)
+#
+# --- permissions / secrets ---------------------------------------------------------------------------------------------
+#   contents: write + actions: write are already set on models.yml. No secret and no API key: the AWS mirror is public (anonymous HTTPS).
+#   Be polite: the mirror answers HTTP 503 "SlowDown" under bursts; pipeline/ecmwf.py retries with backoff and uses 6 workers.
+#
+# --- how the output reaches the site ----------------------------------------------------------------------------------
+#   models.yml (ecmwf job) -> release asset ecmwf-<cycle>-<version>.tar on the `model-maps` prerelease -> update-site.yml downloads the newest tar per product
+#   -> build/models/ecmwf/ -> `python -m pipeline build` runs multimodel.merge (HRES line + `plume: true` flag) -> Pages/R2.
+#   The Ensemble toggle only appears when multimodel.json says `plume: true`, so with the flag off or the job failing nothing changes on the page; a run older
+#   than 24 h is drawn grey and labelled "Out of date". Add `ecmwf` to `monitoring.sources` (max_age_hours: 30) in config/settings.yml when it goes live.
+#
+# --- the standalone workflow alternative (if you prefer not to touch models.yml) -------------------------------------
+name: ECMWF (HRES + ENS)
+on:
+  schedule:
+    - cron: "40 9,11,21,23 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Re-run even if the newest cycle is already published"
+        type: boolean
+        default: false
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: model-maps
+  cancel-in-progress: false
+env:
+  RELEASE: model-maps
+  MODEL: ecmwf
+  GH_TOKEN: ${{ github.token }}
+jobs:
+  ecmwf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+      - name: Find the published cycle
+        id: pub
+        run: |
+          cyc=$(gh release view "$RELEASE" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null \
+                | sed -n -E "s/^${MODEL}-([0-9]{10}(-[0-9a-f]{8})?)\.tar$/\1/p" | sort | tail -1 || true)
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then cyc=""; fi
+          echo "cycle=$cyc" >> "$GITHUB_OUTPUT"
+      - name: Fetch, sample, write
+        id: render
+        shell: bash -el {0}
+        run: python -m pipeline ecmwf --out out/models --published "${{ steps.pub.outputs.cycle }}" --github-output "$GITHUB_OUTPUT"
+      - name: Upload to the model-maps release
+        if: steps.render.outputs.new == 'true'
+        run: |
+          set -euo pipefail
+          asset="${MODEL}-${{ steps.render.outputs.cycle }}.tar"
+          tar -C out/models -cf "$asset" "$MODEL"
+          du -h "$asset"
+          gh release view "$RELEASE" >/dev/null 2>&1 || gh release create "$RELEASE" --prerelease --title "Model maps (automated)" --notes "Automated model products." || gh release view "$RELEASE" >/dev/null
+          gh release upload "$RELEASE" "$asset" --clobber
+          for old in $(gh release view "$RELEASE" --json assets -q '.assets[].name' | grep -E "^${MODEL}-[0-9]{10}(-[0-9a-f]{8})?\.tar$" || true); do
+            [ "$old" != "$asset" ] && gh release delete-asset "$RELEASE" "$old" -y
+          done
+      - name: Redeploy the site
+        if: steps.render.outputs.new == 'true'
+        run: gh workflow run update-site.yml --ref "${{ github.event.repository.default_branch }}"

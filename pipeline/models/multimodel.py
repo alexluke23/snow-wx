@@ -23,7 +23,7 @@ from ..common import REPO_ROOT, utcnow, write_json
 from .ridge import nearest_index
 
 log = logging.getLogger("snow-wx.models")
-ORDER = ("hrrr", "rrfs", "gfs")
+ORDER = ("hrrr", "rrfs", "gfs", "ecmwf")        # ecmwf: pipeline/ecmwf.py writes <models>/ecmwf/precip.json (HRES), only when config ecmwf.enabled
 
 
 def load_points(repo: Path = REPO_ROOT) -> list[dict]:
@@ -121,7 +121,8 @@ def merge(models_dir: Path, out_path: Path, order=ORDER) -> dict | None:
             areas.setdefault(aid, {})[d["model"]] = {"q": a["q"], "z": a.get("z")}
     doc = {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
            "units": "inches of liquid precipitation, cumulative since each model's own init",
-           "models": [{"model": d["model"], "label": d["label"], "cycle": d["cycle"], "init": d["init"], "hours": d["hours"]} for d in docs],
+           "models": [{"model": d["model"], "label": d["label"], "cycle": d["cycle"], "init": d["init"], "hours": d["hours"],
+                      **({"plume": True} if d.get("plume") else {})} for d in docs],
            "areas": areas}
     write_json(Path(out_path), doc)
     log.info("multimodel: %s -> %d areas", "+".join(d["label"] for d in docs), len(areas))

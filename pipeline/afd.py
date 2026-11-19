@@ -94,10 +94,10 @@ def run(cfg: dict, session, outdir: Path) -> dict:
                 continue
             write_json(out / f"{w}.json", doc)
             index[w] = {"issued": doc["issued"], "office": doc["office"]}
+    if not index:                                  # nothing fetched: fail BEFORE writing, so the last good index.json stays
+        raise RuntimeError("no AFD fetched")
     write_json(out / "index.json", {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                                     "source": "NOAA/NWS Area Forecast Discussions (api.weather.gov)",
                                     "offices": index})
     log.info("AFD: %d of %d offices%s", len(index), len(wfos), f" (failed: {','.join(failed)})" if failed else "")
-    if not index:
-        raise RuntimeError("no AFD fetched")
     return {"count": len(index), "unit": "discussions", "detail": plural(len(index), "office")}
