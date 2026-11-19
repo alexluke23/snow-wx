@@ -99,7 +99,7 @@ const MultiModel = (() => {
   /**
    * Agreement badge (a HEURISTIC until verified; formula on about.html): over the longest window H in {72, 48, 36, 24, 12, 6} h after the common
    * start that at least 3 models reach, the share of models whose liquid total is within +-25% of the median total (or within 0.10 in when the
-   * median is small). share >= 75% -> High, >= 50% -> Medium, else Low; a window where every model is under 0.10 in is "High (dry)".
+   * median is small). share >= 80% -> High, >= 66% -> Medium, else Low (dev17: was 75 / 50; with four sources 3 of 4 made 78% of areas High); a window where every model is under 0.10 in is "High (dry)".
    * Always computed from LIQUID amounts so the toggle does not change it.
    */
   function agreement(series, t0) {
@@ -113,7 +113,7 @@ const MultiModel = (() => {
       const tol = Math.max(0.25 * med, 0.1);
       const within = totals.filter(([, v]) => Math.abs(v - med) <= tol).length;
       const share = within / totals.length;
-      return { H, n: totals.length, within, median: med, label: share >= 0.75 ? "High" : share >= 0.5 ? "Medium" : "Low", dry: false, totals };
+      return { H, n: totals.length, within, median: med, label: share >= 0.8 ? "High" : share >= 0.66 ? "Medium" : "Low", dry: false, totals };
     }
     return null;
   }

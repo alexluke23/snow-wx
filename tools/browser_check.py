@@ -514,6 +514,37 @@ def check_forecast_overlays(b: Browser, base: str, log):
       return {legend: !!l, first: l ? l.querySelector('.sw').textContent : null, nws: SNOWFALL.colors[7] === '#fffe95' && SNOWFALL.bins[6] === 6}; })()""")
     log(f"  snowfall overlay legend: {leg}")
     need(leg["legend"] and leg["first"] == "0.1" and leg["nws"], f"snowfall overlay legend / NWS colours: {leg}")
+    # dev17 Part 1: default OFF, lazy (no layer PNG is requested until one is chosen), cycle + issue time shown, stale data greyed
+    b.open(f"{base}/index.html", wait=7)
+    lazy = b.eval(r"""(() => ({png: performance.getEntriesByType('resource').filter(r => /points\/layers\/.*\.png/.test(r.name)).length,
+        active: window.snowwx.overlays.current(), sel: (document.querySelector('#overlay-select') || {}).value}))()""")
+    log(f"  forecast overlays at load: {lazy}")
+    need(lazy["png"] == 0 and not lazy["active"] and lazy["sel"] == "", f"forecast overlays must be off and not fetched until toggled: {lazy}")
+    import datetime as _dt
+    ixp = Path(__file__).resolve().parents[1] / "build" / "data" / "points" / "layers" / "index.json"
+    orig = ixp.read_text(encoding="utf-8")
+    try:
+        for hours_old, want_stale in ((3, False), (30, True)):
+            ix = json.loads(orig)
+            cyc = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=hours_old)).strftime("%Y%m%d%H")
+            for l in ix["layers"]:
+                l["cycle"] = cyc
+            ixp.write_text(json.dumps(ix), encoding="utf-8")
+            b.open(f"{base}/index.html#v=depth_24h&map=7/46.0/-121.0", wait=7)
+            b.eval("(() => { const s = document.querySelector('#overlay-select'); s.value = 'nbm72'; s.dispatchEvent(new Event('change')); return 1; })()")
+            time.sleep(3)
+            st = b.eval("""(() => { const o = window.snowwx.overlays.layer(), c = o && o._canvas;
+              return {stale: window.snowwx.overlays.isStale('nbm72'), filter: c ? c.style.filter : null, opacity: c ? Number(c.style.opacity) : null,
+                      note: (document.querySelector('.stale-note') || {}).textContent || '', meta: (document.querySelector('.overlay-meta .hint') || {}).textContent}; })()""")
+            log(f"  forecast overlay {hours_old} h old: {st}")
+            need(st["stale"] == want_stale, f"{hours_old} h old layer: stale={st['stale']}")
+            need("started" in (st["meta"] or "") and "run" in (st["meta"] or ""), f"cycle / issue time missing: {st['meta']}")
+            if want_stale:
+                need("grayscale" in (st["filter"] or "") and st["opacity"] <= 0.4 and "Out of date" in st["note"], f"stale layer is not greyed with a note: {st}")
+            else:
+                need(not st["filter"] and not st["note"], f"fresh layer must not be greyed: {st}")
+    finally:
+        ixp.write_text(orig, encoding="utf-8")
     need(not b.errors, f"JS errors: {b.errors}")
 
 
@@ -873,13 +904,17 @@ def check_hazard_popup(b: Browser, base: str, log):
     idx = {"alerts": {key: {"event": "Winter Storm Warning", "headline": "Winter Storm Warning issued by <b>NWS Salt Lake City</b>", "sender": "NWS Salt Lake City UT",
            "effective": "2026-11-17T12:00:00-07:00", "expires": "2026-11-19T05:00:00-07:00", "area": "Wasatch Mountains; <img src=x onerror=alert(1)>"}}}
     det = {key: {"description": "* WHAT...Heavy snow.\n  Totals 12 to 24 inches.\n<script>window.__pwned = 1</script>", "instruction": "Slow down.\nCarry a shovel."}}
+    # dev17: alerts that touch no ski area/SNOTEL site come from hazard_text.json (compact keys) with no live fetch
+    hid = "urn:oid:2.49.0.1.840.0.fixture.hazardtext"
+    ht = {"alerts": {hashlib.sha1(hid.encode()).hexdigest()[:10]: {"e": "Wind Advisory", "h": "Wind Advisory until 5 PM", "o": "NWS Rapid City SD",
+          "f": "2026-11-18T01:00:00-07:00", "x": "2026-11-18T17:00:00-07:00", "a": "Black Hills <b>x</b>", "d": "Gusts to 55 mph.\nSecure loose objects.", "i": "Use caution."}}}
     for width in (1280, 375):
         b.open(f"{base}/index.html", width=width, wait=6)
-        b.eval(f"window.snowwx.hazards.injectAlertFiles({json.dumps(idx)}, {json.dumps(det)}); 1")
+        b.eval(f"window.snowwx.hazards.injectAlertFiles({json.dumps(idx)}, {json.dumps(det)}, {json.dumps(ht)}); 1")
         res = b.eval("""(async () => {
           const mkf = (url) => ({properties: {prod_type: 'Winter Storm Warning', wfo: 'KSLC', expiration: '2026-11-19T12:00:00Z', url}});
           const out = {};
-          for (const [name, url] of [['known', 'https://api.weather.gov/alerts/%s'], ['unknown', 'https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.nothing.999']]) {
+          for (const [name, url] of [['known', 'https://api.weather.gov/alerts/%s'], ['hazardtext', 'https://api.weather.gov/alerts/%s'], ['unknown', 'https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.nothing.999']]) {
             const host = document.createElement('div'); host.className = 'leaflet-popup-content'; host.style.cssText = 'position:fixed;top:60px;left:8px;width:300px;background:#fff;z-index:99999';
             const dom = window.snowwx.hazards.popupFor(mkf(url)); host.append(dom); document.body.append(host);
             await new Promise(r => setTimeout(r, name === 'unknown' ? 6000 : 800));
@@ -890,9 +925,11 @@ def check_hazard_popup(b: Browser, base: str, log):
             if (name === 'known') host.id = 'hz-fixture'; else host.remove();
           }
           out.pwned = !!window.__pwned;
-          return out; })()""" % aid)
+          return out; })()""" % (aid, hid))
         log(f"  hazard popup {width}px: {json.dumps(res)[:700]}")
-        k, u = res["known"], res["unknown"]
+        k, u, h = res["known"], res["unknown"], res["hazardtext"]
+        need("Gusts to 55 mph." in h["text"] and "NWS Rapid City SD" in h["text"] and "Black Hills <b>x</b>" in h["text"] and "<b>" not in h["html"],
+             f"hazard_text.json lookup failed or was not escaped: {h['text'][:200]}")
         need("Totals 12 to 24 inches." in k["text"] and "Slow down." in k["text"] and "NWS Salt Lake City UT" in k["text"] and "Wasatch Mountains" in k["text"], f"readable text missing: {k['text'][:200]}")
         need("<script>" in k["text"] and "&lt;script&gt;" in k["html"] and k["scripts"] == 0 and not res["pwned"], f"alert text was not escaped: {k['html'][:300]}")
         need(k["links"] == ["https://www.weather.gov/slc/"] and k["pre"] == "pre-wrap" and k["maxH"] != "none", f"links/layout: {k['links']} {k['pre']} {k['maxH']}")
@@ -938,6 +975,138 @@ def check_snopark_finder_mobile(b: Browser, base: str, log):
     time.sleep(1.0)
     ex = b.eval("""(() => ({summary: !!document.querySelector('.summary-line'), avy: !!document.querySelector('.rec-key .rk-avy, #area a[href*="avalanche"], #area a[href^="http"]')}))()""")
     need(ex["summary"], "Sno-Park page has no daily summary (the W3 rules apply to every point)")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_finder_show_all(b: Browser, base: str, log):
+    """dev17 Part 0c: with the Sno-Park list capped at 200 rows, sorting, the state filter, favorites and the header search all act on the FULL list
+    (447), not on the 200 drawn rows. 375 px."""
+    b.open(f"{base}/about.html", wait=1.5)
+    b.eval("localStorage.clear(); sessionStorage.clear(); 1")
+    b.open(f"{base}/finder.html#t=ski", width=375, wait=6)
+    b.eval("[...document.querySelectorAll('#type button')].find(x => x.textContent.trim() === 'Sno-Parks').click(); 1")
+    time.sleep(1.0)
+    names = "[...document.querySelectorAll('#rows .frow .who > a')].map(a => a.textContent)"
+    # 1. sort by name, ascending (A-Z): the capped list is exactly the first 200 of the full A-Z list
+    b.eval("""(() => { const s = document.getElementById('sort'); s.value = 'name'; s.dispatchEvent(new Event('change')); return 1; })()""")
+    time.sleep(0.6)
+    if b.eval("document.getElementById('sort-dir').textContent.trim()") == "↓":        # make sure it is A-Z (ascending)
+        b.eval("document.getElementById('sort-dir').click(); 1"); time.sleep(0.5)
+    capped = b.eval(names)
+    need(len(capped) == 200, f"expected the 200-row cap, got {len(capped)}")
+    b.eval("document.getElementById('show-all').click(); 1"); time.sleep(0.8)
+    full = b.eval(names)
+    need(len(full) == 447 and full[:200] == capped, "the capped list must be the first 200 rows of the full sorted list")
+    # 2. reversing the sort puts the LAST name of the full list on top of the capped view (it was beyond row 200)
+    b.eval("document.getElementById('sort-dir').click(); 1"); time.sleep(0.8)
+    rev = b.eval(names)
+    need(rev[0] == full[-1] and rev[:200] == full[::-1][:200], f"reverse sort must start with the last name of the full list {full[-1]!r}, got {rev[0]!r}")
+    log(f"  sort acts on the full list: A-Z first {full[0]!r}, Z-A first {rev[0]!r} (was row {len(full)})")
+    # 3. state filter: the state of a row beyond 200 is selectable, counts add up to 447, and its rows are all reachable
+    b.open(f"{base}/finder.html#t=ski", width=375, wait=5)
+    b.eval("[...document.querySelectorAll('#type button')].find(x => x.textContent.trim() === 'Sno-Parks').click(); 1"); time.sleep(0.8)
+    opts = b.eval("[...document.querySelectorAll('#state option')].map(o => [o.value, o.textContent])")
+    counts = {v: int(t.split("(")[1].rstrip(")").replace(",", "")) for v, t in opts if v and "(" in t}
+    total = int(opts[0][1].split("(")[1].rstrip(")"))
+    need(total == 447 and sum(counts.values()) == 447, f"state counts do not add up to the full list: {total} vs {sum(counts.values())}")
+    st = max(counts, key=lambda k: counts[k])
+    b.eval(f"""(() => {{ const s = document.getElementById('state'); s.value = {json.dumps(st)}; s.dispatchEvent(new Event('change')); return 1; }})()""")
+    time.sleep(0.8)
+    n = b.eval("document.querySelectorAll('#rows .frow').length")
+    need(n == min(200, counts[st]), f"state {st}: {n} rows drawn, expected {min(200, counts[st])} of {counts[st]}")
+    if counts[st] > 200:
+        need("Show all" in b.eval("(document.getElementById('show-all') || {textContent: ''}).textContent"), "filtered list over the cap needs its own Show all")
+        b.eval("document.getElementById('show-all').click(); 1"); time.sleep(0.6)
+        need(b.eval("document.querySelectorAll('#rows .frow').length") == counts[st], "Show all on a filtered list must draw all its rows")
+    b.eval("""(() => { const s = document.getElementById('state'); s.value = ''; s.dispatchEvent(new Event('change')); return 1; })()"""); time.sleep(0.5)
+    # 4. favorite a Sno-Park beyond row 200, then Favorites only shows exactly it
+    b.eval("document.getElementById('show-all') && document.getElementById('show-all').click(); 1"); time.sleep(0.6)
+    far = b.eval("""(() => { const r = [...document.querySelectorAll('#rows .frow')]; const x = r[r.length - 1];
+        x.querySelector('.star').click(); return x.querySelector('.who > a').textContent; })()""")
+    time.sleep(0.6)
+    b.eval("""(() => { const c = document.getElementById('favonly'); c.checked = true; c.dispatchEvent(new Event('change')); return 1; })()""")
+    time.sleep(0.8)
+    favs = b.eval(names)
+    need(favs == [far], f"favorites only must show the row starred beyond row 200 ({far!r}): {favs}")
+    # 5. header search finds a Sno-Park that is beyond row 200 of the list, at 375 px (search button first)
+    target = full[300]
+    b.open(f"{base}/finder.html#t=ski", width=375, wait=4)
+    b.eval("document.querySelector('.site-search .ss-toggle') && document.querySelector('.site-search .ss-toggle').click(); 1"); time.sleep(0.4)
+    b.eval(f"""(() => {{ const i = document.querySelector('.site-search input'); i.value = {json.dumps(target)}; i.dispatchEvent(new Event('input', {{bubbles: true}})); return 1; }})()""")
+    time.sleep(1.2)
+    hits = b.eval("[...document.querySelectorAll('#ss-list li')].map(li => li.textContent)")
+    need(any(h.startswith(target) for h in hits), f"header search did not find {target!r} (row 300 of the list): {hits[:5]}")
+    log(f"  search finds {target!r}; favorites-only shows {far!r}; state {st} {counts[st]} rows")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_ensemble(b: Browser, base: str, log):
+    """dev17 Part 2: the Models / Ensemble toggle on the area page at 1280 and 375 px: real two-option toggle (aria-pressed, >= 40 px, announced), the
+    plume file is NOT requested until Ensemble is selected, the plume is ONE faint multi-segment trace plus bands/median/mean/HRES with direct labels,
+    headline = aria-label, table with percentiles and "N of 50 members" rows, cycle/issue time + terrain + attribution shown, stale greyed."""
+    import datetime as _dt
+    plume = Path(__file__).resolve().parents[1] / "build" / "models" / "ecmwf" / "plume" / "alta-ski-area.json"
+    if not plume.exists():
+        log("  (no ECMWF data in build/: run `python -m pipeline ecmwf --force` and merge multimodel; skipping)")
+        return
+    orig = plume.read_text(encoding="utf-8")
+    try:
+        for width in (1280, 375):
+            b.open(f"{base}/area.html#alta-ski-area", width=width, wait=8)
+            b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(4)
+            pre = b.eval("""(() => { const v = document.getElementById('mm-view');
+              return {shown: !!v && !v.hidden, btns: v ? [...v.querySelectorAll('button')].map(x => [x.textContent.trim(), x.getAttribute('aria-pressed'), Math.round(x.getBoundingClientRect().height)]) : [],
+                      role: v && v.getAttribute('role'), plumeReq: performance.getEntriesByType('resource').filter(r => r.name.includes('ecmwf/plume')).length,
+                      names: (document.getElementById('mm-chart').data || []).map(t => t.name)}; })()""")
+            log(f"  ensemble toggle {width}px (before): {pre}")
+            need(pre["shown"] and pre["role"] == "group" and [x[0] for x in pre["btns"]] == ["Models", "Ensemble"], f"toggle missing: {pre}")
+            need(all(x[2] >= 40 for x in pre["btns"]) and pre["btns"][0][1] == "true" and pre["btns"][1][1] == "false", f"toggle size / aria state: {pre['btns']}")
+            need(pre["plumeReq"] == 0, f"the plume file must not load before Ensemble is selected ({pre['plumeReq']} requests)")
+            need("ECMWF" in pre["names"], f"Models view must include the ECMWF line: {pre['names']}")
+            b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1")
+            time.sleep(3.5)
+            st = b.eval("""(() => { const el = document.getElementById('mm-chart'), d = el.data || [];
+              const tbl = document.querySelector('#mm-chart + details.chart-table');
+              if (tbl) { tbl.open = true; tbl.dispatchEvent(new Event('toggle')); }
+              return {n: d.length, names: d.map(t => t.name), nulls: (d[0] ? d[0].x.filter(v => v === null).length : 0), faintPts: d[0] ? d[0].y.length : 0,
+                aria: el.getAttribute('aria-label'), role: el.getAttribute('role'), badge: document.getElementById('mm-badge').textContent, note: document.getElementById('mm-note').textContent,
+                announce: document.getElementById('mm-announce').textContent, pressed: [...document.querySelectorAll('#mm-view button')].map(x => x.getAttribute('aria-pressed')),
+                plumeReq: performance.getEntriesByType('resource').filter(r => r.name.includes('ecmwf/plume')).length,
+                table: tbl ? tbl.querySelector('.tbl-wrap').textContent : '', hscroll: document.documentElement.scrollWidth > innerWidth + 2,
+                labels: [...el.querySelectorAll('.annotation-text, .annotation text')].map(x => x.textContent).filter(Boolean).slice(0, 12)}; })()""")
+            log(f"  ensemble {width}px: traces {st['n']} {st['names']}, member segments {st['nulls']}, aria: {st['aria']}")
+            need(st["n"] <= 10 and st["nulls"] == 50 and st["faintPts"] > 500, f"the members must be ONE multi-segment trace (<= 10 traces): {st['n']} traces, {st['nulls']} breaks")
+            need({"Median", "Mean", "HRES"} <= set(st["names"]), f"median / mean / HRES missing: {st['names']}")
+            need((st["aria"] or "").startswith("ECMWF ensemble (50 members): median ") and "25–75%" in st["aria"] and "of 50 members above" in st["aria"] and st["role"] == "img", f"headline / aria-label: {st['aria']}")
+            need("ECMWF IFS ENS" in st["badge"] and "00Z" in st["badge"] and "50 perturbed members" in st["badge"], f"cycle / issue time missing: {st['badge']}")
+            need("CC BY 4.0" in st["note"] and "Adapted from" in st["note"] and "not bias-corrected" in st["note"] and "0.25°" in st["note"] and "terrain" in st["note"], f"attribution / caveats missing: {st['note']}")
+            need(st["announce"].startswith("Showing the ECMWF ensemble") and st["pressed"] == ["false", "true"] and st["plumeReq"] == 1, f"announce / state / one fetch: {st['announce']} {st['pressed']} {st['plumeReq']}")
+            need("members" in st["table"] and "Median" in st["table"] and "at least" in st["table"] and not st["hscroll"], f"table rows / layout: {st['table'][:200]} hscroll={st['hscroll']}")
+            if width == 375:
+                b.shot(Path(tempfile.gettempdir()) / "ens_375.png")
+            else:
+                b.shot(Path(tempfile.gettempdir()) / "ens_1280.png")
+            # Snow (in) toggle in the Ensemble view: sf x NBM's ratio; back to Models keeps working
+            b.eval("[...document.querySelectorAll('#mm-mode button')].find(x => x.dataset.m === 'snow').click(); 1"); time.sleep(2.5)
+            sn = b.eval("(() => ({aria: document.getElementById('mm-chart').getAttribute('aria-label'), note: document.getElementById('mm-note').textContent}))()")
+            need("snow" in sn["aria"] and "median snow ratio" in sn["note"] and "inches assume NBM SLR" in sn["note"], f"snow mode in the ensemble: {sn}")
+            b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'models').click(); 1"); time.sleep(2.5)
+            back = b.eval("(() => ({names: (document.getElementById('mm-chart').data || []).map(t => t.name), announce: document.getElementById('mm-announce').textContent}))()")
+            need("NBM" in back["names"] and "ECMWF" in back["names"] and back["announce"].startswith("Showing the model comparison"), f"back to Models: {back}")
+        # stale: a run started 30 h ago is greyed and says so
+        d = json.loads(orig)
+        d["init"] = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=30)).strftime("%Y-%m-%dT%H:00Z")
+        plume.write_text(json.dumps(d), encoding="utf-8")
+        b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=8)
+        b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(4)
+        b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1"); time.sleep(3.5)
+        stale = b.eval("""(() => { const d = document.getElementById('mm-chart').data || [];
+          return {badge: document.getElementById('mm-badge').textContent, line: d.find(t => t.name === 'Median') ? d.find(t => t.name === 'Median').line.color : null,
+                  ann: ((document.getElementById('mm-chart').layout || {}).annotations || []).map(x => x.text).join('|')}; })()""")
+        log(f"  stale ensemble: {stale}")
+        need("out of date" in stale["badge"] and stale["line"] == "#7a8594" and "Out of date" in stale["ann"], f"stale run must be greyed and labelled: {stale}")
+    finally:
+        plume.write_text(orig, encoding="utf-8")
     need(not b.errors, f"JS errors: {b.errors}")
 
 
@@ -1007,7 +1176,7 @@ def check_mobile_sweep(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "mobile": check_mobile_sweep}
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep}
 
 
 def main(argv=None) -> int:

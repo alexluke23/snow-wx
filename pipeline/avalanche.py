@@ -108,13 +108,13 @@ def run(cfg: dict, session, outdir: Path) -> dict:
     now = pd.Timestamp(utcnow())
     fc = process(r.json(), cfg["region"]["states"],
                  cfg["avalanche"].get("coord_precision", 4), now)
+    n = len(fc["features"])
+    if n == 0:                                       # fail BEFORE writing: an empty answer must not replace the last good files
+        raise RuntimeError("no avalanche zones in region")
     write_json(outdir / "avalanche.geojson", fc)
     # Small zone_id -> rating index for pages that need one zone (area pages):
     # avoids downloading every polygon.
     write_json(outdir / "avalanche_ratings.json", ratings_index(fc))
-    n = len(fc["features"])
     rated = sum(1 for f in fc["features"] if f["properties"]["danger_level"] > 0)
     log.info("Avalanche: wrote %d zones (%d with current ratings)", n, rated)
-    if n == 0:
-        raise RuntimeError("no avalanche zones in region")
     return {"count": n, "rated": rated}
