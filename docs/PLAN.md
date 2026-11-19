@@ -19,6 +19,8 @@
 | Wind-exposure flag (§5.9) | `docs/specs/wind-exposure.md` |
 | Hosting, SEO, prerendered pages (§5.10) | `docs/specs/hosting-seo.md` |
 | Alerts backend (§5.11) | `docs/specs/alerts-backend.md` |
+| Launch readiness: sources, legal drafts, analytics, link check, headers (dev18) | `docs/specs/launch-readiness.md` |
+| Webcam links | `config/webcams.yml` + `pipeline/webcams.py` (links only) |
 | Charts, colors, maps UI (§6) | `docs/DESIGN.md` |
 | Business, pricing, legal, positioning (§9–10.1) | `docs/BUSINESS.md` — **not for coding sessions** |
 | History, old decisions, done milestones | `docs/ARCHIVE.md` |
@@ -59,19 +61,16 @@ centers). Full text: `docs/ARCHIVE.md`.
 
 ---
 
-## 2. Status (Nov 18 2026, through dev17)
+## 2. Status (Nov 19 2026, through dev18)
 
 - **Live:** https://alexluke23.github.io/snow-wx/ — repo `alexluke23/snow-wx` (custom domain: W1).
-- **Done:** M0–M5, M3.5, M3.6, M4.5 Sno-Parks, M9-prep archive (running), "My mountains", NBM forecast
-  overlays, dev10 basemap (relief + OSM reference layer), **dev11–dev14** (merged: "likely" p25–p75 wording, one powder-quality definition, W3, status page, obs-map defaults), **dev15/16** (merged: monitor bootstrap, W4 PWA built but off, storm-total tracker, in-page hazard text, M7 precipitation by model, M9 scorer), **dev17** (branch: `hazard_text.json`, ECMWF HRES + ENS plume built but off, W7 wind flag and W6 alerts skeleton built but off, forecast-overlay stale/flag, Sno-Park review decisions). Details: `docs/ARCHIVE.md`.
-- **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas,
-  Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
-- **Known issues:** NRCS AWDB (SNOTEL) outage over. Last good run before it ≈ 11:25 UTC Nov 16; first failing run seen 22:07 UTC Nov 16; still down
-  02:21 UTC Nov 17. **Recovery time unconfirmed; first confirmed live 00:45Z Nov 18; Actions logs are not readable from the dev session; the owner is
-  checking them.** (The archive's 821 stations at 2026-11-17 12Z may be carried-forward data and do not prove a live fetch.) **M9 excludes SNOTEL obs from
-  2026-11-16 12Z through 2026-11-18 00:45Z** (enforced in `config/settings.yml` `verification.snotel_outage`, used by the M9 scorer). No Data-health issue opened:
-  the monitor (merged 13:26 UTC Nov 17) probably started after recovery, or history was lost; dev15 hardened the bootstrap (§3). Handling: probe, last good copy ≤ 48 h flagged stale, auto-recovery.
-  Obs map Lighthouse mobile 71–88 (bimodal; target: no worse than main, baseline ≈ 82, median of ≥ 3 interleaved runs); site ≈ 220 MB / 5.6 k files.
+- **Done:** M0–M5, M3.5, M3.6, M4.5 Sno-Parks, M9-prep archive (running), "My mountains", NBM forecast overlays, dev10 basemap, **dev11–dev14** ("likely" p25–p75 wording, one powder-quality definition, W3, status page),
+  **dev15/16** (monitor bootstrap, W4 PWA built but off, storm totals, hazard text, M7 precipitation by model, M9 scorer), **dev17** (merged: `hazard_text.json`, ECMWF built, W7/W6 skeletons built but off, overlay stale/flag),
+  **dev18** (branch): **ECMWF live** (standalone `ecmwf.yml`, monitored source, member count read from the data), models-page layout shift fixed (fixture frames), agreement badge "Little precipitation expected" + day-type calibration,
+  webcam LINKS (60 areas), Sources / disclaimer / privacy / terms drafts, cookieless analytics (off), `linkcheck`, `404.html`, draft Cloudflare `_headers` + CSP check, verification UI (behind `verification_ui.enabled=false`). Details: `docs/ARCHIVE.md`.
+- **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas, Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
+- **Known issues:** the NRCS AWDB (SNOTEL) outage of Nov 16–18 is over (first confirmed live 00:45Z Nov 18); **M9 excludes SNOTEL obs from 2026-11-16 12Z through 2026-11-18 00:45Z** (`config/settings.yml`
+  `verification.snotel_outage`). Obs map Lighthouse mobile 71–91 (bimodal; compare with interleaved runs, median of ≥ 3 ≥ 85); site ≈ 220 MB / 5.7 k files.
 
 ---
 
@@ -105,9 +104,8 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
 | Nov 16 | SNOTEL 24 h depth change on the obs map: gains use NWS colors, losses stay brown, legend titled "Snow depth change" (compaction ≠ snowfall). |
 | Nov 17 | **SNOTEL outage handling accepted** (stale ≤ 48 h flagged, per-source data-health issues, never fails the deploy): details in `docs/ARCHIVE.md`. |
 | Nov 17 | **Owner feedback → dev14:** default uncertainty range for snowfall, snow level and snow ratio = **25–75% ("likely")**; 10–90% only where noted; ONE powder-quality definition (config `powder_quality`); obs-map first-load layers: relief, roads, ski areas, NWS winter hazards. Full text: `docs/ARCHIVE.md`. |
-| Nov 17 | **Monitor bootstrap (dev15):** a failing/stale/unavailable source is judged by the data's own age, last success and `outage_since`, not only the restarted failure counter; one decision log line per source. |
-| Nov 17 | **dev16:** hazard popups show the NWS product text in-page (never an api.weather.gov link; untrusted text escaped); M7 precipitation by model built (agreement badge = documented heuristic); M9 scorer excludes the SNOTEL outage window and stale obs. |
-| Nov 18 | **dev17:** ECMWF (HRES line + IFS ENS plume, 50 members: the mirror has no control) built behind `ecmwf.enabled=false`; W7 wind flag (`wind_exposure.enabled=false`, reviewer checklist in the spec) and W6 alerts skeleton (`alerts_backend.enabled=false`) are offline-built only: **never enable without the owner/reviewer**; agreement badge now ≥ 80 % High / ≥ 66 % Medium (4 sources). |
+| Nov 17–18 | **dev15–dev17 (merged):** monitor judges a source by the data's own age; hazard popups show NWS text in-page; M7 precipitation by model (agreement badge = documented heuristic); M9 scorer excludes the SNOTEL outage; ECMWF, W7 wind flag and W6 alerts built OFF (details: `docs/ARCHIVE.md`). |
+| Nov 19 | **dev18 (owner-authorized):** ECMWF goes live via its own workflow `.github/workflows/ecmwf.yml` (`ecmwf.enabled: true`); badge shows "Little precipitation expected" when every model is < 0.20 in (never "High"); webcams are links only; legal pages are DRAFTS (`noindex`); analytics and the verification UI are built but OFF (owner picks the provider / flips the flag). |
 | Nov 16 | **Composite ranges are never shown:** where a 24/48/72 h total would add several 6 h percentile windows (fallback cycles), show the expected total only; points JSON marks totals `native: true/false`. Archive columns unchanged (they never carry composite ranges). Lighthouse target: median of ≥ 3 interleaved runs ≥ 85. |
 | Nov 16 | Model-map snowfall colors stay as is for now (backlog §8.4). **Guard:** points JSON and the forecast archive keep their existing fields (p10/p50/p90, P(≥4/8/12″), 24/48/72 h). |
 
@@ -160,7 +158,7 @@ analytics, pipeline monitoring.
 Lighthouse not worse; rollback plan. **W2 Indexable pages** — ≥ 160 server-rendered area pages (title/description/summary
 without JS); sitemap; `#id` redirects; OG cards for top 60. **W3 Daily summaries** ✅ (dev14; apart from the "Low confidence" rule (needs M7) and `<meta description>` (W2)) — every point has a summary in
 `points/<id>.json`; fixture-tested rules; shown on cards, Finder rows, meta descriptions. **W4 PWA** (built dev15 behind `pwa.enabled=false`; enable only after W1) — §5.8 tests pass on
-real iPhone + Android; staleness banners; install event. **W5 Analytics/monitoring** (public status page + "Report a bust" done dev14; analytics not wired) — cookieless events (favorite,
+real iPhone + Android; staleness banners; install event. **W5 Analytics/monitoring** (public status page + "Report a bust" done dev14; cookieless analytics built dev18 but OFF until the owner picks a provider) — cookieless events (favorite,
 install, signup, alert, avalanche-center click, "view as table"); feedback link; failure notifications; public status
 page. **W6 Alerts** — offline skeleton + tests dev17 (owner decisions listed in the spec); double opt-in, one-click unsubscribe, test alert by email + push within one points run, rate
 limits. **W7 ◇ Wind flag** — built dev17 behind `wind_exposure.enabled=false` (5 cases tested); waits for the reviewer checklist in the spec.
@@ -169,7 +167,7 @@ limits. **W7 ◇ Wind flag** — built dev17 behind `wind_exposure.enabled=false
 (+ ECMWF when M8-lite lands) in liquid-equivalent with inches toggle; agreement
 badge documented in about.html.
 
-**M8 ECMWF** — ✅ built dev17 (HRES line + ENS plume, spot-checked on 3 areas, attribution in place) but OFF until the owner wires `docs/workflow_snippets/ecmwf.yml`; synoptic charts later; AIFS in M10.
+**M8 ECMWF** — ✅ **live since dev18** (HRES line + ENS plume, `.github/workflows/ecmwf.yml`, monitored source `ecmwf`); synoptic charts later; AIFS and GEFS in M10.
 
 **M9 Verification & bias correction** — **check whether the rank-by-rank 12-h day/night ranges (points file `periods[].snow_lo/hi/q1/q3`) are over-wide against observed SNOTEL snowfall** (dev15 note); score NBM/NDFD/models vs SNOTEL 24 h snow &
 temps by area/elevation; publish on about.html; later per-site bias correction
@@ -180,14 +178,32 @@ season?") ships first.
 
 **M6 Interactive model layers** (+ HRRR pressure-level file) — last (Track 3).
 
-### 8.4 Backlog (unscheduled, in priority order)
-Track 1 leftovers: "My mountains" refinements; powder-quality surfaces (covered by
-§5.7). Track 2 (obs map): mobile performance pass (stations/overlays render before
-basemap tiles; preconnect; smaller first payload); **resort-reported snowfall observations** (5a: needs a licence decision; no scraping) and **webcams** (5b: links first; embeds only with permission); **storm-total tracker** ✅ dev15 (SNOTEL 24/48/72 h/7 d + NOHRSC 24–72 h, area page + map variables); obs time slider
-(24–72 h); slope-angle/aspect layer (3DEP); more observation networks (research
-licenses first — MADIS category 3, state DOT RWIS, avalanche-center telemetry via
-the centers; **ask before building**). Models: **align model-map snowfall colors to the NWS table
-(`colors.js`)**; self-hosted western-US PMTiles as an OpenFreeMap backup.
+### 8.4 Backlog — reconciled with the code (dev18, Nov 19 2026)
+
+Key: ✅ built and live · ⏸ built, behind a flag or waiting on the owner · ◐ partly built · ○ open. (dev17 found the NBM overlays already existed: this table is the audit.)
+
+| Item | State | What the code has / what is missing |
+|---|---|---|
+| Storm-total tracker (SNOTEL 24/48/72 h/7 d, NOHRSC) | ✅ | dev15: area page + map variables |
+| NBM forecast overlays on the obs map | ✅ | `overlays.js`, 9 layers, stale-grey, `forecast_overlays.enabled` (dev17 audit) |
+| Powder-quality surfaces / Daily Snow summaries (W3) | ✅ | dev14; open: "Low confidence" rule, meta description (needs W2) |
+| "My mountains" refinements | ○ | page exists (`mine.html`); no refinement was ever specified: drop unless the owner lists some |
+| Mobile performance pass (obs map) | ◐ | canvas symbols, deferred OSM reference layer, preconnect, tile fallback done; Lighthouse mobile 71–91 (bimodal); remaining ideas: smaller first payload |
+| Webcams (links only) | ◐ | dev18 Part 1 (`config/webcams.yml` + area-page row); embeds stay out |
+| Resort-reported snowfall | ○ | licensing research only (`docs/sources_resort_snowfall.md`); build waits for a written answer |
+| Obs time slider (24–72 h) | ○ | not started |
+| Slope-angle / aspect layer (3DEP) | ○ | not started (W7 flag uses model wind, not terrain aspect) |
+| More observation networks (MADIS cat. 3, RWIS, center telemetry) | ○ | research licences first; **ask before building** |
+| Model-map snowfall colors → NWS table | ○ | owner deferred (low priority; model maps use their own table) |
+| PMTiles backup of the OSM reference layer | ○ | not started |
+| W2 prerendered pages + sitemap/robots | ⏸ | `pipeline/pages.py`, `pages.enabled=false`; not wired into update-site; OG cards not built |
+| W4 PWA | ⏸ | `pwa.enabled=false` until the W1 domain; real-device tests open |
+| W5 analytics | ◐ | status page, feedback links, monitor issues ✅; cookieless analytics: dev18 Part 2c (provider chosen by the owner) |
+| W6 alerts backend | ⏸ | offline skeleton + tests (`alerts_backend.enabled=false`); 10 owner decisions in the spec |
+| W7 wind-exposure flag | ⏸ | built, `wind_exposure.enabled=false`; needs the reviewer checklist |
+| M7/M8 multi-model + ECMWF | ✅ | HRES line + ENS plume; **live since dev18** (`ecmwf.yml`); NOAA GEFS plume ⏸ built dev18 (`gefs.enabled=false`, owner-added workflow text in `docs/workflow_snippets/gefs.yml`) |
+| M9 verification | ◐ | archive running, scorer built (`pipeline verify`), UI behind `verification_ui.enabled=false` (dev18 Part 3) |
+| M6 interactive model layers + HRRR pressure levels | ○ | last |
 
 ---
 

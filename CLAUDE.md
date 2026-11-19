@@ -59,8 +59,8 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 - `tests/` — pytest; extend `tests/fakes.py` with canned responses for new sources.
 - `pipeline/search.py` — header search index (data/search.json); `web/js/search.js` (header + shared ranking).
 - `tools/browser_check.py` — headless-Chrome regression checks (basemap, fallback, layout, search, charts).
-- `pipeline/ecmwf.py` (ECMWF HRES + ENS plume, off), `pipeline/wind_exposure.py` (W7 flag, off), `pipeline/alerts_backend.py` (W6 offline skeleton, off), `docs/workflow_snippets/` (workflow text for
-  the OWNER to add; dev sessions never edit .github/), `docs/sources_resort_snowfall.md` (licensing research, no scraping).
+- `pipeline/ecmwf.py` (ECMWF HRES + ENS plume, LIVE via `.github/workflows/ecmwf.yml`), `pipeline/webcams.py` + `config/webcams.yml` (links only), `pipeline/linkcheck.py`, `pipeline/stub.py` (W1 redirect stub), `config/sources.yml` (+ `tools/gen_site_pages.py`), `pipeline/wind_exposure.py` (W7 flag, off), `pipeline/alerts_backend.py` (W6 offline skeleton, off), `docs/workflow_snippets/` (workflow text for
+  the OWNER to add; dev sessions never edit .github/ (one owner-authorized exception: `ecmwf.yml`, dev18)), `docs/sources_resort_snowfall.md` (licensing research, no scraping).
 - `pipeline/archive.py` — forecast archive for verification (docs/verification.md);
   `pipeline/cache.py` — data_cache pruning at the start of every run.
 - `config/models.yml` + `pipeline/models/` — model maps (see below); `web/models.html`
@@ -177,15 +177,16 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 18 2026, dev17 run; the uncommitted dev17_report.md has the briefing)**
-- main has dev13-dev16. Branch `dev17`: `alerts/hazard_text.json` (popup text for every layer alert from the one /alerts/active call; live fetch = last resort), Show-all tests,
-  `decision` column in `data/rec_points_review.csv` (keep/drop/merge, applied by `catalog --rec`; never published), agreement badge now >= 80 % High / >= 66 % Medium (4 sources),
-  forecast overlays (config `forecast_overlays`: enabled, stale_hours -> greyed + note, cycle/issue time), PROB palette fixed (monotone lightness).
-- **Built but OFF (never enable from a dev session):** `ecmwf.enabled` (HRES line + ENS plume, `python -m pipeline ecmwf --force --out build/models`; 50 members, no control; owner wires
-  `docs/workflow_snippets/ecmwf.yml`), `wind_exposure.enabled` (W7, reviewer checklist in the spec), `alerts_backend.enabled` (W6 offline skeleton + owner decisions in the spec), plus the earlier `pages`/`pwa`.
-- Browser suite: `tools/browser_check.py` has 21 checks (adds showall, ensemble); `ensemble` needs ECMWF output in `build/models/ecmwf/` + `multimodel.merge` (skips with a note otherwise).
-  Calibrate the badge with `node tools/agreement_calibration.js`.
-- Open: W3 meta description (W2) + Low-confidence rule; `HEALTHCHECK_URL` secret; W1 then enable pwa/pages; real-device PWA tests; M9 verification when the archive grows.
+**Current state (Nov 19 2026, dev18 branch; the uncommitted dev18_report.md has the briefing)**
+- main has dev13-dev17. Branch `dev18`: **ECMWF is LIVE**: `.github/workflows/ecmwf.yml` (standalone, the ONE workflow file a dev session may create; owner-authorized), `ecmwf.enabled: true`, monitored source `ecmwf`
+  (`max_age_hours: 30`; status page "not enabled" / "waiting for the first run" / age); the member count is read from the data (`n_members`; no page text hard-codes it); HRES drawn as a labelled reference line.
+- Also dev18: models page fixture frames (`tools/model_fixture.py`, index carries per-field PNG sizes; CLS fixed), agreement badge "Little precipitation expected" (all models < 0.20 in) + day-type calibration (spec multi-model.md),
+  webcam LINKS (`config/webcams.yml`, `pipeline/webcams.py`, `pipeline webcams --check`), Sources register (`config/sources.yml` -> `web/sources.html`), DRAFT disclaimer/privacy/terms (`tools/gen_site_pages.py`; noindex),
+  cookieless analytics (`analytics.enabled: false`; `web/js/analytics.js` is fetched only when enabled), `pipeline linkcheck`, `web/404.html`, `docs/cloudflare_headers.draft` (+ `browser_check --only csp`),
+  verification UI behind `verification_ui.enabled: false` (`pipeline verify --publish`), W1 rehearsal (`tools/w1_rehearsal.py`, `pipeline stub`, `docs/w1_cutover_checklist.md`).
+- **Built but OFF (never enable from a dev session):** `wind_exposure.enabled` (W7), `alerts_backend.enabled` (W6), `analytics.enabled`, `verification_ui.enabled`, `pages.enabled`, `pwa.enabled` (W1 first).
+- Browser suite: `tools/browser_check.py` has 28 checks (adds models, webcams, privacy, analytics, csp, verifyui, failure); full run ~15-20 min: run it to a FILE (`> out.txt`), a pipe to `tail` hides the ok/FAIL lines.
+- Open: W3 meta description (W2) + Low-confidence rule; `HEALTHCHECK_URL` secret; W1 then enable pwa/pages; real-device PWA tests; M9 verification when the archive grows; owner: analytics provider, legal review, W6 decisions, W7 reviewer.
 
 **Reusable gotchas (earlier session log: docs/ARCHIVE.md)**
 - Lighthouse: `PATH=/c/miniforge3/envs/tools:$PATH npx -y lighthouse@12.6.1 URL --only-categories=performance,accessibility`

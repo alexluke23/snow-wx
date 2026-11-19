@@ -5,8 +5,8 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const NAMES = { snotel: "SNOTEL snow observations", asos: "Airport weather stations (ASOS/AWOS)", alerts: "NWS alerts", afd: "NWS forecast discussions",
     avalanche: "Avalanche danger ratings", hazards: "NWS winter hazards layer", points: "NBM point forecasts (ski areas, Sno-Parks, SNOTEL)",
-    ndfd: "NWS official forecast (NDFD)", models: "Model maps (HRRR, RRFS, GFS)", nohrsc: "NOHRSC snowfall analysis" };
-  const ORDER = ["points", "ndfd", "snotel", "asos", "alerts", "hazards", "avalanche", "afd", "models", "nohrsc"];
+    ndfd: "NWS official forecast (NDFD)", models: "Model maps (HRRR, RRFS, GFS)", nohrsc: "NOHRSC snowfall analysis", ecmwf: "ECMWF forecasts (HRES line + ensemble plume)" };
+  const ORDER = ["points", "ndfd", "snotel", "asos", "alerts", "hazards", "avalanche", "afd", "models", "nohrsc", "ecmwf"];
   const hoursSince = (iso, now) => { const t = Date.parse(iso || ""); return Number.isFinite(t) ? Math.max(0, (now - t) / 3.6e6) : null; };
   const ageText = (h) => (h === null ? "–" : h < 1 ? "under 1 h" : h < 48 ? `${Math.round(h)} h` : `${Math.round(h / 24)} days`);
   const when = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "–" : d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }); };
@@ -14,6 +14,8 @@
   /** {state: ok | late | none, why} for one source, with the same rules as the monitor. */
   function judge(e, lim, now) {
     if (!e || typeof e !== "object") return { state: "none", why: "no status reported yet" };
+    if (e.disabled) return { state: "off", why: "", age: null, ref: null };                        // a switched-off feature is "not enabled", never "late"
+    if (e.waiting) return { state: "wait", why: "", age: null, ref: null };
     const why = [];
     const fails = Number(e.consecutive_failures || 0);
     if (lim?.max_failures && fails >= lim.max_failures) why.push(`failed ${fails} runs in a row (limit ${lim.max_failures})`);
@@ -40,7 +42,7 @@
     }
     const rows = names.map((n) => {
       const e = src[n], lim = lims[n], j = judge(e, lim, now);
-      const label = { ok: "✓ OK", late: "⚠ Late", none: "– Not reported", nolimit: "• Reported" }[j.state];
+      const label = { ok: "✓ OK", late: "⚠ Late", none: "– Not reported", nolimit: "• Reported", off: "– Not enabled", wait: "– Waiting for first run" }[j.state];
       const limit = lim ? [lim.max_failures ? `${lim.max_failures} failed runs` : "", lim.max_age_hours ? `${lim.max_age_hours} h` : ""].filter(Boolean).join(" or ") : "–";
       const outage = e?.outage_since && !e.unavailable ? `outage since ${when(e.outage_since)}` : "";
       const detail = [e?.detail || (e?.count != null ? `${e.count} ${e.unit || "items"}` : ""), j.why, outage].filter(Boolean).join(" · ");

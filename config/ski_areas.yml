@@ -63,6 +63,10 @@ overrides:
   Sun Valley - Dollar Mountain: {name: Sun Valley (Dollar Mountain)}
   "Ski Santa Fe, Santa Fe, Q3855441": {name: Ski Santa Fe}
   Nordic Valley Resort (Wolf Mountain): {name: Nordic Valley}
+  Boreal Mountain Resort: {url: https://www.rideboreal.com/}      # was a dead link (link check Nov 18 2026)
+  Meadowlark Ski Area: {url: https://meadowlarklakeresort.com/}      # was a dead link (link check Nov 18 2026)
+  Badger Pass Ski Area: {url: https://www.travelyosemite.com/winter/badger-pass-ski-area/}      # was a dead link (link check Nov 18 2026)
+  Sunrise Park Resort: {url: https://sunrise.ski/}      # was a dead link (link check Nov 18 2026)
 
 # Regions: first box that contains the summit wins; otherwise the state name.
 # box = [west, east, south, north]

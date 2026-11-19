@@ -104,6 +104,9 @@
     const url = frameUrl(state.h);
     const img = $("frame");
     img.classList.remove("missing");
+    const sz = (field().size || {})[state.d];            // [w, h] from the catalog: the box exists before the PNG arrives (no layout shift)
+    if (sz) { img.width = sz[0]; img.height = sz[1]; img.style.aspectRatio = `${sz[0]} / ${sz[1]}`; }
+    else { img.removeAttribute("width"); img.removeAttribute("height"); img.style.aspectRatio = ""; }
     img.src = url;
     img.alt = `${model().label} ${field().label}, ${model().domains[state.d]?.label}, F${pad3(state.h)}`;
     $("hour").value = String(idx);
@@ -207,11 +210,13 @@
       document.querySelector(".frame").hidden = true;
       return;
     }
-    $("updated").textContent = "Runs: " + names.map((k) => {
+    const runs = "Runs: " + names.map((k) => {
       const m = catalog.models[k];
       const day = new Date(m.init).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
       return `${m.label} ${m.cycle.slice(8, 10)}Z ${day}`;
     }).join(" · ");
+    $("updated").textContent = runs;
+    $("updated").title = runs;
     settle(readHash());
   }
 

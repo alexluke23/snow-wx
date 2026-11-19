@@ -1,0 +1,93 @@
+# ECMWF open data: IFS HRES line + IFS ENS plume at every ski-area summit (pipeline/ecmwf.py, docs/specs/multi-model.md).
+#
+# A STANDALONE workflow (owner-authorized, dev18): it does not touch models.yml. It stores its newest run as a release asset
+# ecmwf-<YYYYMMDDHH>-<version>.tar on the same "model-maps" prerelease; update-site.yml already downloads the newest tar of every
+# product into each build (ecmwf -> build/models/ecmwf/{precip.json,index.json,plume/<area>.json}) and the site build merges it.
+#
+# Schedule: ENS 00Z/12Z cycles land ~7-9 h after their nominal time. The pipeline takes the newest 00/12Z cycle whose LAST step index
+# (240 h, HRES and ENS) exists, and exits 0 with new=false when it is already published or not yet released upstream. Two attempts per
+# cycle absorb late releases (09:40/11:40 UTC for 00Z, 21:40/23:40 UTC for 12Z). GitHub often starts cron runs late; harmless.
+# Cost (measured twice on a laptop): ~1.2 GB of anonymous byte-range GETs from the AWS mirror, ~5 min, 162 new files on the site.
+# No secret and no API key: the mirror is public. Be polite: it answers HTTP 503 "SlowDown" under bursts; the code retries with backoff.
+name: ECMWF (HRES + ENS)
+
+on:
+  schedule:
+    - cron: "40 9,11,21,23 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Re-run even if the newest cycle is already published"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # create the release / upload and delete this product's assets
+  actions: write    # trigger update-site.yml after a new upload
+
+# Its own group (NOT model-maps): an ECMWF run must never queue behind, or cancel, the model-map jobs. Never cancel a run in progress.
+concurrency:
+  group: ecmwf
+  cancel-in-progress: false
+
+env:
+  RELEASE: model-maps
+  MODEL: ecmwf
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  ecmwf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: Find the published cycle
+        id: pub
+        # Assets are ecmwf-<YYYYMMDDHH>-<version>.tar; the version hashes the product's code + config (pipeline/version.py), so a code or
+        # config change re-runs the current cycle. Old assets without a version never match.
+        run: |
+          cyc=$(gh release view "$RELEASE" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null \
+                | sed -n -E "s/^${MODEL}-([0-9]{10}(-[0-9a-f]{8})?)\.tar$/\1/p" | sort | tail -1 || true)
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then cyc=""; fi
+          echo "published: ${cyc:-none}"
+          echo "cycle=$cyc" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch, sample, write
+        id: render
+        shell: bash -el {0}
+        # Writes new=true|false and cycle=... to $GITHUB_OUTPUT. Exit 0 with new=false when the newest complete cycle is already published
+        # or the next one is not released upstream yet.
+        run: python -m pipeline ecmwf --out out/models --published "${{ steps.pub.outputs.cycle }}" --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload to the model-maps release
+        if: steps.render.outputs.new == 'true'
+        run: |
+          set -euo pipefail
+          cyc="${{ steps.render.outputs.cycle }}"
+          asset="${MODEL}-${cyc}.tar"
+          tar -C out/models -cf "$asset" "$MODEL"
+          du -h "$asset"
+          # Another workflow may create the release at the same moment: creation failing is fine as long as the release exists afterwards.
+          if ! gh release view "$RELEASE" >/dev/null 2>&1; then
+            gh release create "$RELEASE" --prerelease --title "Model maps (automated)" \
+              --notes "Newest model-map images per model, replaced automatically by the Model maps workflow. Not a software release." \
+              || gh release view "$RELEASE" >/dev/null
+          fi
+          # Upload the new run first, then delete THIS product's other assets; other products' assets are never touched.
+          gh release upload "$RELEASE" "$asset" --clobber
+          for old in $(gh release view "$RELEASE" --json assets -q '.assets[].name' \
+                       | grep -E "^${MODEL}-[0-9]{10}(-[0-9a-f]{8})?\.tar$" || true); do
+            if [ "$old" != "$asset" ]; then
+              gh release delete-asset "$RELEASE" "$old" -y
+            fi
+          done
+
+      - name: Redeploy the site
+        if: steps.render.outputs.new == 'true'
+        run: gh workflow run update-site.yml --ref "${{ github.event.repository.default_branch }}"

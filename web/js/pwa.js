@@ -119,6 +119,7 @@
     coach.hidden = false;
     document.body.append(coach);
   };
+  addEventListener("appinstalled", () => { if (window.snowwxTrack) snowwxTrack("install", { where: "pwa" }); });
   addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferred = e; showCoach("Install Snow-Wx to open your mountains from the home screen, even offline.", true); });
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !navigator.standalone;
   if (ios) document.addEventListener("DOMContentLoaded", () => showCoach("To install on iPhone/iPad: tap Share, then “Add to Home Screen”.", false));

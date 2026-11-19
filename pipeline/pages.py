@@ -99,10 +99,11 @@ def robots(cfg: dict) -> str:
     return f"User-agent: *\nAllow: /\nSitemap: {base_url(cfg)}/sitemap.xml\n"
 
 
-def redirect_snippet(areas: list[dict], base_path: str = "") -> str:
+def redirect_js(areas: list[dict], base_path: str = "") -> str:
+    """js/id-redirect.js: old `area.html#id` links go to the indexable path. A FILE (not an inline <script>) so the draft Content-Security-Policy needs no 'unsafe-inline'."""
     m = {a["id"]: f"{base_path}/{page_path(a)}" for a in areas}
-    return ("<script>/* pages.enabled: old #id links go to the indexable path */(function(){var m=" + json.dumps(m, separators=(",", ":"))
-            + ";var id=decodeURIComponent(location.hash.replace(/^#/,''));if(m[id])location.replace(m[id]);})();</script>")
+    return ("/* pages.enabled: old #id links go to the indexable path */(function(){var m=" + json.dumps(m, separators=(",", ":"))
+            + ";var id=decodeURIComponent(location.hash.replace(/^#/,''));if(m[id])location.replace(m[id]);})();\n")
 
 
 def run(cfg: dict, outdir: Path, catalog: Path | None = None, *, force: bool = False) -> int:
@@ -128,7 +129,9 @@ def run(cfg: dict, outdir: Path, catalog: Path | None = None, *, force: bool = F
     ar = out / "area.html"
     if ar.exists():
         s = ar.read_text(encoding="utf-8")
-        if "pages.enabled: old #id" not in s:
-            ar.write_text(s.replace("<head>", "<head>\n  " + redirect_snippet(areas, _bp(cfg)), 1), encoding="utf-8")
+        (out / "js").mkdir(parents=True, exist_ok=True)
+        (out / "js" / "id-redirect.js").write_text(redirect_js(areas, _bp(cfg)), encoding="utf-8")
+        if "js/id-redirect.js" not in s:
+            ar.write_text(s.replace("<head>", '<head>\n  <script src="js/id-redirect.js"></script>', 1), encoding="utf-8")
     log.info("pages: wrote %d area pages, sitemap.xml, robots.txt", len(areas))
     return 0

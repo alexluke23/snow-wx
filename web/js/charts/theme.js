@@ -175,7 +175,7 @@ const SnowCharts = (() => {
     if (!d || !d.classList.contains("chart-table")) {
       d = document.createElement("details");
       d.className = "chart-table";
-      d.innerHTML = "<summary>View as table</summary><div class=\"tbl-wrap\"></div>";
+      d.innerHTML = "<summary data-track=\"table_view\">View as table</summary><div class=\"tbl-wrap\"></div>";
       el.after(d);
       d.addEventListener("toggle", () => { if (d.open) d._build?.(); });
     }

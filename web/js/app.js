@@ -305,7 +305,7 @@
       ${lvl > 0 && p.travel_advice ? `<p>${esc(p.travel_advice)}</p>` : ""}
       ${note}
       <p class="hint">Issued ${localTime(p.start_date)}<br>Expires ${localTime(p.end_date)}</p>
-      <a href="${esc(safeUrl(p.link))}" target="_blank" rel="noopener">Read the full forecast →</a>`);
+      <a href="${esc(safeUrl(p.link))}" target="_blank" rel="noopener" data-track="avalanche_click">Read the full forecast →</a>`);
   }
 
   // ---------------------------------------------------------------- URL hash state
