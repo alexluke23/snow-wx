@@ -1,0 +1,15 @@
+# NOAA GEFS ensemble plume (second plume view next to ECMWF's) — workflow text for the OWNER to add. NOT in .github/ (dev sessions create no second workflow file).
+# Status: pipeline/gefs.py is built and tested (tests/test_gefs.py); config `gefs.enabled` is false; the page shows an "ECMWF | GEFS" switch in the Ensemble view only when
+# data/multimodel.json lists `gefs` in `plumes` (i.e. when models/gefs/index.json is in the site build), so nothing changes while the job does not exist.
+#
+# To go live (same shape as .github/workflows/ecmwf.yml, which is the working template):
+#   1. copy .github/workflows/ecmwf.yml to .github/workflows/gefs.yml and change: name -> "GEFS (plume)"; concurrency group -> gefs; env MODEL: gefs;
+#      the "Fetch, sample, write" step -> `python -m pipeline gefs --out out/models --published "${{ steps.pub.outputs.cycle }}" --github-output "$GITHUB_OUTPUT"`;
+#      cron: GEFS 00Z/12Z cycles are complete ~5-6 h after init (measured: see docs/specs/multi-model.md), so "40 6,8,18,20 * * *" (two tries per cycle) is enough.
+#   2. set `gefs.enabled: true` in config/settings.yml.
+#   3. add `gefs` to `monitoring.sources` (max_age_hours: 30) and a status row (copy the ecmwf entry in pipeline/__main__.py `ecmwf_status`) if you want it monitored.
+#   4. nothing to change in update-site.yml: it unpacks every `<product>-<cycle>-<version>.tar` into build/models/, so gefs-<cycle>.tar -> build/models/gefs/{index.json,plume/<area>.json}
+#      and the site build's multimodel.merge adds `plumes: ["ecmwf", "gefs"]`.
+#
+# Cost (measured, see the report/spec): download = 31 members x 40 steps x (APCP + CSNOW) byte-range GETs (~0.28 MB each) + one .idx per member and step; ~3,700 requests; no key, anonymous HTTPS.
+# Data: NOAA, public domain. Snow plume = APCP x CSNOW (categorical snow share of each 6-h window) x NBM's median ratio: an ESTIMATE, labelled so on the page (GEFS has no snowfall accumulation field).

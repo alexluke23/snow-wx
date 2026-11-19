@@ -78,14 +78,14 @@ const Ensemble = (() => {
   const at = (b, series, h) => MultiModel.interpAt(b.x, series, b.t0 + h * HOUR);
 
   /** headline sentence (also the chart's aria-label). h = the window end used (hours after the common start). */
-  function headline(b, st, { mode, h, thr, weekday }) {
+  function headline(b, st, { mode, h, thr, weekday, label = "ECMWF ensemble" }) {
     const i = b.x.findIndex((x) => x >= b.t0 + h * HOUR - 1);
     if (i < 0) return "ECMWF ensemble: not enough forecast hours after the common start.";
     const s = st[i], vals = b.members.map((m) => m[i]);
     const f = (v) => (v === null ? "–" : v.toFixed(2));
     const unit = mode === "snow" ? "in of snow at NBM's ratio" : "in of liquid precipitation";
     const sh = share(vals, thr);
-    return `ECMWF ensemble (${s.n} members): median ${f(s.p50)} ${unit} by ${weekday}; 25–75% ${f(s.p25)}–${f(s.p75)}; ${sh.k} of ${sh.n} members above ${thr} in.`;
+    return `${label} (${s.n} members): median ${f(s.p50)} ${unit} by ${weekday}; 25–75% ${f(s.p25)}–${f(s.p75)}; ${sh.k} of ${sh.n} members above ${thr} in.`;
   }
 
   /** table rows: percentiles at 24 h marks, then the member-share rows ("N of n members") */

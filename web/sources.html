@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snow-Wx · Sources and credits</title>
+  <meta name="description" content="Every data source, licence and credit used by Snow-Wx: NOAA/NWS, NRCS SNOTEL, USGS, ECMWF open data, OpenStreetMap and more.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="about-page doc-page">
+  <header>
+    <h1>Snow-Wx <span>Western US</span></h1>
+    <nav class="site-nav">
+      <a href="mine.html"><span class="nav-long">★ My mountains</span><span class="nav-short">★ Mine</span></a>
+      <a href="index.html"><span class="nav-long">Obs map</span><span class="nav-short">Map</span></a>
+      <a href="finder.html"><span class="nav-long">Powder Finder</span><span class="nav-short">Finder</span></a>
+      <a href="models.html"><span class="nav-long">Model maps</span><span class="nav-short">Models</span></a>
+      <a href="about.html">About</a>
+    </nav>
+    <form class="site-search" role="search" autocomplete="off">
+      <button type="button" class="ss-toggle" aria-label="Search ski areas and SNOTEL sites" aria-expanded="false" aria-controls="ss-input">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </button>
+      <div class="ss-box">
+        <label class="sr" for="ss-input">Search ski areas and SNOTEL sites</label>
+        <input id="ss-input" type="search" placeholder="Search ski areas, SNOTEL…" role="combobox" aria-autocomplete="list"
+          aria-expanded="false" aria-controls="ss-list" spellcheck="false" enterkeyhint="go">
+        <ul id="ss-list" class="search-results" role="listbox" aria-label="Search results" hidden></ul>
+      </div>
+    </form>
+  </header>
+
+  <main class="about">
+    <h2>Data sources and credits</h2>
+    <p class="lead">Every number on Snow-Wx comes from a public source. This page lists each one, the licence it comes under and the credit it asks for. We are not
+      affiliated with any of them, and none of them endorses this site.</p>
+    <section id="data"><h3>Weather, snow and avalanche data</h3>
+      <div class="src" id="src-noaa-nws"><h4>NOAA / National Weather Service</h4>
+        <p>National Blend of Models (NBM) point forecasts, the official NWS forecast (NDFD), alerts, forecast discussions, winter hazards; links to the full NWS forecast.</p>
+        <p><b>Licence:</b> US Government work: public domain · <a href="https://www.weather.gov/disclaimer" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Data: NOAA / National Weather Service</p></div>
+      <div class="src" id="src-nws-hazards-map"><h4>NOAA / National Weather Service winter-hazard map service</h4>
+        <p>The shaded winter-weather warning, watch and advisory areas on the obs map.</p>
+        <p><b>Licence:</b> US Government work: public domain · <a href="https://www.weather.gov/disclaimer" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Hazard areas: NOAA / National Weather Service</p></div>
+      <div class="src" id="src-nohrsc"><h4>NOAA National Operational Hydrologic Remote Sensing Center (NOHRSC) and SNODAS</h4>
+        <p>Snowfall analysis and SNODAS snow depth overlays and storm totals.</p>
+        <p><b>Licence:</b> US Government work: public domain · <a href="https://www.nohrsc.noaa.gov/" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Snow analysis: NOAA NOHRSC (SNODAS via NSIDC)</p></div>
+      <div class="src" id="src-nrcs-snotel"><h4>USDA NRCS SNOTEL (AWDB)</h4>
+        <p>Snow depth, snow water equivalent and temperature at 800+ SNOTEL stations.</p>
+        <p><b>Licence:</b> US Government work: public domain · <a href="https://www.nrcs.usda.gov/" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> SNOTEL data: USDA Natural Resources Conservation Service, National Water and Climate Center. Provisional data, subject to revision.</p></div>
+      <div class="src" id="src-iem"><h4>Iowa Environmental Mesonet (IEM)</h4>
+        <p>Airport weather observations (ASOS/AWOS).</p>
+        <p><b>Licence:</b> Free for any lawful use, including commercial (IEM&#x27;s stated terms) · <a href="https://mesonet.agron.iastate.edu/disclaimer.php" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Observations: Iowa Environmental Mesonet, Iowa State University</p></div>
+      <div class="src" id="src-avalanche-org"><h4>avalanche.org and the regional avalanche centers <span class="hint">(terms being confirmed before launch)</span></h4>
+        <p>Avalanche danger ratings and links to each center&#x27;s own forecast; shown unaltered, expired ratings greyed out.</p>
+        <p><b>Licence:</b> Public forecasts published by the avalanche centers through avalanche.org; commercial terms to be confirmed · <a href="https://avalanche.org/" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Avalanche danger: avalanche.org and the local avalanche center (always read the center&#x27;s full forecast)</p></div>
+      <div class="src" id="src-osm"><h4>OpenStreetMap contributors and OpenSkiMap</h4>
+        <p>Ski-area and lift geometry (our ski-area catalog), Sno-Park locations, the roads/towns reference layer.</p>
+        <p><b>Licence:</b> Open Database Licence (ODbL) 1.0: attribution required; derived databases shared alike · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> © OpenStreetMap contributors (ODbL). Ski areas: OpenSkiMap.</p></div>
+      <div class="src" id="src-ecmwf"><h4>ECMWF open data (IFS HRES and IFS ensemble)</h4>
+        <p>Operational high-resolution forecast line and the 50-member ensemble plume in &#x27;Precipitation by model&#x27;.</p>
+        <p><b>Licence:</b> Creative Commons Attribution 4.0 (CC BY 4.0); the data are ADAPTED here (point values, accumulations, percentiles across members) · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Adapted from &quot;ECMWF IFS 15-day Forecast Data&quot; by ECMWF, licensed under CC BY 4.0 (creativecommons.org/licenses/by/4.0). See the ECMWF Terms of Use (apps.ecmwf.int/datasets/licences/general/).</p></div>
+      <div class="src" id="src-usfs"><h4>US Forest Service, state parks and land managers (Sno-Park information)</h4>
+        <p>Names and permit-check links for Sno-Parks; we link to the land manager and do not copy their lists.</p>
+        <p><b>Licence:</b> US Government works are public domain; state pages are linked, not copied · <a href="https://www.fs.usda.gov/" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Sno-Park information: US Forest Service and the state park agencies, linked on each page</p></div>
+    </section>
+    <section id="basemap"><h3>Map tiles and elevation</h3>
+      <div class="src" id="src-usgs"><h4>U.S. Geological Survey (The National Map, 3DEP)</h4>
+        <p>Shaded-relief, topo and imagery map tiles; ground elevation (3DEP) for ski-area base/summit heights.</p>
+        <p><b>Licence:</b> US Government work: public domain; please credit the USGS · <a href="https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Map tiles and elevation: U.S. Geological Survey, The National Map</p></div>
+      <div class="src" id="src-openfreemap"><h4>OpenFreeMap and OpenMapTiles</h4>
+        <p>Vector roads and town names drawn over the relief map (the reference layer).</p>
+        <p><b>Licence:</b> OpenMapTiles schema (BSD/CC BY 4.0) with OpenStreetMap data (ODbL); free, no key · <a href="https://openfreemap.org/" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> OpenFreeMap © OpenMapTiles, data from OpenStreetMap</p></div>
+    </section>
+    <section id="software"><h3>Software</h3>
+      <div class="src" id="src-plotly"><h4>Plotly.js</h4>
+        <p>Charts (loaded from a CDN).</p>
+        <p><b>Licence:</b> MIT · <a href="https://github.com/plotly/plotly.js/blob/master/LICENSE" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Charts: Plotly.js (MIT)</p></div>
+      <div class="src" id="src-analytics-providers"><h4>Cookieless analytics (provider chosen by the owner; OFF today)</h4>
+        <p>Visitor counts and a few named events, only when the owner switches analytics on (config analytics.enabled); no cookies, Do Not Track and Global Privacy Control honoured.</p>
+        <p><b>Licence:</b> Depends on the provider chosen: Plausible (AGPL, hosted or self-hosted), GoatCounter (EUPL), Cloudflare Web Analytics (Cloudflare terms) · <a href="https://github.com/alexluke23/snow-wx/blob/main/docs/specs/launch-readiness.md" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Analytics: none today</p></div>
+      <div class="src" id="src-leaflet"><h4>Leaflet, MapLibre GL JS and maplibre-gl-leaflet</h4>
+        <p>The maps (served from our own site, vendored).</p>
+        <p><b>Licence:</b> BSD-2-Clause (Leaflet), BSD-3-Clause (MapLibre GL JS), ISC (maplibre-gl-leaflet) · <a href="https://github.com/Leaflet/Leaflet/blob/main/LICENSE" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Maps: Leaflet and MapLibre GL JS</p></div>
+      <div class="src" id="src-python-libs"><h4>Open-source Python libraries (Herbie, cfgrib, ecCodes, xarray, NumPy, SciPy, Matplotlib, Cartopy, MetPy, pandas)</h4>
+        <p>Pipeline: model data download and decoding, map rendering.</p>
+        <p><b>Licence:</b> MIT, BSD and Apache-2.0 (each library&#x27;s own licence) · <a href="https://github.com/alexluke23/snow-wx/blob/main/environment.yml" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Built with open-source scientific Python</p></div>
+    </section>
+    <section id="hosting"><h3>Hosting</h3>
+      <div class="src" id="src-hosting"><h4>GitHub (code, Actions, Pages) and Cloudflare (planned)</h4>
+        <p>Builds the site every hour and serves it; stores model products as release assets.</p>
+        <p><b>Licence:</b> GitHub Terms of Service (public repository) · <a href="https://docs.github.com/site-policy/github-terms/github-terms-of-service" target="_blank" rel="noopener">terms</a></p>
+        </div>
+    </section>
+    <section id="links"><h3>Links to other sites</h3>
+      <div class="src" id="src-resort-websites"><h4>Ski-area websites (the &quot;Area website&quot; link on each page)</h4>
+        <p>Outbound links to each resort&#x27;s own site; taken from OpenSkiMap/OpenStreetMap tags and corrected in config/ski_areas.yml where a link was dead.</p>
+        <p><b>Licence:</b> Not applicable: links only; the resort&#x27;s terms apply once you leave Snow-Wx · <a href="https://github.com/alexluke23/snow-wx/blob/main/config/ski_areas.yml" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Resort names and website links: © OpenStreetMap contributors (ODbL)</p></div>
+      <div class="src" id="src-webcam-links"><h4>Resort, state DOT, avalanche-center and Forest Service webcam pages</h4>
+        <p>Outbound links only (config/webcams.yml); no webcam picture or page is loaded, embedded or cached by Snow-Wx.</p>
+        <p><b>Licence:</b> Not applicable: links to the providers&#x27; own sites; their terms apply once you leave Snow-Wx · <a href="https://github.com/alexluke23/snow-wx/blob/main/config/webcams.yml" target="_blank" rel="noopener">terms</a></p>
+        <p class="credit"><b>Credit:</b> Webcams belong to their providers</p></div>
+    </section>
+    <section id="our-data"><h3>Data we publish</h3>
+      <p>The ski-area and Sno-Park catalogs (<code>data/ski_areas.json</code>, <code>data/rec_points.json</code>) are derived from OpenStreetMap and OpenSkiMap and are
+        therefore made available under the <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">Open Database Licence (ODbL)</a>:
+        you may use and adapt them if you credit "© OpenStreetMap contributors" and share derived databases under the same licence. Forecast numbers shown on pages are
+        derived from NOAA/NWS and ECMWF data (see above) and carry no additional claim.</p>
+      <p>ECMWF data are <b>adapted</b>: we read point values from ECMWF's gridded files, accumulate precipitation, and compute percentiles across ensemble members.
+        ECMWF has not endorsed these adaptations.</p>
+    </section>
+    <p class="hint">Missing a credit, or see one that is wrong? Use the feedback link in the footer and we will fix it.</p>
+  </main>
+  <footer>Forecasts: NOAA/NWS. Snowpack: USDA NRCS, NOAA/NWS NOHRSC. Ski areas © OpenStreetMap contributors,
+    OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center. · <a href="status.html">Data status</a> · <a href="sources.html">Sources</a> · <a href="disclaimer.html">Disclaimer</a> · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a> <span data-mailto-wrap hidden>· <a class="site-feedback" data-mailto data-subject="Snow-Wx feedback" hidden>Send feedback</a></span>
+  </footer>
+  <script src="js/site-config.js"></script>
+  <script src="js/search.js" defer></script>
+</body>
+</html>

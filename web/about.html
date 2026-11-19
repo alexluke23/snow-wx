@@ -187,18 +187,23 @@
       <p><b>Model agreement</b> (High / Medium / Low) is a <b>heuristic until verified</b>, not an accuracy claim. Over the longest window (72, 48, 36, 24, 12 or 6 hours after
         the common start) that at least three of NBM, HRRR, RRFS and GFS reach, we take each model's liquid total and the median of those totals. A model "agrees" if it is within
         ±25% of the median (or within 0.10 inch when the median is small). If at least 80% of the sources agree the badge is <b>High</b> (all of three, all of four, 4 of 5), at least two thirds <b>Medium</b>, otherwise
-        <b>Low</b>; when every model is under 0.10 inch the window is "all dry" and shown as High. The badge always uses liquid amounts, so the units toggle does not change it.</p>
+        <b>Low</b>; when every model is under 0.20 inch (twice the 0.10 inch tolerance floor, so the models cannot disagree by more than that) there is nothing to disagree about, so no agreement rating is given: the badge reads <b>Little precipitation expected</b> (never "High"). The badge always uses liquid amounts, so the units toggle does not change it.</p>
       <p><b>Checked against real runs (Nov 18 2026, all 160 ski areas, NBM + HRRR + RRFS + GFS + ECMWF):</b> with three sources the badge was High for 46% of areas, Medium for 38–39% and
         Low for 15–17%. When the ECMWF operational run became the fourth source the old "75% agree" rule made 78% of areas High (3 of 4 was enough), so the rule was tightened to
         80% and two thirds: High 42%, Medium 36%, Low 23% on the same data, and unchanged for three sources. Models whose terrain sat more than 3,000 ft from the summit were
         outside the ±25% band no more often than models within 1,000 ft, so the height difference between a coarse grid and the summit does not by itself drive "Low". Because HRRR stops at
         48 h, the 72-hour window is made of NBM, RRFS, GFS and ECMWF. The badge is still a heuristic that has not been verified against observations.</p>
+      <p><b>Checked on days of different types (dev18, 00Z runs, 160 ski areas, NBM + RRFS + GFS + ECMWF over 72 hours):</b> on two dry days (Nov 5 and 9) 80–81% of areas had every model under
+        0.20 inch and read "Little precipitation expected"; on two light days (Nov 13 and 15) 15–34% did; on the heavy-storm day (Nov 17) 18% did. Among the areas that were rated, High / Medium / Low were
+        6 / 38 / 56% (Nov 5), 13 / 42 / 45% (Nov 9), 19 / 48 / 33% (Nov 13), 17 / 38 / 45% (Nov 15) and 19 / 43 / 37% (Nov 17): no class passed 70% on any day type, so the 80% and two-thirds thresholds were left alone.
+        The "little precipitation" limit was raised from 0.10 to 0.20 inch because the 0.10 inch tolerance means models under 0.20 inch cannot disagree by more than the tolerance allows: on the dry days every
+        "High" rating was that kind of agreement about almost nothing. The badge remains a heuristic, not an accuracy claim.</p>
       <p id="ecmwf"><b>ECMWF.</b> The comparison includes the <b>ECMWF IFS operational high-resolution run (HRES)</b>, and a <b>Models / Ensemble</b> toggle switches to the <b>ECMWF IFS ensemble (ENS)</b>:
-        50 perturbed members (the control member is not part of the open data files, so the plume has 50, not 51). Each member is one complete scenario: we take its own running total, align it to the
+        the perturbed members listed in ECMWF's open data (the page shows the actual count; at the time of writing the files carry 50 perturbed members and no control member, so the plume has 50, not 51). The single HRES run is drawn on the plume as a dashed, labelled reference line, not as a member. Each member is one complete scenario: we take its own running total, align it to the
         common start, and only then compute the 10, 25, 50, 75 and 90th percentiles and the mean <i>across members</i> at each time (linear interpolation between ordered members). Nothing is added across
         time, and none of NBM's percentile products are used. The plume is raw ECMWF guidance on a 0.25° grid (about 28 km): <b>not bias-corrected, not elevation-adjusted and not the same product as NBM</b>;
         the model's terrain height at the point is shown in the tooltip. Liquid is ECMWF's total precipitation (rain and melted snow); "Snow (in)" is ECMWF's snowfall water equivalent times NBM's median
-        snow ratio ("inches assume NBM SLR"). The plume is greyed when the ECMWF run is more than 24 hours old, and "N of 50 members" counts members at or above an amount.</p>
+        snow ratio ("inches assume NBM SLR"). The plume is greyed when the ECMWF run is more than 24 hours old, and "N of <i>n</i> members" counts members at or above an amount (<i>n</i> is the number of members in the file).</p>
     </section>
 
     <section id="verification">
@@ -207,6 +212,16 @@
         stations. Depth change is a <b>lower bound</b> of snowfall (settling and compaction remove depth), so a forecast that looks too high may simply be compared with a depth that settled. The comparison leaves
         out observations from the SNOTEL outage window, observations with fewer than 20 hourly reports in the day, stale observations and missing pairs, and it counts what it left out. With only days of archive it can show
         no seasonal skill, so <b>we make no accuracy claim yet</b>: the model-agreement badge and the powder-quality classes are documented heuristics until this comparison covers a season. Results will be published here.</p>
+    </section>
+    <section id="scorecard" hidden>
+      <h3>Forecast scorecard (first look)</h3>
+      <div id="scorecard-body"><p class="hint">Loading…</p></div>
+      <ul class="caveats">
+        <li>The observation is the 24-hour change in SNOTEL snow depth, a <b>lower bound</b> for snowfall (settling, melt and wind take snow away). A positive bias is therefore expected and is not by itself an error.</li>
+        <li>Hit rate counts the days the observed gain was at least 1 inch and asks how often the forecast also said 1 inch or more. Bias and mean absolute error are in inches.</li>
+        <li>Observations from the NRCS SNOTEL outage and stale or patchy station reports are excluded. Sample sizes are shown; a handful of storms dominate early results.</li>
+        <li>This is a heuristic first look, not an accuracy rating and not a statement about any single forecast.</li>
+      </ul>
     </section>
 
     <section id="storm-total">
@@ -327,9 +342,11 @@
     </section>
   </main>
   <footer>Forecasts: NOAA/NWS. Snowpack: USDA NRCS, NOAA/NWS NOHRSC. Ski areas © OpenStreetMap contributors,
-    OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center. · <a href="status.html">Data status</a> <span data-mailto-wrap hidden>· <a class="site-feedback" data-mailto data-subject="Snow-Wx feedback" hidden>Send feedback</a></span>
+    OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center. · <a href="status.html">Data status</a> · <a href="sources.html">Sources</a> · <a href="disclaimer.html">Disclaimer</a> · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a> <span data-mailto-wrap hidden>· <a class="site-feedback" data-mailto data-subject="Snow-Wx feedback" hidden>Send feedback</a></span>
   </footer>
   <script src="js/site-config.js"></script>
+  <script src="js/verification-ui.js"></script>
+  <script src="js/scorecard.js"></script>
   <script src="js/search.js" defer></script>
 </body>
 </html>

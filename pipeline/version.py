@@ -18,6 +18,7 @@ PRODUCT_FILES = {
     "points": ["pipeline/nbm/*.py", "pipeline/points.py", "data/ski_areas.json", "data/snotel_points.json", "data/rec_points.json"],
     "nohrsc": ["pipeline/nohrsc.py", "pipeline/layers.py", "data/ski_areas.json", "data/rec_points.json"],
     "ecmwf": ["pipeline/ecmwf.py", "data/ski_areas.json"],
+    "gefs": ["pipeline/gefs.py", "pipeline/ecmwf.py", "data/ski_areas.json"],
     "ndfd": ["pipeline/ndfd.py", "pipeline/points.py", "data/ski_areas.json", "data/snotel_points.json", "data/rec_points.json"],
 }
 

@@ -63,6 +63,13 @@ def evaluate(meta: dict, now: datetime, mcfg: dict) -> dict[str, dict]:
             out[name] = {"problem": None, "detail": {"note": "no status in meta.json", "limits": lim},
                          "log": f"{name}: no status in meta.json -> no alarm"}
             continue
+        if e.get("disabled") or e.get("waiting"):
+            # a feature switched off (config flag) is "not enabled", never "failing"; a product that has never delivered yet is "waiting"
+            # (its age is judged once a first run exists)
+            why = "not enabled" if e.get("disabled") else "waiting for the first run"
+            out[name] = {"problem": None, "detail": {"ok": None, "disabled": bool(e.get("disabled")), "waiting": bool(e.get("waiting")), "limits": lim},
+                         "log": f"{name}: {why} -> no alarm"}
+            continue
         failing = _failing(e)
         fails = int(e.get("consecutive_failures") or 0)
         if failing:

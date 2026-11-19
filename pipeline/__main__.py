@@ -40,6 +40,18 @@ def read_meta(outdir: Path) -> dict:
         return {}
 
 
+def analytics_public(cfg: dict) -> dict:
+    """what data/meta.json tells the pages about analytics: enabled only with a known provider AND a site id; otherwise just {"enabled": false}"""
+    a = cfg.get("analytics") or {}
+    provider, site_id = str(a.get("provider") or "none").lower(), str(a.get("site_id") or "").strip()
+    if not a.get("enabled") or provider not in ("plausible", "goatcounter", "cloudflare") or not site_id:
+        return {"enabled": False}
+    out = {"enabled": True, "provider": provider, "site_id": site_id}
+    if str(a.get("script_url") or "").startswith("https://"):
+        out["script_url"] = a["script_url"]
+    return out
+
+
 def write_meta(cfg: dict, outdir: Path, updates: dict) -> None:
     """Merge source statuses into outdir/meta.json. A partial run (e.g. --only
     avalanche) updates its own entries and keeps the others."""
@@ -55,11 +67,29 @@ def write_meta(cfg: dict, outdir: Path, updates: dict) -> None:
         # NBM forecast overlays on the obs map (config forecast_overlays): enabled=false hides the Forecast group; layers older than stale_hours are greyed
         "forecast_overlays": {"enabled": bool((cfg.get("forecast_overlays") or {}).get("enabled", True)),
                               "stale_hours": float((cfg.get("forecast_overlays") or {}).get("stale_hours", 14))},
+        # cookieless analytics (config analytics): the page script reads ONLY this; disabled (default) = {"enabled": false}, so nothing about a provider is exposed
+        "analytics": analytics_public(cfg),
+        # verification UI (config verification_ui): enabled=false (default) means the pages show nothing and never fetch data/verification*.json
+        "verification_ui": {"enabled": bool((cfg.get("verification_ui") or {}).get("enabled", False)),
+                            "min_days": int((cfg.get("verification_ui") or {}).get("min_days", 14)), "min_pairs": int((cfg.get("verification_ui") or {}).get("min_pairs", 30))},
         "site": {"feedback_email": os.environ.get("SNOWWX_FEEDBACK_EMAIL") or (cfg.get("site") or {}).get("feedback_email") or ""},
     })
 
 
-def product_status(outdir: Path) -> dict:
+def ecmwf_status(outdir: Path, cfg: dict | None) -> dict:
+    """ECMWF entry for meta.json. Flag off -> `disabled` (the status page says "not enabled", the monitor never alarms). Flag on and no run in the
+    site folder yet -> `waiting` (first run not delivered: shown, not an alarm; once a run exists its age is judged against monitoring.sources.ecmwf)."""
+    if not bool(((cfg or {}).get("ecmwf") or {}).get("enabled")):
+        return {"ok": None, "disabled": True, "detail": "not enabled"}
+    try:
+        js = json.loads((outdir / "models" / "ecmwf" / "index.json").read_text(encoding="utf-8"))
+        return {"ok": True, "detail": f"ECMWF {js['cycle'][8:10]}Z run, {js.get('n_members', '?')} ensemble members + HRES",
+                "at": js.get("generated_at")}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"ok": None, "waiting": True, "detail": "waiting for the first run"}
+
+
+def product_status(outdir: Path, cfg: dict | None = None) -> dict:
     """Status entries for products made by other jobs and merged at build time
     (NBM points, model maps): what is present in the site folder and how old it is."""
     out = {}
@@ -101,6 +131,7 @@ def product_status(outdir: Path) -> dict:
             out["models"]["error"] = "no model runs yet"
     except (OSError, ValueError):
         out["models"] = {"ok": False, "error": "no model runs yet"}
+    out["ecmwf"] = ecmwf_status(outdir, cfg)
     return out
 
 
@@ -145,17 +176,31 @@ def run_obs(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
     return 0 if ok else 1
 
 
+def fill_404_base(outdir: Path, cfg: dict) -> None:
+    """404.html is served from ANY path, so its <base href> must be absolute: config site.base_path + "/" (the W1 cutover changes one config value)."""
+    nf = Path(outdir) / "404.html"
+    if nf.exists():
+        bp = ((cfg.get("site") or {}).get("base_path") or "").rstrip("/")
+        nf.write_text(nf.read_text(encoding="utf-8").replace("__BASE_HREF__", bp + "/"), encoding="utf-8")
+
+
 def build_site(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
     """Copy the static website into outdir, fetch obs into outdir/data, and
     merge any model runs already present in outdir/models into one catalog."""
     web = REPO_ROOT / "web"
     shutil.copytree(web, outdir, dirs_exist_ok=True)
     code = run_obs(cfg, outdir / "data", only)
+    fill_404_base(outdir, cfg)
     # Static catalogs that live in the repo (built on demand, e.g. `pipeline catalog`).
     for name in ("ski_areas.json", "rec_points.json"):
         src = REPO_ROOT / "data" / name
         if src.exists():
             shutil.copy2(src, outdir / "data" / name)
+    try:
+        from . import webcams
+        webcams.write_public(outdir / "data" / "webcams.json")      # webcam LINKS for the area page (config/webcams.yml); invalid config keeps the build alive without them
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("snow-wx").warning("webcams.json not written: %s", exc)
     from .search import write_index
     write_index(outdir / "data")              # header search on every page (web/js/search.js)
     from .search import write_map_points
@@ -170,7 +215,7 @@ def build_site(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
         merge_multimodel(outdir / "models", outdir / "data" / "multimodel.json")
     except Exception:
         logging.getLogger("snow-wx").exception("model catalog failed")
-    write_meta(cfg, outdir / "data", product_status(outdir))
+    write_meta(cfg, outdir / "data", product_status(outdir, cfg))
     return code
 
 
@@ -234,12 +279,40 @@ def main(argv=None) -> int:
     p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("gefs", help="NOAA GEFS ensemble plume at ski-area summits (no-op unless config gefs.enabled; dev18 stretch, built OFF)")
+    p.add_argument("--out", default="build/models", help="models folder: writes gefs/index.json and gefs/plume/<area>.json")
+    p.add_argument("--cycle", help="init time YYYYMMDDHH (default: newest complete 00/12Z)")
+    p.add_argument("--force", action="store_true", help="run even when gefs.enabled is false (local test)")
+    p.add_argument("--published", default=None, help="tag already on the release; exit 0 with new=false if unchanged")
+    p.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT"))
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("ecmwf", help="ECMWF open data at ski-area summits: IFS HRES line + ENS plume (no-op unless config ecmwf.enabled; dev17)")
     p.add_argument("--out", default="build/models", help="models folder: writes ecmwf/precip.json, ecmwf/index.json, ecmwf/plume/<area>.json")
     p.add_argument("--cycle", help="init time YYYYMMDDHH (default: newest complete 00/12Z cycle)")
     p.add_argument("--force", action="store_true", help="run even when ecmwf.enabled is false (local test)")
     p.add_argument("--published", default=None, help="tag already on the release; new=false when unchanged")
     p.add_argument("--github-output", default=None)
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("stub", help="W1 cutover: write the GitHub Pages redirect stub (old pages + #id map) pointing at the new origin")
+    p.add_argument("--origin", required=True, help="the NEW site origin, e.g. https://snowwx.example")
+    p.add_argument("--base-path", default="", help="folder the new site is served from (default: root)")
+    p.add_argument("--out", default="stub")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("linkcheck", help="check the generated site (build/): internal links/ids, robots/sitemap/canonical sanity, optionally every outbound link")
+    p.add_argument("--build", default="build")
+    p.add_argument("--outbound", action="store_true", help="also check every distinct https link found in the pages (HEAD, GET fallback, 1 s per host)")
+    p.add_argument("--data", action="store_true", help="also check links stored in data files (resort sites, permit pages, avalanche centers, webcams)")
+    p.add_argument("--report", default=None)
+    p.add_argument("--strict", action="store_true", help="SEO findings also fail the run")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("webcams", help="webcam links (config/webcams.yml): --check reports dead links (one HEAD per URL), --update writes status/last_checked back")
+    p.add_argument("--check", action="store_true")
+    p.add_argument("--update", action="store_true", help="with --check: store status + last_checked in config/webcams.yml (dead links become confidence: low)")
+    p.add_argument("--report", default=None, help="write the per-link report here (JSON)")
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("pages", help="prerendered area pages + sitemap + robots (W2; no-op unless config pages.enabled)")
@@ -251,6 +324,7 @@ def main(argv=None) -> int:
     p.add_argument("--dir", required=True, help="folder with nbm-*.csv.gz, ndfd-*.csv.gz, snotel-*.csv.gz (gh release download verification)")
     p.add_argument("--out", required=True, help="output folder for the CSVs and README.md")
     p.add_argument("--min-hours", type=int, default=20, help="minimum hourly reports in the 24 h for an observation to count")
+    p.add_argument("--publish", default=None, help="also write the public verification JSON (data/verification.json + data/verification/<site>.json) into this data folder")
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("pwa", help="PWA build step: manifest, icons, sw.js (no-op unless config pwa.enabled; pwa.kill writes the kill-switch worker)")
@@ -300,18 +374,42 @@ def main(argv=None) -> int:
     cfg = load_config(args.config)
     from .cache import housekeeping
     housekeeping(REPO_ROOT, cfg)                 # prune data_cache (> 2 days), log disk use
+    if args.cmd == "gefs":
+        from . import gefs
+        cyc = datetime.strptime(args.cycle, "%Y%m%d%H").replace(tzinfo=timezone.utc) if args.cycle else None
+        res = gefs.run(cfg, make_session(cfg), Path(args.out), cycle=cyc, force=args.force, published=args.published, github_output=args.github_output)
+        print(json.dumps({k: v for k, v in res.items() if k not in ("attribution", "hours")}))
+        return 0 if res.get("ok") or res.get("skipped") else 1
     if args.cmd == "ecmwf":
         from . import ecmwf
         cyc = datetime.strptime(args.cycle, "%Y%m%d%H").replace(tzinfo=timezone.utc) if args.cycle else None
         res = ecmwf.run(cfg, make_session(cfg), Path(args.out), cycle=cyc, force=args.force, published=args.published, github_output=args.github_output)
         print(json.dumps({k: v for k, v in res.items() if k not in ("attribution", "hours")}))
         return 0 if res.get("ok") or res.get("skipped") else 1
+    if args.cmd == "stub":
+        from . import stub
+        cat = json.loads((REPO_ROOT / "data" / "ski_areas.json").read_text(encoding="utf-8"))["areas"]
+        rec = REPO_ROOT / "data" / "rec_points.json"
+        others = [a["id"] for a in json.loads(rec.read_text(encoding="utf-8")).get("areas", [])] if rec.exists() else []
+        print(json.dumps(stub.build(cfg, Path(args.out), args.origin, cat, others, args.base_path)))
+        return 0
+    if args.cmd == "linkcheck":
+        from . import linkcheck
+        site = cfg.get("site") or {}
+        return linkcheck.run(Path(args.build), args.outbound, args.data, make_session(cfg), origin=os.environ.get("SITE_ORIGIN") or site.get("origin") or "",
+                             base_path=site.get("base_path") or "", report=Path(args.report) if args.report else None, strict=args.strict)
+    if args.cmd == "webcams":
+        from . import webcams
+        if not args.check:
+            print("nothing to do: use --check")
+            return 0
+        return webcams.run_check(args.update, make_session(cfg), Path(args.report) if args.report else None)
     if args.cmd == "pages":
         from . import pages
         return pages.run(load_config(args.config), Path(args.out), force=args.force)
     if args.cmd == "verify":
         from . import verify
-        print(json.dumps(verify.run(Path(args.dir), Path(args.out), load_config(args.config), args.min_hours), indent=1))
+        print(json.dumps(verify.run(Path(args.dir), Path(args.out), load_config(args.config), args.min_hours, Path(args.publish) if args.publish else None), indent=1, default=str))
         return 0
     if args.cmd == "pwa":
         from . import pwa
