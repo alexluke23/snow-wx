@@ -4,7 +4,8 @@
 # ecmwf-<YYYYMMDDHH>-<version>.tar on the same "model-maps" prerelease; update-site.yml already downloads the newest tar of every
 # product into each build (ecmwf -> build/models/ecmwf/{precip.json,index.json,plume/<area>.json}) and the site build merges it.
 #
-# Schedule: ENS 00Z/12Z cycles land ~7-9 h after their nominal time. The pipeline takes the newest 00/12Z cycle whose LAST step index
+# Schedule: ENS 00Z/12Z cycles land ~7-9 h after their nominal time (measured from S3 Last-Modified of the 240 h index files, six cycles Nov 16-18 2026: 7.6 h HRES, 7.8 h ENS;
+# so the 09:40 / 21:40 UTC attempts have about 2 h of margin and the 11:40 / 23:40 ones absorb a late release). The pipeline takes the newest 00/12Z cycle whose LAST step index
 # (240 h, HRES and ENS) exists, and exits 0 with new=false when it is already published or not yet released upstream. Two attempts per
 # cycle absorb late releases (09:40/11:40 UTC for 00Z, 21:40/23:40 UTC for 12Z). GitHub often starts cron runs late; harmless.
 # Cost (measured twice on a laptop): ~1.2 GB of anonymous byte-range GETs from the AWS mirror, ~5 min, 162 new files on the site.

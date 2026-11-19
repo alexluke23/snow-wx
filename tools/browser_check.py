@@ -56,7 +56,7 @@ def free_port() -> int:
 
 
 @contextlib.contextmanager
-def serve(folder: Path, png_delay: float = 0.0, headers: dict | None = None):
+def serve(folder: Path, png_delay: float = 0.0, headers: dict | None = None, json_delay: float = 0.0):
     """static server for `folder`; png_delay seconds before every .png answer imitates a slow network (layout-shift checks)"""
     port = free_port()
     class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -71,6 +71,8 @@ def serve(folder: Path, png_delay: float = 0.0, headers: dict | None = None):
         def do_GET(self):
             if png_delay and self.path.split("?")[0].endswith(".png"):
                 time.sleep(png_delay)
+            if json_delay and self.path.split("?")[0].endswith("/index.json"):
+                time.sleep(json_delay)                      # a catalog that arrives after the first paint (slow network)
             super().do_GET()
     handler = functools.partial(Quiet, directory=str(folder))
     class Server(socketserver.ThreadingTCPServer):
@@ -1238,9 +1240,9 @@ def check_models_layout(b: Browser, base: str, log):
                 for f in ("models.html", "css", "js"):
                     (shutil.copytree if (src / f).is_dir() else shutil.copy)(src / f, t / f)
                 write_fixture(t / "models", with_sizes=sizes)
-                with serve(t, png_delay=0.7) as tbase:             # slow frames: the box must already exist when the picture arrives
-                    for width in (1280, 375):
-                        b.open(f"{tbase}/models.html", width=width, wait=3.5)
+                with serve(t, png_delay=0.7, json_delay=0.6) as tbase:             # slow catalog + frames: the layout must already be final when they arrive
+                    for width in (1280, 412, 375):
+                        b.open(f"{tbase}/models.html", width=width, wait=4.0)
                         r = b.eval("""(() => { const i = document.getElementById('frame'), r = i.getBoundingClientRect();
                           return {cls: window.__cls, nat: [i.naturalWidth, i.naturalHeight], box: [Math.round(r.width), Math.round(r.height)], attrs: [i.getAttribute('width'), i.getAttribute('height')],
                                   missing: i.classList.contains('missing'), caption: document.getElementById('caption').textContent.length, hscroll: document.documentElement.scrollWidth > innerWidth + 2}; })()""")

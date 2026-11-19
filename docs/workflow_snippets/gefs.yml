@@ -5,7 +5,7 @@
 # To go live (same shape as .github/workflows/ecmwf.yml, which is the working template):
 #   1. copy .github/workflows/ecmwf.yml to .github/workflows/gefs.yml and change: name -> "GEFS (plume)"; concurrency group -> gefs; env MODEL: gefs;
 #      the "Fetch, sample, write" step -> `python -m pipeline gefs --out out/models --published "${{ steps.pub.outputs.cycle }}" --github-output "$GITHUB_OUTPUT"`;
-#      cron: GEFS 00Z/12Z cycles are complete ~5-6 h after init (measured: see docs/specs/multi-model.md), so "40 6,8,18,20 * * *" (two tries per cycle) is enough.
+#      cron: GEFS 00Z/12Z cycles are complete 5.2-5.7 h after init (measured from S3 Last-Modified of the f240 index files, four cycles Nov 17-18), so "40 6,8,18,20 * * *" (two tries per cycle) is enough.
 #   2. set `gefs.enabled: true` in config/settings.yml.
 #   3. add `gefs` to `monitoring.sources` (max_age_hours: 30) and a status row (copy the ecmwf entry in pipeline/__main__.py `ecmwf_status`) if you want it monitored.
 #   4. nothing to change in update-site.yml: it unpacks every `<product>-<cycle>-<version>.tar` into build/models/, so gefs-<cycle>.tar -> build/models/gefs/{index.json,plume/<area>.json}

@@ -45,8 +45,20 @@ Shared assets: our JS 23 files = 305 KB raw / 110 KB gzip (largest: `area.js`); 
 
 Per-run network volume of the model jobs (from the model-maps assets, PLAN §2 history): HRRR tar ~98 MB, RRFS ~83 MB, GFS ~23 MB; ECMWF ~1.2 GB downloaded (0.6 MB published).
 
-## 5. Lighthouse (local, gzip server like Pages, mobile profile, median of interleaved runs)
-See "Lighthouse results" appended below after the dev18 sweep (performance and accessibility for every page; target accessibility ≥ 95 everywhere, obs map performance no worse than main ≈ 82-89).
+## 5. Lighthouse (local, gzip server like Pages, mobile profile; dev18 branch, Nov 19 2026)
+Accessibility is **100 on every one of the 15 page states** (target >= 95). Performance (single run per page unless stated; the obs map and area page are medians of 3 interleaved runs against main):
+
+| Page state | Perf | A11y | CLS | LCP s | TBT ms |
+|---|---|---|---|---|---|
+| obs map (index) | 89 (main 88) | 100 | 0.016 (main 0.027) | 3.2 | 182 |
+| area page, ski area | 89 (main 89) | 100 | 0.014 | 2.0 | 402 |
+| area page, SNOTEL / Sno-Park | 93 / 91 | 100 | 0.014 | 1.9 / 2.0 | 274 / 348 |
+| Powder Finder / Sno-Parks | 96 / 87 | 100 | 0.000 | 2.1 | 172 / 468 |
+| My mountains | 100 | 100 | 0.008 | 1.1 | 0 |
+| model maps | **100** (was 90) | 100 | **0.01** (was 0.21) | 1.2 | 0 |
+| status, about, sources, privacy, terms, disclaimer, 404 | 100 | 100 | 0.00-0.04 | 1.1-1.4 | 0-13 |
+
+The model-maps CLS (0.21 with a catalog whose frames are missing, the worst case; 0.20 reproduced with a slow catalog at 412 px) came from the player row re-wrapping when the hour label arrived; fixed with a reserved row (`browser_check --only models` now delays the catalog and fails on the old CSS). Remaining ceiling for the obs map is tile-server timing (bimodal 71-91, see PLAN §2).
 
 ## 6. How to re-measure
 - Sizes and counts: `python <scratch>/sizes.py build` (the script is a few lines of `Path.rglob` + `gzip.compress`; see this file's tables for the quantities) or `du -sh build; find build -type f | wc -l`.

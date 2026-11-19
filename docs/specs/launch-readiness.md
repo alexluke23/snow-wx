@@ -3,7 +3,7 @@
 Status: built and tested on branch dev18. Everything here is OFF or DRAFT where an owner decision or a lawyer is needed. Pages carry `noindex` until the owner signs the legal drafts.
 
 ## 2a Sources and credits
-- `config/sources.yml` is the one register (14 entries: NOAA/NWS, NOHRSC, NRCS SNOTEL, IEM, USGS, avalanche.org, OSM/OpenSkiMap, OpenFreeMap, ECMWF, USFS and state parks, Plotly, Leaflet/MapLibre, Python libraries, analytics providers, hosting, webcam links).
+- `config/sources.yml` is the one register (18 entries: NOAA/NWS, NOHRSC, NRCS SNOTEL, IEM, USGS, avalanche.org, OSM/OpenSkiMap, OpenFreeMap, ECMWF, USFS and state parks, Plotly, Leaflet/MapLibre, Python libraries, analytics providers, hosting, resort websites, webcam links).
   Fields: licence, licence URL, the credit text the licence asks for, `hosts` (every host code/config talks to) and `browser` (hosts the VISITOR'S browser contacts, with when).
 - `tools/gen_site_pages.py` writes `web/sources.html` from it (committed; `tests/test_sources.py` fails when the page is stale). The ODbL notice for the derived catalogs and the ECMWF "adapted" statement are on the page.
 - `tests/test_sources.py::test_every_external_host_in_code_and_config_has_a_source_entry` scans `pipeline/`, `web/` and `config/` for `https://host` and fails for any host without an entry (or an `ignore_hosts` reason).
