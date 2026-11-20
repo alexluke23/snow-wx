@@ -331,7 +331,8 @@
     $("fresh").textContent = `NBM ${when(nbm.issued)} run${nws ? ` · NWS issued ${when(nws.issued)}` : ""}${obs?.snowfall_end ? ` · observed to ${when(obs.snowfall_end)}` : ""}`;
     if (st.m === "prob") await ensureExceed();
     update();
-    (window.requestIdleCallback || ((f) => setTimeout(f, 300)))(initMap, { timeout: 1500 });
+    // Safari has no requestIdleCallback: setTimeout fallback (dev21; never call the function detached from window)
+    if (typeof window.requestIdleCallback === "function") window.requestIdleCallback(initMap, { timeout: 1500 }); else setTimeout(initMap, 300);
   }
   load();
 })();

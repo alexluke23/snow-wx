@@ -1425,6 +1425,39 @@ def check_models_layout(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
+def check_no_idle(b: Browser, base: str, log):
+    """dev21 Part 0a (Safari/iPhone): a browser WITHOUT requestIdleCallback (Safari) and, second pass, also without IntersectionObserver (old WebKit):
+    the area page still loads Plotly and draws its charts, site-config still runs (mailto wiring + analytics queue), the Finder map starts and the
+    obs map loads its reference layer."""
+    strip = """(() => { for (const k of ['requestIdleCallback', 'cancelIdleCallback']) { try { delete window[k]; } catch (e) {} try { delete Window.prototype[k]; } catch (e) {}
+      try { Object.defineProperty(window, k, {value: undefined, configurable: true, writable: true}); } catch (e) {} }
+      if (window.__noIO) { try { delete window.IntersectionObserver; } catch (e) {} try { Object.defineProperty(window, 'IntersectionObserver', {value: undefined, configurable: true}); } catch (e) {} } })()"""
+    res = {}
+    for variant, no_io in (("no-rIC", False), ("no-rIC-no-IO", True)):
+        sid = b.cmd("Page.addScriptToEvaluateOnNewDocument", source=("window.__noIO = true;" if no_io else "") + strip)["identifier"]
+        try:
+            b.open(f"{base}/area.html#alta-ski-area", wait=8)
+            need(b.eval("typeof window.requestIdleCallback") == "undefined", "requestIdleCallback was not removed")
+            if no_io:
+                need(b.eval("typeof window.IntersectionObserver") == "undefined", "IntersectionObserver was not removed")
+            _draw_all(b)
+            wait_for(b, "window.Plotly && document.getElementById('period-chart').data", 20)
+            st = b.eval("""(() => ({charts: [...document.querySelectorAll('.chart')].filter(el => el.data).length,
+                mail: [...document.querySelectorAll('a[data-mailto]')].map(a => a.dataset.wired === '1'), track: typeof window.snowwxTrack}))()""")
+            # site-config's idle fallback (setTimeout 1.5 s) must have wired every mailto link
+            wait_for(b, "[...document.querySelectorAll('a[data-mailto]')].every(a => a.dataset.wired === '1')", 10)
+            need(st["charts"] >= 4 and st["track"] == "function", f"area page without idle callback ({variant}): {st}")
+            b.open(f"{base}/finder.html", wait=8)
+            wait_for(b, "window.L && document.querySelector('#fmap .leaflet-container, #fmap.leaflet-container')", 15)
+            b.open(f"{base}/index.html#v=depth_24h&map=6/40.6/-111.6", wait=9)
+            wait_for(b, "window.maplibregl || document.querySelector('.maplibregl-canvas, .ref-layer canvas')", 15)
+            res[variant] = st
+            need(not b.errors, f"JS errors without requestIdleCallback ({variant}): {b.errors}")
+        finally:
+            b.cmd("Page.removeScriptToEvaluateOnNewDocument", identifier=sid)
+    log(f"  no idle callback: {res}")
+
+
 def check_webcams(b: Browser, base: str, log):
     """dev18 Part 1: the area page's Webcams row: <= 3 plain outbound links (https, target=_blank, rel noopener noreferrer), each tappable at 375 px, no iframe,
     no image or other resource loaded from a webcam host, no sideways scroll; SNOTEL pages and areas without an entry show no row."""
@@ -1809,7 +1842,7 @@ def check_mobile_sweep(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard,
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle,
           **{f"failure{k}": functools.partial(check_failure_modes, shard=(k, 3)) for k in (1, 2, 3)}}
 FULL_RUN = [n for n in CHECKS if n != "failure"]          # the full run uses the three failure shards (same coverage, parallel)
 

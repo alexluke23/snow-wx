@@ -34,7 +34,7 @@
   // The library is 355 KB gzip from OUR host since dev19. It is started when the browser is idle after the page's own load, so it does not compete with the page's first
   // data requests and the headline paint (the charts below are placeholders of fixed height until it arrives).
   const whenIdle = (f) => {
-    const run = () => (window.requestIdleCallback ? window.requestIdleCallback(f, { timeout: 1200 }) : setTimeout(f, 150));
+    const run = () => (typeof window.requestIdleCallback === "function" ? window.requestIdleCallback(f, { timeout: 1200 }) : setTimeout(f, 150));
     if (document.readyState === "complete") run(); else window.addEventListener("load", run, { once: true });
   };
   const loadPlotly = () => (plotlyPromise ||= new Promise((resolve, reject) => {

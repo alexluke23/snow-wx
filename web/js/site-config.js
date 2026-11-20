@@ -30,7 +30,7 @@ const SiteConfig = (() => {
   };
   /** a page that already fetched meta.json (the obs map) hands it over: no second request */
   const provide = (meta) => { cfg = Promise.resolve((meta && meta.site) || {}); metaP = Promise.resolve(meta || {}); };
-  const idle = (fn) => ("requestIdleCallback" in window ? requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 1500));
+  const idle = (fn) => (typeof window.requestIdleCallback === "function" ? window.requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 1500));
   // Analytics (PLAN W5), OFF by default: js/analytics.js is fetched ONLY when data/meta.json says analytics.enabled, so a disabled site makes no analytics request at all.
   // snowwxTrack() is always safe to call: events wait in a small queue (max 30) until analytics starts, and are dropped when it never does.
   const queue = [];
