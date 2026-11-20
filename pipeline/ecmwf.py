@@ -326,17 +326,37 @@ def newest_cycle(session, c: dict, now: datetime) -> datetime | None:
     return None
 
 
+_ECC_LOCK = __import__("threading").Lock()
+_ECC_READY = False
+_DECODE_LOCK = __import__("threading").Lock()
+
+
+def _eccodes_ready():
+    """ecCodes loads its definitions on the FIRST handle; two threads doing that at once fail ("no definitions found") and can crash the process (seen dev20 in the
+    GEFS end-to-end run, whose first decodes all start in worker threads). One handle from a sample, under a lock, before any parallel decode."""
+    global _ECC_READY
+    import eccodes
+    if not _ECC_READY:
+        with _ECC_LOCK:
+            if not _ECC_READY:
+                h = eccodes.codes_grib_new_from_samples("GRIB2")
+                eccodes.codes_release(h)
+                _ECC_READY = True
+    return eccodes
+
+
 def decode(blob: bytes) -> np.ndarray:
     """One GRIB2 message -> (721, 1440) float32 in the file's units (m)."""
-    import eccodes
-    h = eccodes.codes_new_from_message(blob)
-    try:
-        ni, nj = eccodes.codes_get(h, "Ni"), eccodes.codes_get(h, "Nj")
-        if (ni, nj) != (1440, 721) or eccodes.codes_get(h, "scanningMode") != 0:
-            raise ValueError(f"unexpected ECMWF grid {ni}x{nj}")
-        return eccodes.codes_get_values(h).reshape(nj, ni).astype("float32")
-    finally:
-        eccodes.codes_release(h)
+    eccodes = _eccodes_ready()
+    with _DECODE_LOCK:                     # dev20: ecCodes parses definition files lazily per GRIB template and that is not thread-safe (GEFS crashed with 3 workers): one decode at a time
+        h = eccodes.codes_new_from_message(blob)
+        try:
+            ni, nj = eccodes.codes_get(h, "Ni"), eccodes.codes_get(h, "Nj")
+            if (ni, nj) != (1440, 721) or eccodes.codes_get(h, "scanningMode") != 0:
+                raise ValueError(f"unexpected ECMWF grid {ni}x{nj}")
+            return eccodes.codes_get_values(h).reshape(nj, ni).astype("float32")
+        finally:
+            eccodes.codes_release(h)
 
 
 def partial_tag(tag: str) -> str:

@@ -148,3 +148,7 @@ High 20 (13 %), Medium 80 (50 %), Low 21 (13 %), dry 39 (24 %); with AIFS in the
 **Validation (independent `eccodes.codes_grib_find_nearest` on the downloaded messages):** Alta, Jackson Hole, Mt Bachelor at 24 / 120 / 240 h: **9 of 9 match** our inches to 0.006 in
 (e.g. Alta 240 h 39.75 mm = 1.565 in, ours 1.56); every series cumulative and non-decreasing, 0 at step 0.
 **Cost:** +17.3 MB download and +17 s for the ECMWF job (41 steps, 160 areas, Google mirror), output 1 file (~40 KB).
+- **GEFS end-to-end on the real NOAA mirror (dev20, still `gefs.enabled: false`, no workflow):** the first attempt crashed the process (`ECCODES ERROR ... no definitions found`, then an
+  ecCodes `parse_file` assertion): ecCodes loads its definition files lazily per GRIB template and that is NOT thread-safe, and GEFS's first decodes all start in worker threads (ECMWF
+  happened to decode its first field single-threaded). Fix in `ecmwf.decode` (shared by GEFS and AIFS): a one-time warm-up under a lock plus one decode at a time (`_DECODE_LOCK`);
+  downloads stay parallel. Re-run: **00Z Nov 20 2026, 31 members (control + 30), 160 areas, 41 steps, 0 missing messages, 376 MB in 249 s, mirror aws, 0 retries** (3,722 requests).
