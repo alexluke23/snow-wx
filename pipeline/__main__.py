@@ -90,7 +90,8 @@ def ecmwf_status(outdir: Path, cfg: dict | None) -> dict:
             health.append(f"{f.get('retries', 0)} retries")
         health.append(f"{len(missing)} of {f.get('steps_planned', len(js.get('hours') or []) - 1 or '?')} steps missing" + (f" ({', '.join(str(x) for x in missing[:6])}{' ...' if len(missing) > 6 else ''} h)" if missing else ""))
         return {"ok": True, "detail": f"ECMWF {js['cycle'][8:10]}Z run, {js.get('n_members', '?')} ensemble members + HRES · " + " · ".join(health),
-                "at": js.get("generated_at"), "fetch": {"mirror": f.get("mirror"), "retries": f.get("retries"), "steps_missing": missing, "partial": bool(missing)}}
+                "at": js.get("generated_at"), "fetch": {"mirror": f.get("mirror"), "retries": f.get("retries"), "steps_missing": missing, "partial": bool(missing),
+                          "preferred": f.get("preferred_after"), "probe": f.get("probe"), "cache_mb": (f.get("cache") or {}).get("total_mb")}}
     except (OSError, ValueError, KeyError, TypeError):
         return {"ok": None, "waiting": True, "detail": "waiting for the first run"}
 
