@@ -597,3 +597,6 @@ main.status { max-width: 980px; width: 100%; box-sizing: border-box; } .status .
 .mm-chip[aria-pressed="false"] svg { opacity: 0.35; }
 .mm-chip:focus-visible { outline: 2px solid #2c4a6e; outline-offset: 2px; }
 @media (max-width: 520px) { .mm-chips { min-height: 86px; align-content: flex-start; } }
+/* dev21 Part 0c: the "report a bad summary" mailto link is revealed later by site-config.js (address from meta.json): keep its inline space from the first paint
+   (invisible, not announced) so revealing it never shifts the page. With an active NWS alert the summary outgrows its reserved height and this was a 21 px shift. */
+.summary-note [data-mailto-wrap][hidden], .summary-note [data-mailto-wrap][hidden] a[data-mailto][hidden] { display: inline !important; visibility: hidden; }   /* beats the global [hidden] rule (more specific) */
