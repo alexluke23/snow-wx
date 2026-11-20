@@ -1767,9 +1767,11 @@ def check_verify_ui(b: Browser, base: str, log):
     doc = {"triplet": trip, "d": 20, "n": 40, "span": [dates[0], dates[-1]], "common_n": 20,
            "metrics": {"NBM expected": {"n": 20, "bias_in": 0.12, "mae_in": 0.4, "events_1": 8, "hit_1": 0.75}, "NWS (NDFD)": {"n": 20, "bias_in": -0.2, "mae_in": 0.3, "events_1": 8, "hit_1": 0.5}},
            "daily": {"dates": dates, "obs": [0, 2.5, 0, 1.2] * 5, "nbm": [0.1, 2.0, 0.4, 1.5] * 5, "ndfd": [0, 1.5, 0, 0.8] * 5}}
-    vdir = dd / "verification"
+    vd = src / "models" / "verify"                                  # dev21: the verify product tar lands in build/models/verify/
+    vd.mkdir(parents=True, exist_ok=True)
+    vdir = vd / "verification"
     had_vdir = vdir.exists()
-    backup = {f.name: f.read_bytes() for f in (dd / "verification.json",) if f.exists()}
+    backup = {f.name: f.read_bytes() for f in (vd / "verification.json",) if f.exists()}
 
     def setup(enabled, station=None, scorecard_ready=True):
         meta_path.write_text(json.dumps({**meta, "verification_ui": {"enabled": enabled, "min_days": 14, "min_pairs": 30}}), encoding="utf-8")
@@ -1778,7 +1780,7 @@ def check_verify_ui(b: Browser, base: str, log):
                              "rows": [{"source": "NBM expected", "n": 300, "bias_in": 0.12, "mae_in": 0.4, "events_1": 50, "hit_1": 0.62}] if scorecard_ready else []}}
         if station:
             idx["stations"][trip] = station
-        (dd / "verification.json").write_text(json.dumps(idx), encoding="utf-8")
+        (vd / "verification.json").write_text(json.dumps(idx), encoding="utf-8")
         shutil.rmtree(vdir, ignore_errors=True)
         if station and station.get("ready"):
             vdir.mkdir(parents=True, exist_ok=True)
@@ -1835,9 +1837,9 @@ def check_verify_ui(b: Browser, base: str, log):
         if had_vdir:
             vdir.mkdir(parents=True, exist_ok=True)
         for n, data in backup.items():
-            (dd / n).write_bytes(data)
+            (vd / n).write_bytes(data)
         if not backup:
-            (dd / "verification.json").unlink(missing_ok=True)
+            (vd / "verification.json").unlink(missing_ok=True)
         if original is None:
             meta_path.unlink(missing_ok=True)
         else:

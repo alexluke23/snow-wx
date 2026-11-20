@@ -13,9 +13,12 @@ CYC = datetime(2026, 11, 18, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture(autouse=True)
-def fast_fetch(monkeypatch):
+def fast_fetch(monkeypatch, tmp_path):
     monkeypatch.setitem(G.DEFAULTS, "min_interval_s", 0.0)
     monkeypatch.setitem(G.DEFAULTS, "backoff_s", 0.001)
+    monkeypatch.setattr(G, "REPO_ROOT", tmp_path / "repo")          # dev21: the resume cache must never be written into the REAL data_cache by a test
+
+
 PTS = [{"id": "alta", "lat": 40.57, "lon": -111.63, "elev_ft": 10556}]
 IDX_TEXT = """1:0:d=2026111800:VIS:surface:24 hour fcst:ENS=+1
 18:{a}:d=2026111800:APCP:surface:{w}-{e} hour acc fcst:ENS=+1
@@ -80,6 +83,7 @@ def test_url_layout_and_member_list():
 
 def run(tmp_path, monkeypatch, mirror, **kw):
     fake_decode(monkeypatch)
+    tmp_path.mkdir(parents=True, exist_ok=True)
     gh = tmp_path / "gh.txt"
     return G.run({"gefs": {"enabled": True, "max_step_h": 12, "workers": 2}}, mirror, tmp_path / "models", cycle=CYC, points=PTS, github_output=str(gh), **kw), gh
 
@@ -108,9 +112,21 @@ def test_missing_members_up_to_the_limit_are_tolerated_and_more_fail_the_run(tmp
     res, _ = run(tmp_path, monkeypatch, Mirror(missing_members=3))
     d = json.loads((tmp_path / "models" / "gefs" / "plume" / "alta.json").read_text(encoding="utf-8"))
     assert res["missing_member_messages"] == 6 and d["tp"][2][30] is None and d["tp"][2][0] is not None
-    with pytest.raises(RuntimeError, match="members missing"):
-        run(tmp_path / "x", monkeypatch, Mirror(missing_members=7))                                                    # 7 of 31 > 20 %
-    assert not (tmp_path / "x" / "models" / "gefs").exists()
+    # dev21: more than 20 % missing is NOT an error: the run stops (new=false, exit 0) and the retry attempt resumes from the cached steps
+    monkeypatch.setattr(G, "REPO_ROOT", tmp_path / "repo2")             # a fresh cache (the run above cached its steps)
+    res, gh = run(tmp_path / "x", monkeypatch, Mirror(missing_members=7))                                             # 7 of 31 > 20 %
+    assert res["skipped"] == "incomplete" and "new=false" in gh.read_text(encoding="utf-8") and not (tmp_path / "x" / "models" / "gefs").exists()
+
+
+def test_the_retry_attempt_resumes_from_the_step_cache(tmp_path, monkeypatch):
+    first, _ = run(tmp_path / "a", monkeypatch, Mirror())
+    m = Mirror()
+    again, gh = run(tmp_path / "b", monkeypatch, m)                       # same cycle, same points: every step comes from data_cache/gefs/<cycle>
+    assert again["fetch"]["cache_hits"] == 2 and not [g for g in m.gets if g[1]] and "new=true" in gh.read_text(encoding="utf-8")
+    a = json.loads((tmp_path / "a" / "models" / "gefs" / "plume" / "alta.json").read_text(encoding="utf-8"))
+    b = json.loads((tmp_path / "b" / "models" / "gefs" / "plume" / "alta.json").read_text(encoding="utf-8"))
+    assert a["tp"] == b["tp"] and a["sf"] == b["sf"]
+    assert (tmp_path / "repo" / "data_cache" / "gefs" / "2026111800" / "step_006.npz").exists()
 
 
 def test_flag_off_published_and_not_released_never_download(tmp_path, monkeypatch):

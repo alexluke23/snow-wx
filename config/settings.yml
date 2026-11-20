@@ -156,6 +156,9 @@ verification:
   # M9 scoring (tools/verify_forecasts.py) excludes SNOTEL observations inside this window (the NRCS AWDB outage; end = first CONFIRMED live
   # recovery, owner Nov 17) and any stale/unavailable observation.
   snotel_outage: {start: "2026-11-16T12:00Z", end: "2026-11-18T00:45Z"}
+  # dev21: .github/workflows/verify.yml scores the archive daily (`python -m pipeline verify-ci`) and publishes verify-<day>-<version>.tar on the model-maps release;
+  # update-site extracts it into build/models/verify/ (the panel reads models/verify/verification.json). false = the job does nothing (status "not enabled").
+  ci_enabled: true
 
 verification_ui:
   # M9 verification panel on the area page ("How did forecasts do here?") and the scorecard on about.html (web/js/verification-ui.js), reading the JSON that
@@ -185,6 +188,8 @@ monitoring:
     ndfd:      {max_age_hours: 10}    # job every 3 h; NDFD itself updates hourly
     models:    {max_age_hours: 10}    # every 3 h (HRRR hourly cycles; newest model counts)
     nohrsc:    {max_age_hours: 30}    # snowfall analysis 6-hourly, SNODAS daily and late; unchanged runs keep the old time
+    gefs:      {max_age_hours: 30}    # dev21: 00Z/12Z cycles (gefs.yml), complete ~5.5 h after init; one missed cycle fits, two do not ("not enabled" while gefs.enabled is false)
+    verify:    {max_age_hours: 50}    # dev21: daily verification job (verify.yml); one missed day fits
     ecmwf:     {max_age_hours: 30}    # two cycles a day (00Z/12Z), each released ~8 h late: a healthy run is at most ~21 h old, one missed attempt still fits, two do not.
                                       # While ecmwf.enabled is false the status page says "not enabled" and nothing alarms
 
