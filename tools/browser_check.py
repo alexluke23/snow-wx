@@ -1,6 +1,11 @@
 """Headless-browser regression checks for the site (real Chrome via the DevTools protocol).
 
-    python tools/browser_check.py [--build build] [--only basemap,layout,...] [-v]
+    python tools/browser_check.py [--build build] [--only basemap,layout,...] [--quick] [--jobs 4] [-v]
+
+dev20: every check runs in its OWN Chrome (fresh profile, own debugging port) against its OWN static server, in parallel workers (`--jobs`, default 4), each
+worker on a private copy of the build with FROZEN inputs (tools/browser_fixtures.py: a recorded alert snapshot made active relative to now; third-party
+hosts answered inside the browser from fixtures, anything else refused). Fixed sleeps are gone: `open()` and `settle()` wait until the page is quiet
+(no request in flight, no DOM change for 350 ms), the old sleep length is only the upper bound. `--quick` runs a representative subset for per-item runs.
 
 Serves the built site from a local port, drives headless Chrome and asserts:
   basemap   obs map: toggling a snow overlay while zooming 6 -> 14 -> 8 keeps the base map
@@ -19,8 +24,11 @@ Needs Chrome/Chromium and the `websocket-client` package. Exit code 1 on any fai
 from __future__ import annotations
 
 import argparse
+import re
 import base64
+import concurrent.futures
 import contextlib
+import fnmatch
 import functools
 import http.server
 import json
@@ -37,6 +45,8 @@ import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import browser_fixtures  # noqa: E402
 CANDIDATES = [os.environ.get("CHROME_PATH", ""), r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
               r"C:\Program Files\Google\Chrome\Application\chrome.exe", "google-chrome", "google-chrome-stable",
               "chromium", "chromium-browser"]
@@ -69,6 +79,9 @@ def serve(folder: Path, png_delay: float = 0.0, headers: dict | None = None, jso
             super().end_headers()
 
         def do_GET(self):
+            # dev20: checks rewrite fixture files faster than the 1-second resolution of Last-Modified, so a conditional request would get a stale 304: always send the file
+            if "If-Modified-Since" in self.headers:
+                del self.headers["If-Modified-Since"]
             if png_delay and self.path.split("?")[0].endswith(".png"):
                 time.sleep(png_delay)
             if json_delay and self.path.split("?")[0].endswith("/index.json"):
@@ -89,15 +102,32 @@ def serve(folder: Path, png_delay: float = 0.0, headers: dict | None = None, jso
         httpd.shutdown()
 
 
+# dev20: what "the page has rendered" means per page (open() waits for it, then for quiet); pages not listed only wait for quiet
+READY = {
+    "index.html": "window.snowwx && window.snowwx.map && document.querySelector('.leaflet-control-layers-overlays label') && window.snowwx.points && window.snowwx.hazards && document.querySelectorAll('#var-select option').length > 1",
+    "area.html": "(document.getElementById('area') || {textContent: ''}).textContent.length > 200 && (document.querySelector('#area .chart') || /No point forecast|not available/.test(document.getElementById('area').textContent))",
+    "finder.html": "document.querySelector('#rows .frow, #rows p')",
+    "mine.html": "document.querySelector('#cards.mine-empty, #cards .mcards, .mcards')",
+    "models.html": "document.querySelector('#frame, img, .player, main') && document.readyState === 'complete'",
+    "status.html": "document.querySelector('#st-table tbody tr, #st-table .snotel-note')",
+}
+
+
 class Browser:
     """Minimal CDP client: one headless Chrome, one page."""
 
-    def __init__(self, chrome: str):
+    QUIET = """(() => { if (window.__bc) return; const s = window.__bc = {last: performance.now()};
+      const mo = new MutationObserver(() => { s.last = performance.now(); });
+      const go = () => mo.observe(document, {subtree: true, childList: true, attributes: true, characterData: true});
+      go(); })()"""
+
+    def __init__(self, chrome: str, offline: bool = True):
         import websocket
         self.port = free_port()
+        self.profile = tempfile.mkdtemp(prefix="bc-profile-")
         self.proc = subprocess.Popen([chrome, "--headless=new", f"--remote-debugging-port={self.port}",
-                                      f"--user-data-dir={tempfile.mkdtemp()}", "--no-first-run", "--hide-scrollbars",
-                                      "--no-sandbox", "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                      f"--user-data-dir={self.profile}", "--no-first-run", "--hide-scrollbars",
+                                      "--no-sandbox", "--disable-background-timer-throttling", "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         tabs = None
         for _ in range(100):
             try:
@@ -108,6 +138,11 @@ class Browser:
         page = next(t for t in tabs if t["type"] == "page")
         self.ws = websocket.create_connection(page["webSocketDebuggerUrl"], timeout=120)
         self.n = 0
+        self._ev = 10 ** 9                     # ids of fire-and-forget commands (answers to paused requests): never confused with `self.n`
+        self.inflight: set[str] = set()        # network requests in flight (for settle())
+        self.block: list[str] = []
+        self.offline = offline
+        self.unmocked: list[str] = []          # third-party URLs refused because no fixture answers them
         self.errors: list[str] = []
         self.console: list[str] = []           # browser-reported problems (Log.entryAdded: CSP violations, blocked resources)
         self.requests: list[str] = []          # every URL the page requested (Network.requestWillBeSent), for the privacy / analytics checks
@@ -115,6 +150,9 @@ class Browser:
         self.cmd("Page.enable")
         self.cmd("Network.enable")
         self.cmd("Log.enable")
+        self.cmd("Page.addScriptToEvaluateOnNewDocument", source=self.QUIET)
+        if offline:                            # every https request (all third-party hosts; the site itself is http://127.0.0.1) is answered from fixtures
+            self.cmd("Fetch.enable", patterns=[{"urlPattern": "https://*", "requestStage": "Request"}])
 
     def cmd(self, method, **params):
         self.n += 1
@@ -129,8 +167,44 @@ class Browser:
                 self.console.append(f"{e.get('level')}: {e.get('text', '')[:200]} {e.get('url', '')[:80]}")
             if msg.get("method") == "Network.requestWillBeSent":
                 self.requests.append(msg["params"]["request"]["url"])
+                self.inflight.add(msg["params"]["requestId"])
+            if msg.get("method") in ("Network.loadingFinished", "Network.loadingFailed"):
+                self.inflight.discard(msg["params"]["requestId"])
+            if msg.get("method") == "Fetch.requestPaused":
+                self._paused(msg["params"])
             if msg.get("id") == self.n:
                 return msg.get("result", {})
+
+    def _send(self, method, **params):
+        self._ev += 1
+        self.ws.send(json.dumps({"id": self._ev, "method": method, "params": params}))
+
+    def _paused(self, p):
+        url, rid = p["request"]["url"], p["requestId"]
+        if any(fnmatch.fnmatch(url, pat) for pat in self.block):
+            self._send("Fetch.failRequest", requestId=rid, errorReason="BlockedByClient")
+            return
+        ans = browser_fixtures.respond(url)
+        if ans is None:
+            self.unmocked.append(url[:120])
+            self._send("Fetch.failRequest", requestId=rid, errorReason="AddressUnreachable")
+            return
+        code, ctype, body = ans
+        self._send("Fetch.fulfillRequest", requestId=rid, responseCode=code, body=base64.b64encode(body).decode(),
+                   responseHeaders=[{"name": "Content-Type", "value": ctype}, {"name": "Access-Control-Allow-Origin", "value": "*"}, {"name": "Cache-Control", "value": "no-store"}])
+
+    def settle(self, cap: float = 6.0, quiet: float = 0.35):
+        """wait until the page is quiet: no network request in flight, no DOM mutation for `quiet` s, document complete. `cap` (the old fixed sleep) bounds it."""
+        end = time.time() + cap
+        while time.time() < end:
+            try:
+                st = self.cmd("Runtime.evaluate", expression="window.__bc ? [performance.now() - window.__bc.last, document.readyState] : [0, 'loading']", returnByValue=True)
+                age, ready = (st.get("result", {}).get("value") or [0, "loading"])
+            except Exception:  # noqa: BLE001 - navigation in progress
+                age, ready = 0, "loading"
+            if ready == "complete" and age >= quiet * 1000 and not self.inflight:
+                return
+            time.sleep(0.05)
 
     def eval(self, js):
         r = self.cmd("Runtime.evaluate", expression=js, returnByValue=True, awaitPromise=True)
@@ -142,15 +216,34 @@ class Browser:
         # browser zoom z: the page sees a CSS viewport of width/z px at z device pixels per CSS px
         self.cmd("Emulation.setDeviceMetricsOverride", width=int(width / zoom), height=int(height / zoom),
                  deviceScaleFactor=zoom, mobile=width < 500)
-        self.cmd("Network.setBlockedURLs", urls=block or [])
+        self.block = list(block or [])
+        self.cmd("Network.setBlockedURLs", urls=self.block)
         self.cmd("Network.setCacheDisabled", cacheDisabled=bool(block))   # blocked URLs must not come from cache
         self.cmd("Page.navigate", url="about:blank")      # a hash-only change would not reload the page
-        time.sleep(0.3)
+        for _ in range(40):
+            if self.eval("location.href") == "about:blank":
+                break
+            time.sleep(0.025)
         self.errors.clear()
         self.requests.clear()
         self.console.clear()
+        self.inflight.clear()
         self.cmd("Page.navigate", url=url)
-        time.sleep(wait)
+        end = time.time() + wait
+        while time.time() < end:                          # the NEW document must have committed before "quiet" means anything
+            with contextlib.suppress(Exception):
+                if self.eval("location.href") != "about:blank":
+                    break
+            time.sleep(0.02)
+        # page-specific "first render done" signal (bounded by the same cap; a degraded page that never gets there just costs its cap), then quiet
+        page = url.split("?")[0].split("#")[0].rsplit("/", 1)[-1] or "index.html"
+        ready = READY.get(page)
+        while ready and time.time() < end:
+            with contextlib.suppress(Exception):
+                if self.eval(f"(() => {{ try {{ return !!({ready}); }} catch (e) {{ return false; }} }})()"):
+                    break
+            time.sleep(0.05)
+        self.settle(max(0.5, end - time.time()))
 
     def shot(self, path):
         Path(path).write_bytes(base64.b64decode(self.cmd("Page.captureScreenshot", format="png")["data"]))
@@ -159,6 +252,9 @@ class Browser:
         with contextlib.suppress(Exception):
             self.ws.close()
         self.proc.kill()
+        with contextlib.suppress(Exception):
+            self.proc.wait(timeout=5)
+        shutil.rmtree(self.profile, ignore_errors=True)
 
 
 # ---------------------------------------------------------------- checks
@@ -202,7 +298,7 @@ def check_basemap(b: Browser, base: str, log):
                          ("overlay off", "(() => { const s = document.querySelector('#overlay-select'); s.value = ''; s.dispatchEvent(new Event('change')); return 1; })()"),
                          ("zoom 6", "window.snowwx.map.setZoom(6)")):
             b.eval(js)
-            time.sleep(3)
+            b.settle(3)
             st = b.eval(STATE)
             log(f"  basemap c{cycle} {step:11s} z{st['zoom']} tiles={st['loaded']} base={st['base']} overlay={st['overlay']}")
             need(st["loaded"] > 0, f"{step}: base map has no loaded tiles ({st})")
@@ -218,7 +314,7 @@ def check_basemap(b: Browser, base: str, log):
         ref = json.loads(ref)
         if ref["s"] in ("idle", "failed"):
             break
-        time.sleep(1)
+        b.settle(1)
     log(f"  reference layer: {ref}")
     need(ref["s"] == "idle" and ref["gl"] and ref["attr"], f"reference layer not drawn: {ref}")
     sw = json.loads(b.eval("JSON.stringify((() => { const m = window.snowwx.map, g = window.snowwx.reference.group,"
@@ -235,7 +331,7 @@ def check_fallback(b: Browser, base: str, log):
     b.eval("window.__bad = L.tileLayer('http://127.0.0.1:9/{z}/{x}/{y}.png', {maxZoom: 17}).addTo(window.snowwx.map); 1")
     for z in (9, 10, 11, 10):
         b.eval(f"window.snowwx.map.setZoom({z})")
-        time.sleep(2)
+        b.settle(2)
     st = b.eval(STATE)
     errs = b.eval("window.__bad._tiles ? Object.keys(window.__bad._tiles).length : 0")
     log(f"  fallback: overlay-layer tiles tried={errs}, base={st['base']} note={st['note']!r}")
@@ -280,13 +376,13 @@ def _type(b: Browser, text: str):
     for ch in text:
         b.cmd("Input.dispatchKeyEvent", type="keyDown", key=ch, text=ch)
         b.cmd("Input.dispatchKeyEvent", type="keyUp", key=ch)
-    time.sleep(0.8)
+    b.settle(0.8)
 
 
 def _key(b: Browser, key: str, code: int):
     b.cmd("Input.dispatchKeyEvent", type="rawKeyDown", key=key, windowsVirtualKeyCode=code)
     b.cmd("Input.dispatchKeyEvent", type="keyUp", key=key, windowsVirtualKeyCode=code)
-    time.sleep(0.4)
+    b.settle(0.4)
 
 
 def check_search(b: Browser, base: str, log):
@@ -303,7 +399,7 @@ def check_search(b: Browser, base: str, log):
         need(st["exp"] == "true" and st["opts"] and st["act"], f"{page}: no accessible result list ({st})")
         _key(b, "ArrowDown", 40)
         _key(b, "Enter", 13)
-        time.sleep(1.5)
+        b.settle(1.5)
         url = b.eval("location.href")
         log(f"  search {page}: -> {url}")
         need("area.html#" in url, f"{page}: Enter did not open a forecast page ({url})")
@@ -312,14 +408,14 @@ def check_search(b: Browser, base: str, log):
     vis = b.eval("(() => { const r = e => { const x = document.querySelector(e).getBoundingClientRect(); return x.width > 0 && x.height > 0; }; return [r('.ss-toggle'), r('#ss-input')]; })()")
     need(vis == [True, False], f"mobile: expected icon only, got toggle/input visible = {vis}")
     b.eval("document.querySelector('.ss-toggle').click()")
-    time.sleep(0.5)
+    b.settle(0.5)
     need(b.eval("document.activeElement.id") == "ss-input", "mobile: the search button does not open/focus the box")
     _type(b, "766")
     first = b.eval("(document.querySelector('#ss-list [role=option]') || {}).textContent || ''")
     log(f"  search mobile '766': {first.strip()[:60]}")
     need("Snowbird" in first, f"mobile: SNOTEL id 766 should find Snowbird, got {first!r}")
     _key(b, "Enter", 13)
-    time.sleep(1.5)
+    b.settle(1.5)
     need(b.eval("location.hash") == "#snotel-766-UT-SNTL", f"mobile: wrong page {b.eval('location.hash')}")
     # obs map panel search shares the ranking (and still flies the map)
     b.open(f"{base}/index.html", wait=6)
@@ -335,7 +431,10 @@ def _draw_all(b: Browser):
     """Scroll every chart into view so the lazy charts draw."""
     b.eval("""(async () => { for (const el of document.querySelectorAll('.chart, .heat-box')) {
         el.scrollIntoView(); await new Promise(r => setTimeout(r, 700)); } return 1; })()""")
-    time.sleep(1.5)
+    # dev20: wait until every chart that was asked to draw has drawn (Plotly loads when the browser is idle; slower under load), then for quiet
+    with contextlib.suppress(Fail):
+        wait_for(b, "window.Plotly && [...document.querySelectorAll('.chart[data-seen=\"1\"]')].every(el => el.data || el.querySelector('table'))", 15)
+    b.settle(1.5)
 
 
 def check_panel(b: Browser, base: str, log):
@@ -531,7 +630,7 @@ def check_forecast_overlays(b: Browser, base: str, log):
     need(any(g.startswith("Forecast:") and int(g.split(":")[1]) >= 6 for g in groups), f"no Forecast group: {groups}")
     for lid in ("nbm72", "nbmp24_4"):
         b.eval(f"(() => {{ const s = document.querySelector('#overlay-select'); s.value = '{lid}'; s.dispatchEvent(new Event('change')); return 1; }})()")
-        time.sleep(3)
+        b.settle(3)
         st = b.eval("""(() => { const m = window.snowwx.map; m.fire('mousemove', {latlng: L.latLng(46.85, -121.76)});
           const o = window.snowwx.overlays.layer(), sz = m.getSize();
           return {size: o ? o.elementSize() : null, view: [sz.x, sz.y], read: document.querySelector('#overlay-readout').textContent,
@@ -561,7 +660,7 @@ def check_forecast_overlays(b: Browser, base: str, log):
     log(f"  forecast overlays at load: {lazy}")
     need(lazy["png"] == 0 and not lazy["active"] and lazy["sel"] == "", f"forecast overlays must be off and not fetched until toggled: {lazy}")
     import datetime as _dt
-    ixp = Path(__file__).resolve().parents[1] / "build" / "data" / "points" / "layers" / "index.json"
+    ixp = Path(base_dir_holder["path"]) / "data" / "points" / "layers" / "index.json"
     orig = ixp.read_text(encoding="utf-8")
     try:
         for hours_old, want_stale in ((3, False), (30, True)):
@@ -572,7 +671,7 @@ def check_forecast_overlays(b: Browser, base: str, log):
             ixp.write_text(json.dumps(ix), encoding="utf-8")
             b.open(f"{base}/index.html#v=depth_24h&map=7/46.0/-121.0", wait=7)
             b.eval("(() => { const s = document.querySelector('#overlay-select'); s.value = 'nbm72'; s.dispatchEvent(new Event('change')); return 1; })()")
-            time.sleep(3)
+            b.settle(3)
             st = b.eval("""(() => { const o = window.snowwx.overlays.layer(), c = o && o._canvas;
               return {stale: window.snowwx.overlays.isStale('nbm72'), filter: c ? c.style.filter : null, opacity: c ? Number(c.style.opacity) : null,
                       note: (document.querySelector('.stale-note') || {}).textContent || '', meta: (document.querySelector('.overlay-meta .hint') || {}).textContent}; })()""")
@@ -595,13 +694,13 @@ def check_mine(b: Browser, base: str, log):
     log(f"  mine empty: {st}")
     need(st["empty"] and "No favorites" in (st["text"] or ""), f"no empty state: {st}")
     b.eval("localStorage.setItem('snowwx.favorites', JSON.stringify(['alta-ski-area','sp-dutchman-flat-snowpark','snotel-917-MT-SNTL'])); location.reload(); 1")
-    time.sleep(5)
+    b.settle(5)
     st = b.eval("""(() => ({cards: document.querySelectorAll('.mcard[data-id]').length,
         vals: [...document.querySelectorAll('.mcard[data-id]')].map(c => c.querySelectorAll('.mgrid b').length + '/' + c.querySelectorAll('.pchip').length)}))()""")
     log(f"  mine cards: {st}")
     need(st["cards"] == 3 and all(v.startswith("2/") for v in st["vals"]), f"cards: {st}")
     b.eval("document.querySelector('.mcard .unfav').click(); 1")
-    time.sleep(2)
+    b.settle(2)
     n = b.eval("JSON.parse(localStorage.getItem('snowwx.favorites')).length + ':' + document.querySelectorAll('.mcard[data-id]').length")
     log(f"  after removing one: {n}")
     need(n == "2:2", f"remove failed: {n}")
@@ -614,7 +713,7 @@ def check_mine(b: Browser, base: str, log):
     need(not b.eval("!!document.querySelector('.home-banner')"), "banner shown on a shared link")
     b.open(f"{base}/index.html", wait=6)
     b.eval("document.querySelector('.home-banner [data-act=always]').click(); 1")
-    time.sleep(3)
+    b.settle(3)
     need(b.eval("location.pathname").endswith("mine.html"), "Always did not open My mountains")
     b.open(f"{base}/index.html", wait=4)
     url = b.eval("location.pathname")
@@ -685,7 +784,7 @@ def check_finder_filters(b: Browser, base: str, log):
     need(n_all > 100 and st0["state"][0][1].startswith("All (") and st0["region"][0][1].startswith("All ("), f"menus: {st0['state'][:2]}")
     # choose a state: the region list narrows, counts add up, empty regions are disabled
     b.eval("(() => { const s = document.getElementById('state'); s.value = 'UT'; s.dispatchEvent(new Event('change')); })()")
-    time.sleep(1.2)
+    b.settle(1.2)
     st1 = b.eval(MENU)
     ut_total = int(st1["state"][0][1].split("(")[1].rstrip(")"))
     regs = [(v, int(t.rsplit("(", 1)[1].rstrip(")")), d) for v, t, d in st1["region"][1:]]
@@ -698,7 +797,7 @@ def check_finder_filters(b: Browser, base: str, log):
     need(st1["rows"] == [n for n in names_all if n in set(st1["rows"])], "selecting a state must not reorder the list")
     # region -> the state list narrows to states that have it; Tahoe-like overlaps show both states
     b.eval("(() => { const s = document.getElementById('state'); s.value = ''; s.dispatchEvent(new Event('change')); })()")
-    time.sleep(0.8)
+    b.settle(0.8)
     multi = b.eval("""(() => { const r = [...document.getElementById('region').options].map(o => o.value).filter(Boolean);
       for (const name of r) { const s = document.getElementById('region'); s.value = name; s.dispatchEvent(new Event('change'));
         const st = [...document.getElementById('state').options].filter(o => o.value && !o.disabled).map(o => o.value);
@@ -710,10 +809,10 @@ def check_finder_filters(b: Browser, base: str, log):
     log(f"  finder region order (first 6): {order[:6]}")
     # sort direction: reverse keeps the same set, reverses the order; the hash carries it
     b.eval("(() => { const r = document.getElementById('region'); r.value = ''; r.dispatchEvent(new Event('change')); })()")
-    time.sleep(0.6)
+    b.settle(0.6)
     a1 = b.eval("[...document.querySelectorAll('#rows .frow .who a')].map(a => a.textContent)")
     b.eval("document.getElementById('sort-dir').click()")
-    time.sleep(0.8)
+    b.settle(0.8)
     a2 = b.eval("({rows: [...document.querySelectorAll('#rows .frow .who a')].map(a => a.textContent), hash: location.hash})")
     need(a2["rows"] == a1[::-1] and "dir=desc" in a2["hash"], f"sort direction toggle: {a2['hash']}")
     # hash restores state, region and sort
@@ -762,7 +861,7 @@ def check_hazards(b: Browser, base: str, log):
     need(not hz["hidden"] and hz["status"] in ("ok", "fallback") and len(hz["panel"]) > 40, f"hazards panel is blank: {hz}")
     # memory: turn SNOTEL on, reload: still on; hash carries it
     b.eval("document.querySelectorAll('.leaflet-control-layers-overlays label input')[5].click(); 1")
-    time.sleep(0.8)
+    b.settle(0.8)
     st = b.eval("({ls: localStorage.getItem('snowwx.layers'), hash: location.hash})")
     need("snotel" in (st["ls"] or "") and "ly=" in st["hash"], f"layer choice not remembered: {st}")
     b.open(f"{base}/index.html#map=6/42/-112", wait=9)
@@ -773,7 +872,7 @@ def check_hazards(b: Browser, base: str, log):
     need(d2.get("Ski areas") is True and d2.get("SNOTEL") is False and d2.get("NWS winter hazards") is False, f"hash override: {d2}")
     # reset to defaults
     b.eval("document.getElementById('reset-layers').click(); 1")
-    time.sleep(1.0)
+    b.settle(1.0)
     d3 = b.eval(LAYERS)
     st = b.eval("({ls: localStorage.getItem('snowwx.layers'), hash: location.hash})")
     need(d3.get("NWS winter hazards") is True and d3.get("SNOTEL") is False and st["ls"] is None and "ly=" not in st["hash"], f"reset: {d3} {st}")
@@ -878,7 +977,8 @@ def check_pwa(b: Browser, base: str, log):
             b.open(f"{tbase}/area.html#{fav}", wait=7)
             b.open(f"{tbase}/mine.html", wait=4)
             b.eval("document.querySelector('#pwa-save button').click(); 1")
-            time.sleep(6)
+            with contextlib.suppress(Fail):                  # dev20: the service worker saves in the background (no page signal): poll for its report
+                wait_for(b, "(document.getElementById('pwa-save-note') || {}).textContent.includes('Saved')", 15)
             note = b.eval("(document.getElementById('pwa-save-note') || {}).textContent || ''")
             log(f"  pwa save note: {note}")
             need("Saved 1 favorite" in note and "MB of 25 MB" in note, f"Save for offline did not report: {note}")
@@ -909,8 +1009,12 @@ def check_pwa(b: Browser, base: str, log):
             need(pwa_mod.run({**cfg, "pwa": {"enabled": True, "kill": True}}, t) == 0, "kill switch build")
             b.open(f"{tbase}/mine.html", wait=2)
             b.eval("navigator.serviceWorker.getRegistration().then(r => r && r.update()); 1")
-            time.sleep(4)
-            gone = b.eval("""(async () => ({regs: (await navigator.serviceWorker.getRegistrations()).length, caches: (await caches.keys()).filter(k => k.startsWith('snowwx-')).length}))()""")
+            end = time.time() + 10                       # dev20: poll for the result (the worker removes itself in the background: no network/DOM signal to wait for)
+            while True:
+                gone = b.eval("""(async () => ({regs: (await navigator.serviceWorker.getRegistrations()).length, caches: (await caches.keys()).filter(k => k.startsWith('snowwx-')).length}))()""")
+                if (gone["regs"] == 0 and gone["caches"] == 0) or time.time() > end:
+                    break
+                time.sleep(0.2)
             log(f"  pwa kill switch: {gone}")
             need(gone["regs"] == 0 and gone["caches"] == 0, f"kill switch did not unregister/clear: {gone}")
         b.cmd("Network.emulateNetworkConditions", offline=False, latency=0, downloadThroughput=-1, uploadThroughput=-1)
@@ -932,7 +1036,7 @@ def check_storm(b: Browser, base: str, log):
     opts = b.eval("[...document.querySelectorAll('#var-select option')].map(o => o.textContent)")
     need(any("48-hr" in o for o in opts) and any("7-day" in o for o in opts), f"map SNOTEL variables lack 48 h / 7-day: {opts}")
     b.eval("(() => { const s = document.getElementById('var-select'); s.value = 'depth_7d'; s.dispatchEvent(new Event('change')); })()")
-    time.sleep(2.5)
+    b.settle(2.5)
     leg = b.eval("({layers: window.snowwx.currentLayers(), drawn: window.snowwx.points.drawnGroups(), title: (document.getElementById('legend') || document.body).textContent.slice(0, 400)})")
     log(f"  7-day map variable: {leg['layers']} {leg['drawn']}")
     need("snotel" in leg["layers"] and "snotel" in leg["drawn"] and "compaction" in leg["title"], f"7-day variable did not show SNOTEL with the compaction legend: {leg}")
@@ -999,7 +1103,7 @@ def check_snopark_finder_mobile(b: Browser, base: str, log):
     need(not st["hscroll"], f"finder scrolls sideways at 375 px: {st}")
     ski_rows = st["rows"]
     b.eval("[...document.querySelectorAll('#type button')].find(x => x.textContent.trim() === 'Sno-Parks').click(); 1")
-    time.sleep(1.2)
+    b.settle(1.2)
     sp = b.eval("""(() => ({rows: document.querySelectorAll('#rows .frow').length, sp: document.querySelectorAll('#rows .frow .kind-sp').length,
         states: [...document.querySelectorAll('#state option')].map(o => o.textContent), first: (document.querySelector('#rows .frow a') || {}).href || ''}))()""")
     log(f"  finder 375 sno-parks: rows {sp['rows']} (ski {ski_rows}) states {sp['states'][:4]}")
@@ -1007,7 +1111,7 @@ def check_snopark_finder_mobile(b: Browser, base: str, log):
     more = b.eval("(document.getElementById('show-all') || {textContent: ''}).textContent")
     need(sp["rows"] == 200 and "Show all 447" in more, f"long lists are capped at 200 rows with a Show all button: {sp['rows']} {more!r}")
     b.eval("document.getElementById('show-all').click(); 1")
-    time.sleep(0.8)
+    b.settle(0.8)
     need(b.eval("document.querySelectorAll('#rows .frow').length") == 447, "Show all must draw every Sno-Park")
     need(sp["states"][0].startswith("All (") and any(x.startswith("WA (") for x in sp["states"]), f"state menu does not follow the type: {sp['states'][:5]}")
     b.eval("window.scrollTo(0, 0); 1")
@@ -1016,7 +1120,7 @@ def check_snopark_finder_mobile(b: Browser, base: str, log):
     b.open(f"{base}/area.html#{area}", width=375, wait=6)
     pg = b.eval("""(() => ({txt: document.getElementById('area').textContent, hscroll: document.documentElement.scrollWidth > innerWidth + 2}))()""")
     need(("USDA Forest Service" in pg["txt"] or "OpenStreetMap" in pg["txt"]) and not pg["hscroll"], "Sno-Park page lacks its source/attribution or scrolls sideways")
-    time.sleep(1.0)
+    b.settle(1.0)
     ex = b.eval("""(() => ({summary: !!document.querySelector('.summary-line'), avy: !!document.querySelector('.rec-key .rk-avy, #area a[href*="avalanche"], #area a[href^="http"]')}))()""")
     need(ex["summary"], "Sno-Park page has no daily summary (the W3 rules apply to every point)")
     need(not b.errors, f"JS errors: {b.errors}")
@@ -1029,55 +1133,55 @@ def check_finder_show_all(b: Browser, base: str, log):
     b.eval("localStorage.clear(); sessionStorage.clear(); 1")
     b.open(f"{base}/finder.html#t=ski", width=375, wait=6)
     b.eval("[...document.querySelectorAll('#type button')].find(x => x.textContent.trim() === 'Sno-Parks').click(); 1")
-    time.sleep(1.0)
+    b.settle(1.0)
     names = "[...document.querySelectorAll('#rows .frow .who > a')].map(a => a.textContent)"
     # 1. sort by name, ascending (A-Z): the capped list is exactly the first 200 of the full A-Z list
     b.eval("""(() => { const s = document.getElementById('sort'); s.value = 'name'; s.dispatchEvent(new Event('change')); return 1; })()""")
-    time.sleep(0.6)
+    b.settle(0.6)
     if b.eval("document.getElementById('sort-dir').textContent.trim()") == "↓":        # make sure it is A-Z (ascending)
-        b.eval("document.getElementById('sort-dir').click(); 1"); time.sleep(0.5)
+        b.eval("document.getElementById('sort-dir').click(); 1"); b.settle(0.5)
     capped = b.eval(names)
     need(len(capped) == 200, f"expected the 200-row cap, got {len(capped)}")
-    b.eval("document.getElementById('show-all').click(); 1"); time.sleep(0.8)
+    b.eval("document.getElementById('show-all').click(); 1"); b.settle(0.8)
     full = b.eval(names)
     need(len(full) == 447 and full[:200] == capped, "the capped list must be the first 200 rows of the full sorted list")
     # 2. reversing the sort puts the LAST name of the full list on top of the capped view (it was beyond row 200)
-    b.eval("document.getElementById('sort-dir').click(); 1"); time.sleep(0.8)
+    b.eval("document.getElementById('sort-dir').click(); 1"); b.settle(0.8)
     rev = b.eval(names)
     need(rev[0] == full[-1] and rev[:200] == full[::-1][:200], f"reverse sort must start with the last name of the full list {full[-1]!r}, got {rev[0]!r}")
     log(f"  sort acts on the full list: A-Z first {full[0]!r}, Z-A first {rev[0]!r} (was row {len(full)})")
     # 3. state filter: the state of a row beyond 200 is selectable, counts add up to 447, and its rows are all reachable
     b.open(f"{base}/finder.html#t=ski", width=375, wait=5)
-    b.eval("[...document.querySelectorAll('#type button')].find(x => x.textContent.trim() === 'Sno-Parks').click(); 1"); time.sleep(0.8)
+    b.eval("[...document.querySelectorAll('#type button')].find(x => x.textContent.trim() === 'Sno-Parks').click(); 1"); b.settle(0.8)
     opts = b.eval("[...document.querySelectorAll('#state option')].map(o => [o.value, o.textContent])")
     counts = {v: int(t.split("(")[1].rstrip(")").replace(",", "")) for v, t in opts if v and "(" in t}
     total = int(opts[0][1].split("(")[1].rstrip(")"))
     need(total == 447 and sum(counts.values()) == 447, f"state counts do not add up to the full list: {total} vs {sum(counts.values())}")
     st = max(counts, key=lambda k: counts[k])
     b.eval(f"""(() => {{ const s = document.getElementById('state'); s.value = {json.dumps(st)}; s.dispatchEvent(new Event('change')); return 1; }})()""")
-    time.sleep(0.8)
+    b.settle(0.8)
     n = b.eval("document.querySelectorAll('#rows .frow').length")
     need(n == min(200, counts[st]), f"state {st}: {n} rows drawn, expected {min(200, counts[st])} of {counts[st]}")
     if counts[st] > 200:
         need("Show all" in b.eval("(document.getElementById('show-all') || {textContent: ''}).textContent"), "filtered list over the cap needs its own Show all")
-        b.eval("document.getElementById('show-all').click(); 1"); time.sleep(0.6)
+        b.eval("document.getElementById('show-all').click(); 1"); b.settle(0.6)
         need(b.eval("document.querySelectorAll('#rows .frow').length") == counts[st], "Show all on a filtered list must draw all its rows")
-    b.eval("""(() => { const s = document.getElementById('state'); s.value = ''; s.dispatchEvent(new Event('change')); return 1; })()"""); time.sleep(0.5)
+    b.eval("""(() => { const s = document.getElementById('state'); s.value = ''; s.dispatchEvent(new Event('change')); return 1; })()"""); b.settle(0.5)
     # 4. favorite a Sno-Park beyond row 200, then Favorites only shows exactly it
-    b.eval("document.getElementById('show-all') && document.getElementById('show-all').click(); 1"); time.sleep(0.6)
+    b.eval("document.getElementById('show-all') && document.getElementById('show-all').click(); 1"); b.settle(0.6)
     far = b.eval("""(() => { const r = [...document.querySelectorAll('#rows .frow')]; const x = r[r.length - 1];
         x.querySelector('.star').click(); return x.querySelector('.who > a').textContent; })()""")
-    time.sleep(0.6)
+    b.settle(0.6)
     b.eval("""(() => { const c = document.getElementById('favonly'); c.checked = true; c.dispatchEvent(new Event('change')); return 1; })()""")
-    time.sleep(0.8)
+    b.settle(0.8)
     favs = b.eval(names)
     need(favs == [far], f"favorites only must show the row starred beyond row 200 ({far!r}): {favs}")
     # 5. header search finds a Sno-Park that is beyond row 200 of the list, at 375 px (search button first)
     target = full[300]
     b.open(f"{base}/finder.html#t=ski", width=375, wait=4)
-    b.eval("document.querySelector('.site-search .ss-toggle') && document.querySelector('.site-search .ss-toggle').click(); 1"); time.sleep(0.4)
+    b.eval("document.querySelector('.site-search .ss-toggle') && document.querySelector('.site-search .ss-toggle').click(); 1"); b.settle(0.4)
     b.eval(f"""(() => {{ const i = document.querySelector('.site-search input'); i.value = {json.dumps(target)}; i.dispatchEvent(new Event('input', {{bubbles: true}})); return 1; }})()""")
-    time.sleep(1.2)
+    b.settle(1.2)
     hits = b.eval("[...document.querySelectorAll('#ss-list li')].map(li => li.textContent)")
     need(any(h.startswith(target) for h in hits), f"header search did not find {target!r} (row 300 of the list): {hits[:5]}")
     log(f"  search finds {target!r}; favorites-only shows {far!r}; state {st} {counts[st]} rows")
@@ -1089,7 +1193,7 @@ def check_ensemble(b: Browser, base: str, log):
     plume file is NOT requested until Ensemble is selected, the plume is ONE faint multi-segment trace plus bands/median/mean/HRES with direct labels,
     headline = aria-label, table with percentiles and "N of 50 members" rows, cycle/issue time + terrain + attribution shown, stale greyed."""
     import datetime as _dt
-    plume = Path(__file__).resolve().parents[1] / "build" / "models" / "ecmwf" / "plume" / "alta-ski-area.json"
+    plume = Path(base_dir_holder["path"]) / "models" / "ecmwf" / "plume" / "alta-ski-area.json"
     if not plume.exists():
         log("  (no ECMWF data in build/: run `python -m pipeline ecmwf --force` and merge multimodel; skipping)")
         return
@@ -1097,7 +1201,7 @@ def check_ensemble(b: Browser, base: str, log):
     try:
         for width in (1280, 375):
             b.open(f"{base}/area.html#alta-ski-area", width=width, wait=8)
-            wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(4)
+            wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20); b.settle(4)
             pre = b.eval("""(() => { const v = document.getElementById('mm-view');
               return {shown: !!v && !v.hidden, btns: v ? [...v.querySelectorAll('button')].map(x => [x.textContent.trim(), x.getAttribute('aria-pressed'), Math.round(x.getBoundingClientRect().height)]) : [],
                       role: v && v.getAttribute('role'), plumeReq: performance.getEntriesByType('resource').filter(r => r.name.includes('ecmwf/plume')).length,
@@ -1108,7 +1212,7 @@ def check_ensemble(b: Browser, base: str, log):
             need(pre["plumeReq"] == 0, f"the plume file must not load before Ensemble is selected ({pre['plumeReq']} requests)")
             need("ECMWF" in pre["names"], f"Models view must include the ECMWF line: {pre['names']}")
             b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1")
-            time.sleep(3.5)
+            b.settle(3.5)
             st = b.eval("""(() => { const el = document.getElementById('mm-chart'), d = el.data || [];
               const tbl = document.querySelector('#mm-chart + details.chart-table');
               if (tbl) { tbl.open = true; tbl.dispatchEvent(new Event('toggle')); }
@@ -1131,23 +1235,23 @@ def check_ensemble(b: Browser, base: str, log):
             else:
                 b.shot(Path(tempfile.gettempdir()) / "ens_1280.png")
             # Snow (in) toggle in the Ensemble view: sf x NBM's ratio; back to Models keeps working
-            b.eval("[...document.querySelectorAll('#mm-mode button')].find(x => x.dataset.m === 'snow').click(); 1"); time.sleep(2.5)
+            b.eval("[...document.querySelectorAll('#mm-mode button')].find(x => x.dataset.m === 'snow').click(); 1"); b.settle(2.5)
             sn = b.eval("(() => ({aria: document.getElementById('mm-chart').getAttribute('aria-label'), note: document.getElementById('mm-note').textContent}))()")
             need("snow" in sn["aria"] and "median snow ratio" in sn["note"] and "inches assume NBM SLR" in sn["note"], f"snow mode in the ensemble: {sn}")
-            b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'models').click(); 1"); time.sleep(2.5)
+            b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'models').click(); 1"); b.settle(2.5)
             back = b.eval("(() => ({names: (document.getElementById('mm-chart').data || []).map(t => t.name), announce: document.getElementById('mm-announce').textContent}))()")
             need("NBM" in back["names"] and "ECMWF" in back["names"] and back["announce"].startswith("Showing the model comparison"), f"back to Models: {back}")
         # GEFS (dev18 stretch, built OFF): when its plume is in the build, an ECMWF | GEFS switch appears in the Ensemble view only, and GEFS draws 31 members with no HRES line
-        gplume = Path(__file__).resolve().parents[1] / "build" / "models" / "gefs" / "plume" / "alta-ski-area.json"
-        if gplume.exists() and "gefs" in (json.loads((Path(__file__).resolve().parents[1] / "build" / "data" / "multimodel.json").read_text(encoding="utf-8")).get("plumes") or []):
+        gplume = Path(base_dir_holder["path"]) / "models" / "gefs" / "plume" / "alta-ski-area.json"
+        if gplume.exists() and "gefs" in (json.loads((Path(base_dir_holder["path"]) / "data" / "multimodel.json").read_text(encoding="utf-8")).get("plumes") or []):
             for width in (1280, 375):
                 b.open(f"{base}/area.html#alta-ski-area", width=width, wait=8)
-                wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(3)
+                wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20); b.settle(3)
                 hid = b.eval("document.getElementById('ens-src').hidden")
-                b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1"); time.sleep(3.5)
+                b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1"); b.settle(3.5)
                 shown = b.eval("(() => { const s = document.getElementById('ens-src'); return {hidden: s.hidden, btns: [...s.querySelectorAll('button')].map(x => [x.textContent.trim(), x.getAttribute('aria-pressed'), Math.round(x.getBoundingClientRect().height)])}; })()")
                 need(hid is True and shown["hidden"] is False and [x[0] for x in shown["btns"]] == ["ECMWF", "GEFS"] and all(x[2] >= 40 for x in shown["btns"]), f"source switch only in the Ensemble view: {hid} {shown}")
-                b.eval("[...document.querySelectorAll('#ens-src button')].find(x => x.dataset.s === 'gefs').click(); 1"); time.sleep(3.5)
+                b.eval("[...document.querySelectorAll('#ens-src button')].find(x => x.dataset.s === 'gefs').click(); 1"); b.settle(3.5)
                 g = b.eval("""(() => { const el = document.getElementById('mm-chart'), d = el.data || [];
                   return {names: d.map(t => t.name), nulls: d[0] ? d[0].x.filter(v => v === null).length : 0, aria: el.getAttribute('aria-label'), badge: document.getElementById('mm-badge').textContent,
                           note: document.getElementById('mm-note').textContent, announce: document.getElementById('mm-announce').textContent,
@@ -1157,7 +1261,7 @@ def check_ensemble(b: Browser, base: str, log):
                 need((g["aria"] or "").startswith("GEFS ensemble (31 members): median ") and "NOAA GEFS" in g["badge"] and "control run plus the perturbed members" in g["badge"], f"GEFS headline / badge: {g['aria']} / {g['badge']}")
                 need("public domain" in g["note"] and "not bias-corrected" in g["note"] and "ECMWF" not in g["note"], f"GEFS note: {g['note'][:200]}")
                 need(g["announce"].startswith("Showing the GEFS ensemble") and g["pressed"] == ["false", "true"] and not g["hscroll"], f"GEFS announce / state: {g}")
-                b.eval("[...document.querySelectorAll('#mm-mode button')].find(x => x.dataset.m === 'snow').click(); 1"); time.sleep(2.5)
+                b.eval("[...document.querySelectorAll('#mm-mode button')].find(x => x.dataset.m === 'snow').click(); 1"); b.settle(2.5)
                 sn = b.eval("document.getElementById('mm-note').textContent")
                 need("ESTIMATE" in sn and "categorical-snow share" in sn, f"GEFS snow mode must say it is an estimate: {sn[:160]}")
         # stale: a run started 30 h ago is greyed and says so
@@ -1165,8 +1269,8 @@ def check_ensemble(b: Browser, base: str, log):
         d["init"] = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=30)).strftime("%Y-%m-%dT%H:00Z")
         plume.write_text(json.dumps(d), encoding="utf-8")
         b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=8)
-        wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(4)
-        b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1"); time.sleep(3.5)
+        wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20); b.settle(4)
+        b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1"); b.settle(3.5)
         stale = b.eval("""(() => { const d = document.getElementById('mm-chart').data || [];
           return {badge: document.getElementById('mm-badge').textContent, line: d.find(t => t.name === 'Median') ? d.find(t => t.name === 'Median').line.color : null,
                   ann: ((document.getElementById('mm-chart').layout || {}).annotations || []).map(x => x.text).join('|')}; })()""")
@@ -1183,8 +1287,8 @@ def check_ensemble(b: Browser, base: str, log):
                 d[key][i] = [None] * len(d[key][i]) if isinstance(d[key][i], list) else None
         plume.write_text(json.dumps(d), encoding="utf-8")
         b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=8)
-        wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(4)
-        b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1"); time.sleep(3.5)
+        wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20); b.settle(4)
+        b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1"); b.settle(3.5)
         gp = b.eval("""(() => { const el = document.getElementById('mm-chart'), d = el.data || [], med = d.find(t => t.name === 'Median');
           return {note: document.getElementById('mm-note').textContent, medNulls: med ? med.y.filter(v => v === null).length : -1, medN: med ? med.y.length : 0}; })()""")
         log(f"  partial ensemble (steps {miss} missing): median nulls {gp['medNulls']} of {gp['medN']}; note: {gp['note'][-170:]}")
@@ -1231,16 +1335,49 @@ def check_multimodel(b: Browser, base: str, log):
     need([round(x, 3) for x in st["js"]] == [round(x, 3) for x in py], f"JS rebase {st['js']} != Python {py}")
     b.open(f"{base}/area.html#{area}", wait=7, block=["*multimodel.json*"])
     _draw_all(b)
-    time.sleep(1.5)
+    b.settle(1.5)
     msg = b.eval("(document.getElementById('mm-chart') || {textContent: ''}).textContent")
     need("not available" in msg, f"missing multimodel.json must read gracefully: {msg}")
     for width in (375,):
         b.open(f"{base}/area.html#{area}", width=width, wait=7)
         _draw_all(b)
-        time.sleep(1.5)
+        b.settle(1.5)
         sc = b.eval("({w: document.documentElement.scrollWidth, vw: innerWidth, h: Math.round(document.getElementById('mm-chart').getBoundingClientRect().height)})")
         need(sc["w"] <= sc["vw"] + 2 and sc["h"] >= 200, f"model panel at 375 px: {sc}")
     need(not b.errors, f"JS errors: {b.errors}")
+    # dev20: the AIFS line (fixture: a copy of the newest non-NBM model's series, x1.8 of the longest model series, marked experimental and badge: false): drawn and labelled, credited in the
+    # note, never counted by the agreement badge; then with badge: true the badge counts one more model
+    mp = Path(base_dir_holder["path"]) / "data" / "multimodel.json"
+    orig = mp.read_text(encoding="utf-8")
+    try:
+        d = json.loads(orig)
+        src = max(d["models"], key=lambda m: (m["hours"][-1], m["init"]))          # the longest series (it reaches the badge window)
+        d["models"].append({**{k: src[k] for k in ("init", "cycle", "hours")}, "model": "aifs", "label": "AIFS (AI, experimental)", "experimental": True, "badge": False})
+        for aid, per in d["areas"].items():
+            if src["model"] in per:
+                per["aifs"] = {"q": [None if v is None else round(v * 1.8, 2) for v in per[src["model"]]["q"]], "z": None}
+        res = {}
+        for badge in (False, True):
+            d["models"][-1]["badge"] = badge
+            mp.write_text(json.dumps(d), encoding="utf-8")
+            for width in (1280, 375):
+                b.open(f"{base}/area.html#{area}", width=width, wait=7)
+                b.eval("document.getElementById('mm-sec').scrollIntoView(); 1")
+                wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20)
+                r = b.eval("""(() => { const el = document.getElementById('mm-chart'), t = (el.data || []).find(x => x.name === 'AIFS (AI, experimental)');
+                  return {drawn: !!t, dash: t && t.line.dash, color: t && t.line.color, tip: t ? String(t.customdata[0]) : '', note: document.getElementById('mm-note').textContent,
+                          badge: document.getElementById('mm-badge').textContent, labels: (el.layout.annotations || []).map(a => a.text).join('|'),
+                          hscroll: document.documentElement.scrollWidth > innerWidth + 2}; })()""")
+                res[(badge, width)] = r
+                need(r["drawn"] and r["dash"] == "dot" and "AIFS (AI)" in r["labels"].split("|") and "not elevation-adjusted" in r["tip"] and not r["hscroll"], f"AIFS line {width}px: {r}")
+                need("AIFS Single" in r["note"] and "CC BY 4.0" in r["note"] and ("not part of" if not badge else "included in") in r["note"], f"AIFS attribution / badge note: {r['note'][-260:]}")
+        n_off = int(re.search(r"of (\d+) models", res[(False, 1280)]["badge"]).group(1)) if re.search(r"of (\d+) models", res[(False, 1280)]["badge"]) else None
+        n_on = int(re.search(r"of (\d+) models", res[(True, 1280)]["badge"]).group(1)) if re.search(r"of (\d+) models", res[(True, 1280)]["badge"]) else None
+        log(f"  AIFS line: badge models excluded={n_off} included={n_on} | {res[(False, 1280)]['badge'][:90]}")
+        if n_off is not None and n_on is not None:
+            need(n_on == n_off + 1, f"badge must count AIFS only when configured in: {n_off} vs {n_on}")
+    finally:
+        mp.write_text(orig, encoding="utf-8")
 
 
 def check_models_layout(b: Browser, base: str, log):
@@ -1276,9 +1413,9 @@ def check_models_layout(b: Browser, base: str, log):
                     # switching: a new field and region (different heights) must not shift the page much
                     b.open(f"{tbase}/models.html", width=1280, wait=2.0)
                     b.eval("(() => { const s = document.getElementById('domain'); s.value = 'wasatch'; s.dispatchEvent(new Event('change')); })()")
-                    time.sleep(1.2)
+                    b.settle(1.2)
                     b.eval("(() => { const s = document.getElementById('model'); s.value = 'gfs'; s.dispatchEvent(new Event('change')); })()")
-                    time.sleep(1.2)
+                    b.settle(1.2)
                     r = b.eval("({cls: window.__cls, missing: document.getElementById('frame').classList.contains('missing'), d: document.getElementById('domain').value})")
                     res[f"{variant}-switch"] = r
                     need(not r["missing"] and r["cls"] < 0.1, f"switching model/region: {r}")
@@ -1393,16 +1530,20 @@ def check_analytics(b: Browser, base: str, log):
             clicked = b.eval("(() => { const t = document.querySelector('button.star:not(.on)'); if (t) t.click(); return !!t; })()")
             if clicked:
                 break
-            time.sleep(0.5)
-        time.sleep(0.5)
+            b.settle(0.5)
+        b.settle(0.5)
         st = state()
         need(clicked and "favorite_added" in st["q"], f"a favorite click did not reach the provider queue (clicked={clicked}): {st}")
         need(st["cookies"] == "", "analytics set a cookie")
         b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=6, block=block)
         _draw_all(b)
         b.eval("(() => { const d = document.querySelector('details.chart-table summary'); if (d) d.click(); const a = document.querySelector('a[data-track=avalanche_click]'); if (a) { a.addEventListener('click', e => e.preventDefault()); a.click(); } return 1; })()")
-        time.sleep(0.5)
-        st = state()
+        end = time.time() + 8                          # dev20: poll the provider queue instead of a fixed pause
+        while True:
+            st = state()
+            if ("table_view" in st["q"] and "avalanche_click" in st["q"]) or time.time() > end:
+                break
+            time.sleep(0.2)
         need("table_view" in st["q"] and "avalanche_click" in st["q"], f"table_view / avalanche_click not tracked: {st}")
         # 3. ON but the visitor opted out: DNT, then GPC: nothing is injected, nothing queued
         for name, js in (("DNT", "Object.defineProperty(navigator, 'doNotTrack', {get: () => '1'});"), ("GPC", "Object.defineProperty(navigator, 'globalPrivacyControl', {get: () => true});")):
@@ -1551,7 +1692,7 @@ def check_verify_ui(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-def check_failure_modes(b: Browser, base: str, log):
+def check_failure_modes(b: Browser, base: str, log, shard: tuple[int, int] | None = None):
     """dev18 stretch 2: each DATA file/source unreachable one at a time (the request fails like a dead server). The obs map, an area page, the Finder, My mountains and the status page must
     still load: no JavaScript exception, a heading, and no "undefined" / "NaN" / "[object" text on screen. A few degraded states are asserted by name."""
     patterns = {"snotel": "*data/snotel.geojson*", "asos": "*data/asos.geojson*", "avalanche map": "*data/avalanche.geojson*", "avalanche ratings": "*data/avalanche_ratings.json*",
@@ -1560,6 +1701,9 @@ def check_failure_modes(b: Browser, base: str, log):
                 "map points": "*data/map_points.json*", "webcams": "*data/webcams.json*", "chart library (self-hosted Plotly)": "*vendor/plotly*",
                 "hazard text": "*alerts/hazard_text.json*"}
     pages = [("index.html", "obs map"), ("area.html#alta-ski-area", "area page"), ("finder.html", "Finder"), ("mine.html", "My mountains"), ("models.html", "models"), ("status.html", "status")]
+    if shard:                                   # dev20: the full run splits the 19 x 6 page loads over parallel workers ("failure1".."failure3"); `failure` alone runs all
+        k, n = shard
+        patterns = dict(list(patterns.items())[k - 1::n])
     bad = []
     seen = {}
     for name, pat in patterns.items():
@@ -1578,6 +1722,9 @@ def check_failure_modes(b: Browser, base: str, log):
             if problems:
                 bad.append(f"{name} unreachable -> {label}: {'; '.join(problems)}")
     need(not bad, "degraded pages broke:\n  " + "\n  ".join(bad[:8]))
+    if shard and shard[0] != 1:
+        log(f"  failure modes shard {shard}: {len(patterns)} sources x {len(pages)} pages, no broken page")
+        return
     # named degraded states
     b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=4, block=["*data/points/*"])
     t = b.eval("document.body.innerText")
@@ -1649,7 +1796,7 @@ def check_mobile_sweep(b: Browser, base: str, log):
     for pg in pages:
         b.open(f"{base}/{pg}", width=375, wait=6)
         _draw_all(b)
-        time.sleep(1.0)
+        b.settle(1.0)
         r = b.eval("""(() => { const vw = innerWidth, wide = [...document.querySelectorAll('body *')].filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > vw + 2 && !e.closest('.leaflet-container, .tbl-wrap, .chart, .js-plotly-plot, pre, .hz-popup, [hidden]') && getComputedStyle(e).position !== 'fixed'; }).slice(0, 3).map(e => e.tagName + '.' + e.className + ':' + Math.round(e.getBoundingClientRect().right));
           const small = [...document.querySelectorAll('button:not([hidden])')].filter(x => { const r = x.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.height < 36 && !x.closest('.leaflet-container, .leaflet-control, .js-plotly-plot'); }).map(x => (x.id || x.textContent.trim().slice(0, 16)) + ':' + Math.round(x.getBoundingClientRect().height)).slice(0, 5);
           return {scroll: document.documentElement.scrollWidth, vw, wide, small}; })()""")
@@ -1662,39 +1809,122 @@ def check_mobile_sweep(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard}
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard,
+          **{f"failure{k}": functools.partial(check_failure_modes, shard=(k, 3)) for k in (1, 2, 3)}}
+FULL_RUN = [n for n in CHECKS if n != "failure"]          # the full run uses the three failure shards (same coverage, parallel)
+
+
+QUICK = ["charts", "finder", "hazpop", "ensemble", "status", "privacy", "csp", "mine"]       # one per page kind + the privacy/CSP guards: --quick (per-item runs)
+TIMINGS = REPO / "data_cache" / "browser_timings.json"
+
+
+def run_one(name: str, build: str, chrome: str, verbose: bool) -> tuple[str, bool, float, str]:
+    """one check: its own server port, its own Chrome profile and debugging port, the worker's private site copy"""
+    lines: list[str] = []
+    log = (lambda *a: lines.append(" ".join(str(x) for x in a))) if verbose else (lambda *a: None)
+    base_dir_holder["path"] = build
+    t0 = time.time()
+    ok, msg = True, ""
+    with serve(Path(build)) as base:
+        b = Browser(chrome)
+        try:
+            CHECKS[name](b, base, log)
+        except Fail as e:
+            ok, msg = False, str(e)
+        except Exception as e:  # noqa: BLE001 - one broken check must not hide the results of the others
+            import traceback
+            fr = [f for f in traceback.extract_tb(e.__traceback__) if f.filename.endswith("browser_check.py")][-1:]
+            ok, msg = False, f"{type(e).__name__}: {str(e)[:300]}" + (f" (line {fr[0].lineno}: {fr[0].line[:80]})" if fr else "")
+        finally:
+            if b.unmocked:
+                lines.append(f"  refused third-party URLs (no fixture): {sorted(set(b.unmocked))[:5]}")
+            b.close()
+    return name, ok, time.time() - t0, "\n".join(lines + ([msg] if msg else []))
+
+
+def prepare_site(src: Path, dst: Path) -> None:
+    """a worker's private copy of the build with the frozen inputs (alerts) in place"""
+    shutil.copytree(src, dst, dirs_exist_ok=True)
+    browser_fixtures.freeze(dst)
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--build", default=str(REPO / "build"))
-    ap.add_argument("--only", default=",".join(CHECKS))
+    ap.add_argument("--only", default="")
+    ap.add_argument("--quick", action="store_true", help=f"representative subset: {','.join(QUICK)}")
+    ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     chrome = find_chrome()
     if not chrome:
         print("Chrome not found (set CHROME_PATH)")
         return 2
-    log = print if args.verbose else (lambda *a: None)
-    failed = []
-    base_dir_holder["path"] = args.build
-    with serve(Path(args.build)) as base:
-        b = Browser(chrome)
-        try:
-            for name in [x for x in args.only.split(",") if x]:
-                try:
-                    CHECKS[name](b, base, log)
-                    print(f"ok    {name}")
-                except Fail as e:
+    names = [x for x in args.only.split(",") if x] or (QUICK if args.quick else FULL_RUN)
+    unknown = [n for n in names if n not in CHECKS]
+    if unknown:
+        print(f"unknown checks: {unknown}")
+        return 2
+    try:
+        timings = json.loads(TIMINGS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        timings = {}
+    order = sorted(names, key=lambda n: -timings.get(n, 60))                 # longest first: the slowest check starts at once
+    jobs = max(1, min(args.jobs, len(order)))
+    t0 = time.time()
+    root = Path(tempfile.mkdtemp(prefix="bc-sites-"))
+    try:
+        sites = [root / f"w{k}" for k in range(jobs)]
+        with concurrent.futures.ThreadPoolExecutor(jobs) as ex:
+            list(ex.map(lambda d: prepare_site(Path(args.build), d), sites))
+        prep = time.time() - t0
+        free = list(sites)
+        lock = threading.Lock()
+        failed = []
+
+        def task(name):
+            with lock:
+                site = free.pop()
+            try:
+                cmd = [sys.executable, str(Path(__file__).resolve()), "--worker", "--build", str(site), "--only", name] + (["-v"] if args.verbose else [])
+                r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+                return name, r.stdout.strip() or r.stderr.strip()[-600:]
+            finally:
+                with lock:
+                    free.append(site)
+        with concurrent.futures.ThreadPoolExecutor(jobs) as ex:
+            for fut in concurrent.futures.as_completed([ex.submit(task, n) for n in order]):
+                name, text = fut.result()
+                print(text, flush=True)
+                head = text.splitlines()[-1] if text else ""
+                mt = re.search(r"\((\d+\.\d) s\)$", head)
+                if mt:
+                    timings[name] = float(mt.group(1))
+                if not head.startswith("ok"):
                     failed.append(name)
-                    print(f"FAIL  {name}: {e}")
-                except Exception as e:  # noqa: BLE001 - one broken check (a crashed page, a JS error in the check itself) must not hide the results of the others
-                    failed.append(name)
-                    print(f"FAIL  {name}: {type(e).__name__}: {str(e)[:300]}")
-        finally:
-            b.close()
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    with contextlib.suppress(OSError):
+        TIMINGS.parent.mkdir(exist_ok=True)
+        TIMINGS.write_text(json.dumps(timings, indent=1), encoding="utf-8")
+    print(f"{len(order) - len(failed)} of {len(order)} checks ok in {time.time() - t0:.0f} s ({jobs} workers, site copies {prep:.0f} s){'; FAILED: ' + ','.join(failed) if failed else ''}")
     return 1 if failed else 0
 
 
+def worker_main(argv) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--build")
+    ap.add_argument("--only")
+    ap.add_argument("--worker", action="store_true")
+    ap.add_argument("-v", "--verbose", action="store_true")
+    a = ap.parse_args(argv)
+    name, ok, secs, text = run_one(a.only, a.build, find_chrome(), a.verbose)
+    if text:
+        print(text)
+    print(f"{'ok  ' if ok else 'FAIL'}  {name} ({secs:.1f} s)" if ok else f"FAIL  {name}: {text.splitlines()[-1] if text else ''} ({secs:.1f} s)")
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(worker_main(sys.argv[1:]) if "--worker" in sys.argv else main())

@@ -1,7 +1,20 @@
-# Budgets baseline (Nov 19 2026, dev19 update of the dev18 baseline; for the W1 Cloudflare move)
+# Budgets baseline (Nov 19 2026, dev20 update of the dev18/dev19 baseline; for the W1 Cloudflare move)
 
 Numbers measured on the current GitHub Pages setup, so the Cloudflare Pages + R2 move has something to compare against. Sources: the local build (`build/`, one full `pipeline build` of Nov 18 plus the dev18 pages), the public GitHub Actions API (40 most recent completed runs per workflow, read Nov 19 2026 01:55 UTC),
 dev14's production-size measurement (`docs/specs/hosting-seo.md`), local Lighthouse runs (below). Re-measure with the commands in the last section.
+
+## 0. dev20 additions (Nov 19-20 2026)
+| Item | Number |
+|---|---|
+| Share cards (`pipeline og`, OFF) | 162 PNG (160 ski areas + Sno-Park + site), 3.1 MB total, avg 18.8 KB, max 22.3 KB, rendered in 10.9 s locally; +162 files against the 20,000 limit |
+| ECMWF AIFS line (ON after merge) | +17.3 MB download and +17 s per ECMWF run (41 steps, 160 areas); +1 file (~40 KB) inside the existing ecmwf tar |
+| ECMWF on a real runner (dev19 code, Nov 20 04:00Z) | fetch step 510 s, AWS regional mirror, 26 retries, no failover, 1,275 MB; release asset 2.5 MB |
+| ECMWF full uncached local run, dev20 code (12Z Nov 19) | 669 s incl. AIFS 22 s; AWS regional, 34 retries, 1,275 MB; ecCodes decodes now serialized (thread safety): <= ~58 s of the total (14 ms per message x ~4,100) |
+| ECMWF resume cache | ~1.1 MB per cycle, newest 2 cycles kept, hard cap 300 MB; one Actions cache entry per run (~2 MB), evicted by GitHub after 7 days unused |
+| GEFS end to end (still OFF) | 376 MB, 249 s, 31 members, 0 retries (00Z Nov 20) |
+| Browser suite | full 29 checks: ~32 min serial (dev19) -> 4.8-6.0 min (4 workers; 6 min with Lighthouse running alongside); `--quick` (8 checks) 97 s |
+| pytest | 494 passed + 9 skipped, ~2 min |
+| Lighthouse accessibility | 100 on all 15 page states (incl. the area page with an AIFS line) |
 
 ## 1. Platform limits that matter
 | Limit | Value | Where we are |

@@ -16,6 +16,12 @@ import yaml
 
 from pipeline import ecmwf as E
 
+
+@pytest.fixture(autouse=True)
+def no_repo_cache(monkeypatch, tmp_path):
+    """dev20: the CLI runs here must never write the REAL data_cache/ecmwf (mirror preference, pruning)"""
+    monkeypatch.setattr(E, "REPO_ROOT", tmp_path / "repo")
+
 REPO = Path(__file__).resolve().parents[1]
 WF = REPO / ".github" / "workflows" / "ecmwf.yml"
 

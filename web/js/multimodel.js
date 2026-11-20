@@ -56,7 +56,8 @@ const MultiModel = (() => {
     const per = [];
     for (const m of doc?.models || []) {
       const a = doc.areas?.[areaId]?.[m.model];
-      if (a) per.push({ key: m.model, label: m.label, initMs: ms(m.init), hours: m.hours, q: a.q, z: a.z ?? null });
+      // dev20: an experimental model (AIFS) is drawn but stays OUT of the agreement badge unless the pipeline marked it badge: true (config aifs.in_badge)
+      if (a) per.push({ key: m.model, label: m.label, initMs: ms(m.init), hours: m.hours, q: a.q, z: a.z ?? null, badge: m.experimental ? m.badge === true : true });
     }
     const t0 = Math.max(nbm.initMs, ...per.map((p) => p.initMs));
     const tms = (nbm.times || []).map(ms);
@@ -90,7 +91,7 @@ const MultiModel = (() => {
           return Math.round(cum * 100) / 100;
         });
       }
-      series.push({ key: p.key, label: p.label, x: pts.map((q) => q[0]), y: ys, z: p.z, init: p.initMs });
+      series.push({ key: p.key, label: p.label, x: pts.map((q) => q[0]), y: ys, z: p.z, init: p.initMs, badge: p.badge });
     }
     return { t0, series, agreement: mode === "liquid" ? agreement(series, t0) : null };
   }
@@ -107,7 +108,7 @@ const MultiModel = (() => {
    * Always computed from LIQUID amounts so the toggle does not change it.
    */
   function agreement(series, t0) {
-    const liquid = series;
+    const liquid = series.filter((s) => s.badge !== false);           // dev20: experimental models (AIFS) are excluded unless configured in
     for (const H of [72, 48, 36, 24, 12, 6]) {
       const totals = liquid.map((s) => [s.label, valueAt(s, t0, H)]).filter(([, v]) => v !== null);
       if (totals.length < 3) continue;

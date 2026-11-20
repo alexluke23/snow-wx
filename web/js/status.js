@@ -5,8 +5,8 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const NAMES = { snotel: "SNOTEL snow observations", asos: "Airport weather stations (ASOS/AWOS)", alerts: "NWS alerts", afd: "NWS forecast discussions",
     avalanche: "Avalanche danger ratings", hazards: "NWS winter hazards layer", points: "NBM point forecasts (ski areas, Sno-Parks, SNOTEL)",
-    ndfd: "NWS official forecast (NDFD)", models: "Model maps (HRRR, RRFS, GFS)", nohrsc: "NOHRSC snowfall analysis", ecmwf: "ECMWF forecasts (HRES line + ensemble plume)" };
-  const ORDER = ["points", "ndfd", "snotel", "asos", "alerts", "hazards", "avalanche", "afd", "models", "nohrsc", "ecmwf"];
+    ndfd: "NWS official forecast (NDFD)", models: "Model maps (HRRR, RRFS, GFS)", nohrsc: "NOHRSC snowfall analysis", ecmwf: "ECMWF forecasts (HRES line + ensemble plume)", aifs: "ECMWF AIFS line (AI model, experimental)" };
+  const ORDER = ["points", "ndfd", "snotel", "asos", "alerts", "hazards", "avalanche", "afd", "models", "nohrsc", "ecmwf", "aifs"];
   const hoursSince = (iso, now) => { const t = Date.parse(iso || ""); return Number.isFinite(t) ? Math.max(0, (now - t) / 3.6e6) : null; };
   const ageText = (h) => (h === null ? "–" : h < 1 ? "under 1 h" : h < 48 ? `${Math.round(h)} h` : `${Math.round(h / 24)} days`);
   const when = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "–" : d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }); };

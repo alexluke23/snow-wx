@@ -1,0 +1,74 @@
+{
+"generated_at": "2026-11-20T02:22:15Z",
+"source": "NOAA/NWS active alerts (api.weather.gov)",
+"alerts": {
+"4b75b1321a": {
+"e": "Winter Storm Warning",
+"h": "Winter Storm Warning issued November 19 at 4:46PM PST until November 20 at 4:00AM PST by NWS Hanford CA",
+"o": "NWS Hanford CA",
+"f": "2026-11-19T16:46:00-08:00",
+"x": "2026-11-20T04:00:00-08:00",
+"a": "Yosemite NP outside of the valley; San Joaquin River Canyon; Upper San Joaquin River; Kaiser to Rodgers Ridge; Kings Canyon NP; Grant Grove Area; Sequoia NP; South End of the Upper Sierra",
+"d": "* WHAT...Heavy snow Above 5,000 feet. Additional snow accumulations 3\nto 8 inches above 5,000 feet; 1 to 3 feet above 7,000 feet. Winds\ngusting as high as 50 mph along the Sierra Crest.\n\n* WHERE...Sierra Nevada above 5,000 feet.\n\n* WHEN...Until 4 AM PST Friday.\n\n* IMPACTS...Travel could be very difficult to impossible. The\nhazardous conditions will impact daily travel. Gusty winds could\nbring down tree branches. Roads, and especially bridges and\noverpasses, will likely become slick and hazardous.",
+"i": "If you must travel, keep an extra flashlight, food, and water in your\nvehicle in case of an emergency. The latest road conditions for the\nstate you are calling from can be obtained by calling 5 1 1.\n\nPersons should consider delaying all travel. If travel is absolutely\nnecessary, drive with extreme caution. Consider taking a winter storm\nkit along with you, including such items as tire chains, booster\ncables, flashlight, shovel, blankets and extra clothing. Also take\nwater, a first aid kit, and anything else that would help you survive\nin case you become stranded."
+},
+"88a8e9c6f1": {
+"e": "Freezing Fog Advisory",
+"h": "Freezing Fog Advisory issued November 19 at 4:02PM PST until November 20 at 10:00AM PST by NWS Pendleton OR",
+"o": "NWS Pendleton OR",
+"f": "2026-11-19T16:02:00-08:00",
+"x": "2026-11-20T10:00:00-08:00",
+"a": "Northern Blue Mountains of Oregon",
+"d": "* WHAT...Visibility one quarter mile or less in freezing fog.\n\n* WHERE...Northern Blue Mountains of Oregon.\n\n* WHEN...Until 10 AM PST Friday.\n\n* IMPACTS...Low visibility could make driving conditions hazardous.",
+"i": "If driving, slow down, use your headlights, and leave plenty of\ndistance ahead of you."
+},
+"c9a552cdc7": {
+"e": "High Wind Warning",
+"h": "High Wind Warning issued November 19 at 4:05PM MST until November 20 at 4:00PM MST by NWS Pueblo CO",
+"o": "NWS Pueblo CO",
+"f": "2026-11-19T16:05:00-07:00",
+"x": "2026-11-20T16:00:00-07:00",
+"a": "Southern Sangre De Cristo Mountains Between 7500 and 11000 Ft; Southern Sangre De Cristo Mountains Above 11000 Ft; Walsenburg Vicinity/Upper Huerfano River Basin Below 7500 Ft",
+"d": "* WHAT...Southwest winds 25 to 40 mph with gusts up to 75 mph\npossible across the southern Sangre De Cristo mountains, to up to\n65 mph along the I-25 corridor in Huerfano county.\n\n* WHERE...Southern Sangre de Cristo Mountains and Huerfano county\nincluding Walsenburg.\n\n* WHEN...From 11 PM this evening to 4 PM MST Friday.\n\n* IMPACTS...Damaging winds could blow down trees and power lines.\nPower outages are possible. Travel could be difficult, especially\nfor high profile vehicles.\n\n* ADDITIONAL DETAILS...The most likely period for damaging winds will\nbe from 5 AM through 11 AM Friday. These strong winds will affect\nI-25 mainly in Huerfano county.",
+"i": "People are urged to secure loose objects that could be blown around\nor damaged by the wind."
+},
+"783a726a35": {
+"e": "Winter Weather Advisory",
+"h": "Winter Weather Advisory issued November 19 at 1:40PM PST until November 20 at 4:00AM PST by NWS Las Vegas NV",
+"o": "NWS Las Vegas NV",
+"f": "2026-11-19T13:40:00-08:00",
+"x": "2026-11-20T04:00:00-08:00",
+"a": "White Mountains of Inyo County",
+"d": "* WHAT...Snow. Additional snow accumulations up to two inches. Winds\ngusting as high as 30 to 40 mph.\n\n* WHERE...White Mountains of Inyo County.\n\n* WHEN...Until 4 AM PST Friday.\n\n* IMPACTS...Plan on slippery road conditions. The hazardous\nconditions will impact the Thursday evening commute. Roads, and\nespecially bridges and overpasses, will likely become slick and\nhazardous.",
+"i": "Slow down and use caution while traveling. The latest road conditions\nfor the state you are calling from can be obtained by calling 5 1 1."
+},
+"c2cb2ab783": {
+"e": "Winter Storm Warning",
+"h": "Winter Storm Warning issued November 19 at 1:40PM PST until November 20 at 4:00AM PST by NWS Las Vegas NV",
+"o": "NWS Las Vegas NV",
+"f": "2026-11-19T13:40:00-08:00",
+"x": "2026-11-20T04:00:00-08:00",
+"a": "Eastern Sierra Slopes of Inyo County",
+"d": "* WHAT...Heavy snow. Additional snow accumulations up to 5 to 10\ninches, heaviest above 8000 feet. Winds gusting 45 to 55 mph.\n\n* WHERE...Eastern Sierra Slopes.\n\n* WHEN...Until 4 AM PST Friday.\n\n* IMPACTS...Travel will be difficult in higher elevations. Blowing\nsnow could significantly reduce visibility. Strong winds could\ncause damage to trees and power lines.",
+"i": "If you must travel, keep an extra flashlight, food, and water in your\nvehicle in case of an emergency. The latest road conditions for the\nstate you are calling from can be obtained by calling 5 1 1.\n\nPersons should consider delaying all travel. Motorists should use\nextreme caution if travel is absolutely necessary."
+},
+"2c673f2095": {
+"e": "Winter Storm Warning",
+"h": "Winter Storm Warning issued November 19 at 1:40PM PST until November 20 at 4:00AM PST by NWS Las Vegas NV",
+"o": "NWS Las Vegas NV",
+"f": "2026-11-19T13:40:00-08:00",
+"x": "2026-11-20T04:00:00-08:00",
+"a": "Spring Mountains-Red Rock Canyon",
+"d": "* WHAT...Heavy snow. Additional snow accumulations of 3 to 6 inches\nmainly above 7000 feet. Winds gusting as high as 40 to 50 mph.\n\n* WHERE...Spring Mountains-Red Rock Canyon.\n\n* WHEN...Until 4 AM PST Friday.\n\n* IMPACTS...Travel will be difficult in higher elevations. Blowing\nsnow could significantly reduce visibility. Strong winds could\ncause damage to trees and power lines.",
+"i": "If you must travel, keep an extra flashlight, food, and water in your\nvehicle in case of an emergency. The latest road conditions for the\nstate you are calling from can be obtained by calling 5 1 1."
+}
+},
+"coverage": {
+"polygons": 31,
+"resolved": 31,
+"filled": 0,
+"unresolved": 0,
+"unresolved_wfos": [],
+"cap": 40
+}
+}
