@@ -18,7 +18,7 @@ CYC = datetime(2026, 11, 18, 0, tzinfo=timezone.utc)
 PTS = [{"id": "alta", "lat": 40.57, "lon": -111.63, "elev_ft": 10556}]
 MEMBERS = 6
 MAXH = 144                                                                              # 24 planned steps: fast, and 90 % = 22 steps
-IDX_RX = re.compile(r"/(\d{8})/(\d\d)z/ifs/0p25/(oper|enfo)/\d+-(\d+)h-[a-z-]+\.(index|grib2)$")
+IDX_RX = re.compile(r"/(\d{8})/(\d\d)z/(?:ifs|aifs-single)/0p25/(oper|enfo)/\d+-(\d+)h-[a-z-]+\.(index|grib2)$")
 
 
 class FakeMirror:

@@ -443,6 +443,104 @@ def cache_sizes(root: Path | None) -> dict:
     return {"cycles": cyc, "total_mb": round(_dir_mb(Path(root)), 2)}
 
 
+# ---------------------------------------------------------------- ECMWF AIFS Single (dev20): one more line in "Precipitation by model", experimental, OFF by default
+# FOUND on the real mirror (Google, 12Z Nov 19 2026): {date}/{HH}z/aifs-single/0p25/oper/{date}{HH}0000-{step}h-oper-fc.{index,grib2}; steps every 6 h from 0 to 360 h
+# (no 3-hourly steps); `tp` exists at every step, stepType accum (0-<step> h, cumulative since the run start), grid 1440 x 721 scanning 0 like IFS, and UNITS kg m-2
+# (= mm of water), NOT metres as in the IFS files. One tp message is ~0.28 MB, so 40 steps are ~11 MB.
+AIFS_DEFAULTS = {"enabled": False, "in_badge": False, "step_h": 6, "max_step_h": 240, "max_seconds": 180, "attempts": 4, "max_request_s": 60}
+AIFS_ATTRIBUTION = ("Adapted from ECMWF AIFS Single open data (Copyright ECMWF), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/) and the ECMWF Terms of Use. "
+                    "Total precipitation sampled at ski-area summit points and converted to inches by Snow-Wx (adapted). AIFS is ECMWF's machine-learning (AI) model: experimental here.")
+AIFS_LABEL = "AIFS (AI, experimental)"
+
+
+def aifs_config(cfg: dict | None) -> dict:
+    out = dict(AIFS_DEFAULTS)
+    out.update({k: v for k, v in ((cfg or {}).get("aifs") or {}).items() if k in AIFS_DEFAULTS})
+    return out
+
+
+def rel_aifs(cycle: datetime, step: int, ext: str) -> str:
+    return f"{cycle:%Y%m%d}/{cycle:%H}z/aifs-single/0p25/oper/{cycle:%Y%m%d%H}0000-{step}h-oper-fc.{ext}"
+
+
+def aifs_doc(points: list[dict], cycle: datetime, steps: list[int], fields_mm: dict[int, np.ndarray], steps_missing: list[int], in_badge: bool) -> dict:
+    """the M7 precip document for AIFS (pure): cumulative liquid inches per area since the run start; a missing step is null (a gap, never interpolated);
+    per-area running maximum against GRIB packing noise. fields_mm: {step: (n_areas,) mm}."""
+    areas = {}
+    for a, pt in enumerate(points):
+        v = np.array([0.0 if s == 0 else (fields_mm[s][a] if s in fields_mm else np.nan) for s in steps], dtype="float64")
+        v = monotone(v[:, None])[:, 0]
+        if not np.isfinite(v[1:]).any():
+            continue
+        areas[pt["id"]] = {"q": [None if not math.isfinite(x) else round(x / 25.4, 2) for x in v], "z": None}
+    return {"model": "aifs", "label": AIFS_LABEL, "experimental": True, "badge": bool(in_badge), "cycle": cycle.strftime("%Y%m%d%H"), "init": cycle.strftime("%Y-%m-%dT%H:00Z"),
+            "hours": steps, "areas": areas, "steps_missing": steps_missing, "attribution": AIFS_ATTRIBUTION, "license": LICENSE_URL, "terms": TERMS_URL}
+
+
+def run_aifs(cfg: dict, session, out: Path, cyc: datetime, pts: list[dict], mirrors: list, cache_dir: Path | None, required_hours: int, min_frac: float) -> dict:
+    """ISOLATED: called after the HRES/ENS files are written; every failure is caught by the caller and only recorded (fetch health). Its own fetcher (its throttling
+    never trips the main run's breaker), fewer retries and a hard time budget (`max_seconds`), so it cannot hold the ECMWF job for long. Writes <out>/ecmwf/aifs/precip.json."""
+    from .fetch_resilient import Fetcher, FetchError
+    a = aifs_config(cfg)
+    t0 = time.time()
+    deadline = t0 + float(a["max_seconds"])
+    c = configure(cfg)
+    f = Fetcher(mirrors, session=session, workers=2, attempts=int(a["attempts"]), max_total_s=float(a["max_request_s"]), trip_after=int(c["trip_after"]),
+                backoff=float(c["backoff_s"]), min_interval=float(c["min_interval_s"]))
+    steps = list(range(0, int(a["max_step_h"]) + 1, int(a["step_h"])))
+    planned = steps[1:]
+    sam = Sampler(pts, 1)
+    cdir = None if cache_dir is None else Path(cache_dir)
+    fields, missing, nbytes, cached = {}, [], 0, 0
+    for s in planned:
+        cf = None if cdir is None else cdir / f"aifs_tp_{s:03d}.npy"
+        if cf is not None and cf.exists():
+            try:
+                v = np.load(cf)
+                if v.shape == (len(pts),):
+                    fields[s] = v
+                    cached += 1
+                    continue
+            except (OSError, ValueError):
+                pass
+        if time.time() >= deadline:
+            missing.append(s)
+            continue
+        try:
+            r = f.get(rel_aifs(cyc, s, "index"))
+            row = next((x for x in parse_index(r.text) if x.get("param") == "tp"), None) if r is not None else None
+            if row is None:
+                missing.append(s)
+                continue
+            g = f.get(rel_aifs(cyc, s, "grib2"), {"Range": f"bytes={row['_offset']}-{row['_offset'] + row['_length'] - 1}"})
+            if g is None:
+                missing.append(s)
+                continue
+            nbytes += len(g.content)
+            v = sam.sample(decode(g.content))                    # kg m-2 = mm (NOT metres: see the note above)
+        except (FetchError, ValueError, RuntimeError) as exc:
+            log.warning("ecmwf aifs: step %d: %s", s, exc)
+            missing.append(s)
+            continue
+        fields[s] = v
+        if cf is not None:
+            cf.parent.mkdir(parents=True, exist_ok=True)
+            np.save(cf, v)
+    health = {"enabled": True, "steps_planned": len(planned), "steps_missing": missing, "steps_cached": cached, "bytes_downloaded": nbytes,
+              "seconds": round(time.time() - t0, 1), "fetch": f.stats()}
+    need_early = [s for s in planned if s <= required_hours]
+    if len(planned) - len(missing) < math.ceil(min_frac * len(planned)) or any(s in missing for s in need_early):
+        health.update(ok=False, published=False, reason=f"only {len(planned) - len(missing)} of {len(planned)} steps (missing {missing[:8]})")
+        log.warning("ecmwf aifs: %s: not published this attempt", health["reason"])
+        return health
+    doc = aifs_doc(pts, cyc, steps, fields, missing, a["in_badge"])
+    (Path(out) / "ecmwf" / "aifs").mkdir(parents=True, exist_ok=True)
+    write_json(Path(out) / "ecmwf" / "aifs" / "precip.json", doc)
+    health.update(ok=True, published=True, areas=len(doc["areas"]), partial=bool(missing))
+    log.info("ecmwf aifs %s: %d areas, %d steps (%d missing, %d cached), %.1f MB in %.0f s", doc["cycle"], len(doc["areas"]), len(steps), len(missing), cached, nbytes / 1e6, health["seconds"])
+    return health
+
+
 class StepMissing(RuntimeError):
     """a step that cannot be completed (index not obtainable, too many member messages lost): dropped for ALL members and HRES, never interpolated"""
 
@@ -613,10 +711,22 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     hres_doc["steps_missing"] = steps_missing
     write_json(out / "ecmwf" / "precip.json", hres_doc)
     secs = round(time.time() - t0, 1)
+    # AIFS (dev20): AFTER the HRES/ENS files are on disk, isolated and time-boxed; a failure is recorded, never raised. An old AIFS file never outlives its cycle.
+    import shutil
+    shutil.rmtree(out / "ecmwf" / "aifs", ignore_errors=True)
+    ac = aifs_config(cfg)
+    if ac["enabled"]:
+        try:
+            aifs_health = run_aifs(cfg, session, out, cyc, pts, order, cache.dir, int(c["required_hours"]), float(c["min_steps_frac"]))
+        except Exception as exc:  # noqa: BLE001 - AIFS must never break the HRES/ENS output
+            log.warning("ecmwf aifs: failed (%s); HRES/ENS unaffected", exc)
+            aifs_health = {"enabled": True, "ok": False, "published": False, "reason": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    else:
+        aifs_health = {"enabled": False}
     index = {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "cycle": cyc.strftime("%Y%m%d%H"), "init": cyc.strftime("%Y-%m-%dT%H:00Z"),
              "hours": steps, "n_members": n_members, "areas": len(plume), "resolution": "0.25 degree", "control_member": False,
              "stale_hours": c["stale_hours"], "missing_member_messages": sum(sam.missing.values()), "bytes_downloaded": nbytes["n"], "seconds": secs,
-             "steps_missing": steps_missing, "partial": bool(steps_missing), "fetch": health,
+             "steps_missing": steps_missing, "partial": bool(steps_missing), "fetch": health, "aifs": aifs_health,
              "source": "ECMWF Open Data (IFS HRES and ENS), mirror: " + health["mirror"], "attribution": ATTRIBUTION, "license": LICENSE_URL, "terms": TERMS_URL}
     write_json(out / "ecmwf" / "index.json", index)
     tag = partial_tag(tag_full) if steps_missing else tag_full

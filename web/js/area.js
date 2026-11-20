@@ -481,7 +481,8 @@ What actually happened (snow measured/seen, where, photos or links welcome):
 
   // ---- Precipitation by model (M7; js/multimodel.js, data/multimodel.json): liquid-equivalent, cumulative, one line per model.
   const MM_STYLE = { nbm: { color: "#111827", width: 3.2, dash: "solid" }, hrrr: { color: C.OI.vermillion, width: 2, dash: "solid" },
-    rrfs: { color: C.OI.blue, width: 2, dash: "solid" }, gfs: { color: C.OI.green, width: 2, dash: "dash" }, ecmwf: { color: C.OI.purple, width: 2, dash: "dashdot" } };
+    rrfs: { color: C.OI.blue, width: 2, dash: "solid" }, gfs: { color: C.OI.green, width: 2, dash: "dash" }, ecmwf: { color: C.OI.purple, width: 2, dash: "dashdot" },
+    aifs: { color: "#8a6100", width: 2, dash: "dot" } };          // dev20: ECMWF AIFS (AI model, experimental): dotted dark ochre (5.3:1 on white), never in the badge by default
   let mmDoc, mmMode = "liquid", mmView = "models", ensSrc = "ecmwf";                // view / source = per visit only (not stored)
   const plumeList = () => mmDoc?.plumes ?? ((mmDoc?.models || []).some((m) => m.model === "ecmwf" && m.plume) ? ["ecmwf"] : []);   // ensemble plumes published with this build
   const hasPlume = () => plumeList().length > 0;
@@ -516,12 +517,12 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     const unit = mmMode === "snow" ? "in of snow" : "in of liquid";
     const xs = (s) => s.x.map((t) => C.wall(t, tz));
     const traces = r.series.map((s) => ({ x: xs(s), y: s.y, mode: "lines+markers", name: s.label, line: { color: MM_STYLE[s.key].color, width: MM_STYLE[s.key].width, dash: MM_STYLE[s.key].dash },
-      marker: { size: s.key === "nbm" ? 3 : 4, color: MM_STYLE[s.key].color }, customdata: s.y.map(() => (s.z === null ? "NBM 2.5 km grid, adjusted to the summit" : `${s.label} terrain ${s.z.toLocaleString()} ft`)),
+      marker: { size: s.key === "nbm" ? 3 : 4, color: MM_STYLE[s.key].color }, customdata: s.y.map(() => (s.z === null ? (s.key === "nbm" ? "NBM 2.5 km grid, adjusted to the summit" : `${s.label}: 0.25° grid, not elevation-adjusted`) : `${s.label} terrain ${s.z.toLocaleString()} ft`)),
       hovertemplate: `${s.label}: %{y:.2f} ${unit}<br>%{customdata} vs summit ${Math.round(P.elev_ft).toLocaleString()} ft<extra></extra>` }));
     const allX = r.series.flatMap((s) => s.x), x0 = C.wall(r.t0, tz), x1 = C.wall(Math.max(...allX), tz);
     const ymax = Math.max(0.5, ...r.series.flatMap((s) => s.y.filter((v) => v !== null))) * 1.08;
     const ax = C.timeAxis(x0, x1, el.clientWidth - C.MARGIN.l - 56);
-    const labels = C.endLabels(r.series.map((s) => ({ xs: xs(s), ys: s.y, text: s.label, color: MM_STYLE[s.key].color })), { yrange: [0, ymax], plotHeight: 230 - C.MARGIN.t - ax.b + 34 });
+    const labels = C.endLabels(r.series.map((s) => ({ xs: xs(s), ys: s.y, text: s.key === "aifs" ? "AIFS (AI)" : s.label, color: MM_STYLE[s.key].color })), { yrange: [0, ymax], plotHeight: 230 - C.MARGIN.t - ax.b + 34 });
     C.plot(el, traces, C.layout(240, { margin: { r: 56, b: ax.b }, showlegend: false, shapes: ax.shapes, annotations: [C.axisTitle(mmMode === "snow" ? "Snow (in), at NBM's ratio" : "Liquid precipitation (in)"), ...labels],
       xaxis: ax.axis, yaxis: C.yaxis({ range: [0, ymax] }) }));
     const ag = r.agreement;
@@ -536,7 +537,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     const grid = []; for (let h = 0; h <= 240; h += 6) if (r.series.some((s) => MultiModel.valueAt(s, r.t0, h) !== null)) grid.push(h);
     C.tableToggle(el, `Cumulative ${unit} since ${localDT(new Date(r.t0).toISOString(), tz)}, by model`, ["Time", ...r.series.map((s) => s.label)],
       grid.map((h) => [localDT(new Date(r.t0 + h * 3.6e6).toISOString(), tz), ...r.series.map((s) => fmt(MultiModel.valueAt(s, r.t0, h)))]));
-    $("mm-note").textContent = `Cumulative from ${localDT(new Date(r.t0).toISOString(), tz)} (the newest model start), summit point. ${mmMode === "snow" ? "Inches assume NBM's median snow ratio and NBM's chance of snow at the point; the NBM line is NBM's own expected snowfall. " : "Liquid-equivalent precipitation, so models with different snowfall products compare fairly. "}Each model's own terrain height is in the tooltip (coarser grids sit lower or higher than the summit). Sources: NOAA/NWS NBM, HRRR, RRFS and GFS${r.series.some((s) => s.key === "ecmwf") ? `; ECMWF IFS (operational run, 0.25°): adapted from "ECMWF IFS 15-day Forecast Data" by ECMWF, licensed under CC BY 4.0 (creativecommons.org/licenses/by/4.0), see the ECMWF Terms of Use` : ""}.`;
+    $("mm-note").textContent = `Cumulative from ${localDT(new Date(r.t0).toISOString(), tz)} (the newest model start), summit point. ${mmMode === "snow" ? "Inches assume NBM's median snow ratio and NBM's chance of snow at the point; the NBM line is NBM's own expected snowfall. " : "Liquid-equivalent precipitation, so models with different snowfall products compare fairly. "}Each model's own terrain height is in the tooltip (coarser grids sit lower or higher than the summit). Sources: NOAA/NWS NBM, HRRR, RRFS and GFS${r.series.some((s) => s.key === "ecmwf") ? `; ECMWF IFS (operational run, 0.25°): adapted from "ECMWF IFS 15-day Forecast Data" by ECMWF, licensed under CC BY 4.0 (creativecommons.org/licenses/by/4.0), see the ECMWF Terms of Use` : ""}${r.series.some((s) => s.key === "aifs") ? `; ECMWF AIFS Single (AI model, experimental, 0.25°, no terrain height): adapted from ECMWF AIFS open data, CC BY 4.0, ECMWF Terms of Use. AIFS is shown for comparison and is ${r.series.some((s) => s.key === "aifs" && s.badge) ? "included in" : "not part of"} the agreement rating` : ""}.`;
   }
 
 
