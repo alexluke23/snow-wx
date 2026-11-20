@@ -10,12 +10,13 @@ const MultiModel = (() => {
 
   /** value of the piecewise-linear series (xs ascending, ys with nulls) at x, or null outside the non-null range */
   function interpAt(xs, ys, x) {
-    let prev = null;
+    let prev = null, prevI = -1;
     for (let i = 0; i < xs.length; i++) {
       if (ys[i] === null || ys[i] === undefined) continue;
       if (xs[i] === x) return ys[i];
-      if (xs[i] > x) return prev && prev[0] <= x ? prev[1] + (ys[i] - prev[1]) * (x - prev[0]) / (xs[i] - prev[0]) : null;
-      prev = [xs[i], ys[i]];
+      // a MISSING step between the two neighbours (null in between) is a gap: nothing is interpolated across it (dev19)
+      if (xs[i] > x) return prev && prev[0] <= x && i - prevI === 1 ? prev[1] + (ys[i] - prev[1]) * (x - prev[0]) / (xs[i] - prev[0]) : null;
+      prev = [xs[i], ys[i]]; prevI = i;
     }
     return null;
   }

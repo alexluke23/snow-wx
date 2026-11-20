@@ -20,6 +20,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
+from urllib.parse import quote
 
 from .common import plural, REPO_ROOT, utcnow, write_json
 
@@ -82,6 +83,73 @@ def hazard_texts(features: list[dict], include: list[str], exclude: list[str], n
                "d": (p.get("description") or "")[:4000], "i": (p.get("instruction") or "")[:2000]}
         out[alert_key(p["id"])] = {k: v for k, v in rec.items() if v}
     return out
+
+
+def alert_id_from_url(url: str) -> str:
+    """"https://api.weather.gov/alerts/urn:oid:..." (the map service's `url` field) -> "urn:oid:..." ("" when it is not an alert URL)"""
+    from urllib.parse import unquote
+    return unquote(str(url or "").split("/alerts/")[1]).split("?")[0].split("#")[0] if "/alerts/" in str(url or "") else ""
+
+
+def layer_alerts(session, hc: dict, bbox: list[float]) -> list[dict]:
+    """[{id, prod_type, wfo}] for every polygon of the hazards layer (winter event types only) inside `bbox`: the SAME query the browser used to make (envelope, intersects),
+    ids only (no geometry). Raises on a broken answer; the caller treats that as "coverage unknown"."""
+    q = {"where": "1=1", "geometry": ",".join(str(x) for x in bbox), "geometryType": "esriGeometryEnvelope", "inSR": "4326", "spatialRel": "esriSpatialRelIntersects",
+         "outFields": "prod_type,url,wfo", "returnGeometry": "false", "f": "json"}
+    r = session.get(f"{hc['service']}/{hc.get('layer', 1)}/query", params=q, timeout=60)
+    r.raise_for_status()
+    js = r.json()
+    if not isinstance(js, dict) or not isinstance(js.get("features"), list):
+        raise RuntimeError("hazard layer: no features list")
+    out = []
+    for f in js["features"]:
+        a = (f or {}).get("attributes") or {}
+        aid = alert_id_from_url(a.get("url"))
+        if aid and is_hazard_event(a.get("prod_type"), hc.get("include", []), hc.get("exclude", [])):
+            out.append({"id": aid, "prod_type": a.get("prod_type"), "wfo": a.get("wfo")})
+    return out
+
+
+FILL_CAP = 40                    # at most this many extra single-alert requests per run (the layer lists ~100 winter polygons on a stormy day)
+
+
+def complete_hazard_texts(session, hc: dict, texts: dict, bbox: list[float], cap: int = FILL_CAP) -> tuple[dict, dict]:
+    """The hazard popup is served ONLY from our own files (dev19: the browser no longer calls api.weather.gov). The pipeline's one /alerts/active call is limited to the
+    configured states, so an alert issued for a neighbouring state whose polygon reaches into the map (the Black Hills, the Dakotas) was missing. Here the pipeline asks the same
+    layer the map draws which polygons are in view, and fetches (server side, once per run) the text of each alert it does not hold yet. Returns (extra records, coverage)."""
+    cov = {"polygons": 0, "resolved": 0, "filled": 0, "unresolved": 0, "unresolved_wfos": [], "cap": cap}
+    try:
+        polys = layer_alerts(session, hc, bbox)
+    except Exception as exc:  # noqa: BLE001 - coverage is a bonus: never fails the alerts source
+        log.warning("alerts: hazard layer coverage unknown (%s)", exc)
+        return {}, {**cov, "unknown": True}
+    seen, missing = set(), []
+    for pl in polys:
+        if pl["id"] in seen:
+            continue
+        seen.add(pl["id"])
+        if alert_key(pl["id"]) in texts:
+            cov["resolved"] += 1
+        else:
+            missing.append(pl)
+    cov["polygons"] = len(seen)
+    extra: dict[str, dict] = {}
+    for pl in missing[:cap]:
+        try:
+            r = session.get(f"https://api.weather.gov/alerts/{quote(pl['id'], safe=':')}", headers={"Accept": "application/geo+json"}, timeout=30)
+            r.raise_for_status()
+            got = hazard_texts([r.json()], hc.get("include", []), hc.get("exclude", []))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("alerts: could not fetch %s for the hazard text: %s", pl["id"], exc)
+            continue
+        if alert_key(pl["id"]) in got:
+            extra.update(got)
+            cov["filled"] += 1
+    still = [pl for pl in missing if alert_key(pl["id"]) not in extra]
+    cov["unresolved"] = len(still)
+    cov["unresolved_wfos"] = sorted({str(pl.get("wfo") or "") for pl in still})
+    return extra, cov
+
 
 
 def match(features: list[dict], sites: list[dict]) -> dict[str, list[str]]:
@@ -160,7 +228,13 @@ def run(cfg: dict, session, outdir: Path) -> dict:
     write_json(out / "details.json", details)
     hc = cfg.get("hazards") or {}
     texts = hazard_texts(features, hc.get("include", []), hc.get("exclude", [])) if hc.get("enabled", True) else {}
-    write_json(out / "hazard_text.json", {"generated_at": index["generated_at"], "source": index["source"], "alerts": texts})
+    cov = None
+    if hc.get("enabled", True) and hc.get("service"):
+        extra, cov = complete_hazard_texts(session, hc, texts, list((cfg.get("region") or {}).get("bbox") or [-125, 31, -102, 49.5]))
+        texts.update(extra)
+        log.info("alerts: hazard layer coverage: %d polygons, %d already in our files, %d filled from api.weather.gov (server side), %d unresolved %s",
+                 cov["polygons"], cov["resolved"], cov["filled"], cov["unresolved"], cov["unresolved_wfos"])
+    write_json(out / "hazard_text.json", {"generated_at": index["generated_at"], "source": index["source"], "alerts": texts, **({"coverage": cov} if cov else {})})
     log.info("alerts: hazard_text.json carries %d alerts of the layer's event types", len(texts))
     log.info("alerts: %d active in %s; %d affect %d ski areas and %d SNOTEL sites", len(features), ",".join(states),
              index["count"], len(index["areas"]), len(index["points"]))

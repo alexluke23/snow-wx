@@ -5,7 +5,7 @@
 
 (() => {
   "use strict";
-  const PLOTLY_URL = "https://cdn.plot.ly/plotly-basic-2.35.2.min.js";
+  const PLOTLY_URL = "vendor/plotly-2.35.2/plotly-basic.min.js";      // self-hosted (dev19), version in the folder name
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => (
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -561,8 +561,10 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     const ink = sk.stale ? "#7a8594" : C.INK, blue = sk.stale ? "#9aa3ad" : C.OI.blue;
     // ALL members as ONE faint multi-segment trace (null breaks between members): fast on phones
     const fx = [], fy = [];
-    b.members.forEach((m) => { m.forEach((v, i) => { if (v !== null) { fx.push(xs[i]); fy.push(v); } }); fx.push(null); fy.push(null); });
+    b.members.forEach((m) => { m.forEach((v, i) => { fx.push(xs[i]); fy.push(v); }); fx.push(null); fy.push(null); });      // a missing step is a null y: the line breaks there
     const unit = mmMode === "snow" ? "in of snow" : "in of liquid";
+    const gapHours = (doc.steps_missing || []).slice().sort((x, y) => x - y);
+    const gapNote = gapHours.length ? ` ${gapHours.length} forecast step${gapHours.length === 1 ? "" : "s"} (${gapHours.slice(0, 6).map((h) => `+${h} h`).join(", ")}${gapHours.length > 6 ? ", …" : ""}) could not be fetched from the mirror and ${gapHours.length === 1 ? "is" : "are"} drawn as gaps, never interpolated.` : "";
     const terrain = doc.z_ft ? `${S.short} terrain ${doc.z_ft.toLocaleString()} ft (0.25° grid) vs summit ${Math.round(P.elev_ft).toLocaleString()} ft` : `${S.short} 0.25° grid, not elevation-adjusted`;
     const traces = [
       { x: fx, y: fy, mode: "lines", line: { color: sk.stale ? "rgba(120,130,140,0.18)" : "rgba(0,114,178,0.13)", width: 1 }, hoverinfo: "skip", connectgaps: false, name: "members" },
@@ -600,14 +602,14 @@ What actually happened (snow measured/seen, where, photos or links welcome):
       note.textContent = `Raw NOAA GEFS model guidance on a 0.25° grid (about 28 km): not bias-corrected, not elevation-adjusted and not the same product as NBM. ${doc.z_ft ? `${terrain}. ` : ""}`
         + `Cumulative from ${fmtT(b.t0)}; each member is one scenario and the bands are quantiles across the ${b.n} members (no percentiles are added over time). `
         + `${mmMode === "snow" ? "Snow = an ESTIMATE: each 6-hour precipitation amount times GEFS's categorical-snow share of that window, times NBM's median snow ratio (inches assume NBM SLR). " : "Liquid = total precipitation (rain and melted snow). "}`
-        + `The plume has ${doc.n_members} members${doc.control_member ? " (the control run plus the perturbed members)" : ""}. Data: NOAA/NCEP GEFS via the NOAA Open Data Dissemination, public domain.`;
+        + `The plume has ${doc.n_members} members${doc.control_member ? " (the control run plus the perturbed members)" : ""}. Data: NOAA/NCEP GEFS via the NOAA Open Data Dissemination, public domain.` + gapNote;
       return;
     }
     note.textContent = `Raw ECMWF model guidance on a 0.25° grid (about 28 km): not bias-corrected, not elevation-adjusted and not the same product as NBM. ${terrain}. `
       + `Cumulative from ${fmtT(b.t0)}; each member is one scenario and the bands are quantiles across the ${b.n} members (no percentiles are added over time). `
       + `${mmMode === "snow" ? "Snow = ECMWF's snowfall water equivalent times NBM's median snow ratio (inches assume NBM SLR). " : "Liquid = total precipitation (rain and melted snow). "}`
       + `The plume has ${doc.n_members} perturbed members${doc.control_member ? " plus the control run" : " (the open data files carry no control member)"}. Adapted from "ECMWF IFS 15-day Forecast Data" by ECMWF, licensed under `
-      + `CC BY 4.0 (creativecommons.org/licenses/by/4.0), see the ECMWF Terms of Use (apps.ecmwf.int/datasets/licences/general/).`;
+      + `CC BY 4.0 (creativecommons.org/licenses/by/4.0), see the ECMWF Terms of Use (apps.ecmwf.int/datasets/licences/general/).` + gapNote;
   }
 
   /** M9 verification panel ("How did forecasts do here?"), BUILT BEHIND config verification_ui.enabled (meta.json): flag off = the section stays hidden and nothing is fetched.

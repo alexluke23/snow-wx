@@ -177,8 +177,13 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 19 2026, dev18 branch; the uncommitted dev18_report.md has the briefing)**
-- main has dev13-dev17. Branch `dev18`: **ECMWF is LIVE**: `.github/workflows/ecmwf.yml` (standalone, the ONE workflow file a dev session may create; owner-authorized), `ecmwf.enabled: true`, monitored source `ecmwf`
+**Current state (Nov 19 2026, dev19 branch; the uncommitted dev19_report.md has the briefing)**
+- **dev19 (branch, on top of merged dev18):** ECMWF fetch resilience: `pipeline/fetch_resilient.py` (shared `Fetcher`, also used by `gefs.py`): full-jitter backoff, Retry-After, >= 8 attempts, adaptive workers (3), per-run mirror failover AWS regional
+  (`ecmwf-forecasts.s3.eu-central-1.amazonaws.com`) -> Google (`storage.googleapis.com/ecmwf-open-data`) -> ECMWF portal; a step that cannot be fetched is a GAP for all members + HRES (`steps_missing`, never interpolated); a run needs >= 90 % of the steps
+  and the first 120 h else exit 0 `new=false`; per-cycle resume cache `data_cache/ecmwf/<cycle>/` restored/saved by `ecmwf.yml` (`actions/cache`, `if: always()`); fetch health in index.json/meta.json/status page. `--published` takes the full tag `<cycle>-<hash>`.
+  **Plotly self-hosted** (`web/vendor/plotly-2.35.2/`, hash pinned; upgrade = new folder + loaders + `pwa_sw.js` + README hash). Hazard popups: no browser call to api.weather.gov (pipeline `alerts.complete_hazard_texts` fills missing texts, `coverage` in hazard_text.json).
+  Webcam link corrections; dead resort/Sno-Park links removed (`url: false` in `config/ski_areas.yml`, `rec_url_overrides`). `make_session` retries HEAD + jitter. The one allowed workflow edit this branch: `.github/workflows/ecmwf.yml` (cache steps).
+- main has dev13-dev18 (dev18: **ECMWF is LIVE**: `.github/workflows/ecmwf.yml` (standalone, the ONE workflow file a dev session may create; owner-authorized, edited again in dev19), `ecmwf.enabled: true`, monitored source `ecmwf`
   (`max_age_hours: 30`; status page "not enabled" / "waiting for the first run" / age); the member count is read from the data (`n_members`; no page text hard-codes it); HRES drawn as a labelled reference line.
 - Also dev18: models page fixture frames (`tools/model_fixture.py`, index carries per-field PNG sizes; CLS fixed), agreement badge "Little precipitation expected" (all models < 0.20 in) + day-type calibration (spec multi-model.md),
   webcam LINKS (`config/webcams.yml`, `pipeline/webcams.py`, `pipeline webcams --check`), Sources register (`config/sources.yml` -> `web/sources.html`), DRAFT disclaimer/privacy/terms (`tools/gen_site_pages.py`; noindex),

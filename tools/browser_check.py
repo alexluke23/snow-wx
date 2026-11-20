@@ -977,7 +977,7 @@ def check_hazard_popup(b: Browser, base: str, log):
         need("<script>" in k["text"] and "&lt;script&gt;" in k["html"] and k["scripts"] == 0 and not res["pwned"], f"alert text was not escaped: {k['html'][:300]}")
         need(k["links"] == ["https://www.weather.gov/slc/"] and k["pre"] == "pre-wrap" and k["maxH"] != "none", f"links/layout: {k['links']} {k['pre']} {k['maxH']}")
         need(all("api.weather.gov" not in l and not l.endswith(".json") for l in k["links"] + u["links"]), "a popup link points at an API/JSON endpoint")
-        need("could not be loaded" in u["text"] and u["links"] == ["https://www.weather.gov/slc/"], f"lookup miss needs a clear message and the office link: {u}")
+        need("not in our files" in u["text"] and u["links"] == ["https://www.weather.gov/slc/"], f"lookup miss needs a clear message and the office link: {u}")
         need(k["w"] <= k["vw"], f"popup wider than the viewport: {k['w']} > {k['vw']}")
         if width == 375:
             b.shot(Path(tempfile.gettempdir()) / "hz_popup_375.png")

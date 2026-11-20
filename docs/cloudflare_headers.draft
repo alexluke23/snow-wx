@@ -4,25 +4,26 @@
 #
 # What each header protects, and what it could BREAK (tested offline, dev18: tools/browser_check.py `csp` serves build/ with exactly the Content-Security-Policy line of this file
 # and fails on any violation reported by Chrome on the 13 pages):
-#   script-src 'self' https://cdn.plot.ly   Plotly is loaded from its CDN (privacy page lists it). There are NO inline scripts and no eval, so 'unsafe-inline' is NOT needed for scripts.
-#                                           BREAKS if: a page gains an inline <script> or a new CDN script (add the host here), or analytics is enabled (add the provider's script host
-#                                           and its beacon host to script-src / connect-src, e.g. https://plausible.io).
+#   script-src 'self'                       Plotly is self-hosted since dev19 (web/vendor/plotly-2.35.2/), so NO third-party script host is needed. There are no inline scripts and no eval, so 'unsafe-inline'
+#                                           is NOT needed for scripts. BREAKS if: a page gains an inline <script> or a new CDN script (add the host here), or analytics is enabled (add the provider's
+#                                           script host and its beacon host to script-src / connect-src, e.g. https://plausible.io).
 #   style-src 'self' 'unsafe-inline'        Plotly and Leaflet/MapLibre set inline styles and inject <style> tags: removing 'unsafe-inline' breaks every chart and the maps.
 #   img-src ... data: blob:                 map tiles come from basemap.nationalmap.gov (USGS), the NWS hazard overlay from mapservices.weather.noaa.gov, OpenFreeMap sprites from
 #                                           tiles.openfreemap.org; data: is used by our placeholder tile and favicon; blob: by MapLibre. BREAKS if: a new tile provider is added (the
 #                                           never-blank fallback to OpenTopoMap would be blocked unless listed).
-#   connect-src 'self' ... api.weather.gov  fetch(): own data files, OpenFreeMap vector tiles/style, and the live NWS alert text (last resort). When the data moves to R2 on another
+#   connect-src 'self' https://tiles.openfreemap.org   fetch(): own data files and the OpenFreeMap vector tiles/style (the live NWS alert fetch was removed in dev19). When the data moves to R2 on another
 #                                           host (`site.data_origin`, spec 5.10) add that host here AND set CORS on it.
 #   worker-src 'self' blob:                 MapLibre GL runs its tile workers from a blob: URL; the PWA service worker (W4) is a 'self' script. BREAKS the reference layer if removed.
 #   frame-ancestors 'none'                  nobody may frame the site (clickjacking). We embed nothing and no page needs framing.
 #   Referrer-Policy / Permissions-Policy    the site needs no referrer for third parties beyond the origin and uses no sensors (no geolocation API is called).
 #   Strict-Transport-Security               Cloudflare can add it from the dashboard (preferred: "Always use HTTPS" + HSTS there). Start with a short max-age, raise it after launch.
-#   Cache-Control                           data files: 60 s (hourly builds; the status page shows staleness); vendor libs: immutable (versioned folder names); html: Cloudflare's default.
+#   Cache-Control                           data files: 60 s (hourly builds; the status page shows staleness); vendor libs (Leaflet, MapLibre, Plotly 2.35.2): immutable, because the version is in the folder name
+#                                           (a Plotly upgrade = a new folder = a new URL); html: Cloudflare's default.
 #
 # Rollout: deploy as Content-Security-Policy-Report-Only first (same string) for a week, read the violations in the browser console of a few real devices, then enforce.
 
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.plot.ly; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://basemap.nationalmap.gov https://tiles.openfreemap.org https://mapservices.weather.noaa.gov; connect-src 'self' https://tiles.openfreemap.org https://api.weather.gov; font-src 'self' data:; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://basemap.nationalmap.gov https://tiles.openfreemap.org https://mapservices.weather.noaa.gov; connect-src 'self' https://tiles.openfreemap.org; font-src 'self' data:; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=()

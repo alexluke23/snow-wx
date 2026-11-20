@@ -33,7 +33,8 @@ def make_session(cfg: dict) -> requests.Session:
         total=4,
         backoff_factor=2,
         status_forcelist=(429, 500, 502, 503, 504),
-        allowed_methods=("GET",),
+        allowed_methods=("GET", "HEAD"),        # dev19: HEAD is idempotent too (the "is this cycle complete" probes used to give up at the first 503)
+        backoff_jitter=0.5,                     # dev19: a little random spread so parallel workers do not all come back at the same moment
     )
     s.mount("https://", HTTPAdapter(max_retries=retry))
     s.mount("http://", HTTPAdapter(max_retries=retry))

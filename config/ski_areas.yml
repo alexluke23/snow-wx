@@ -63,6 +63,9 @@ overrides:
   Sun Valley - Dollar Mountain: {name: Sun Valley (Dollar Mountain)}
   "Ski Santa Fe, Santa Fe, Q3855441": {name: Ski Santa Fe}
   Nordic Valley Resort (Wolf Mountain): {name: Nordic Valley}
+  Snow Valley Mountain Resort: {url: false}      # snow-valley.com resets connections; no working replacement could be verified (dev19)
+  Ferguson Ridge Ski Area: {url: false}          # skifergi.com answers HTTP 500; no working replacement could be verified (dev19)
+  Cedar Pass: {url: "https://www.fs.usda.gov/r05/modoc/recreation/cedar-pass-snow-park"}    # Forest Service page (the snow park is listed as closed)
   Boreal Mountain Resort: {url: https://www.rideboreal.com/}      # was a dead link (link check Nov 18 2026)
   Meadowlark Ski Area: {url: https://meadowlarklakeresort.com/}      # was a dead link (link check Nov 18 2026)
   Badger Pass Ski Area: {url: https://www.travelyosemite.com/winter/badger-pass-ski-area/}      # was a dead link (link check Nov 18 2026)
@@ -119,3 +122,8 @@ services:
   nws_points: https://api.weather.gov/points/{lat:.4f},{lon:.4f}
   # One small NBM message (any element) gives the 2.5-km grid definition.
   nbm_grid_idx: https://noaa-nbm-grib2-pds.s3.amazonaws.com/blend.{date}/{hh}/core/blend.t{hh}z.core.f001.co.grib2.idx
+
+# Sno-Park links (data/rec_points.json is rebuilt by `catalog --rec`): id -> URL, or `false` for no link (dead and no verified replacement)
+rec_url_overrides:
+  sp-echo-summit-nordic-at-adventure-mountain: "https://www.fs.usda.gov/r05/eldorado/permits/sno-park-permits"
+  sp-emily-sno-park: false
