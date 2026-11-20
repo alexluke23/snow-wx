@@ -39,7 +39,9 @@ For pasting into the owner's project notes. Details live in the files named in b
 ## Known issues
 - Obs-map Lighthouse is bimodal (71-91) because of tile-server timing.
 - SNOTEL outage of Nov 16-18 is excluded from verification; no seasonal accuracy claim yet.
-- The ECMWF job has never been seen succeeding on a real GitHub runner after the dev19/dev20 resilience work (it works from the owner's PC; AWS throttles, Google works and is now remembered).
+- ECMWF on GitHub: the first live run failed (Nov 20 00:45Z, before dev19); after the dev19 merge the run of Nov 20 04:00Z succeeded (AWS regional mirror, 26 retries, 1.27 GB, fetch 510 s).
+  dev20's mirror preference and AIFS are not yet tested on a runner.
+- An active NWS alert on an area page shifts the layout (Lighthouse CLS 0.084 vs 0.014 without; still under 0.1; same on main).
 - One outbound dead link comes from avalanche.org data (Shasta advisory URL); left unaltered by rule.
 - Model-map snowfall colours still use the older table (deferred).
 
