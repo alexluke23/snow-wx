@@ -1357,6 +1357,7 @@ def check_multimodel(b: Browser, base: str, log):
             if src["model"] in per:
                 per["aifs"] = {"q": [None if v is None else round(v * 1.8, 2) for v in per[src["model"]]["q"]], "z": None}
         res = {}
+        b.eval("sessionStorage.setItem('snowwx.mmHidden', '[]'); 1")          # dev21: phones hide AIFS by default (chips); this part checks the drawn line
         for badge in (False, True):
             d["models"][-1]["badge"] = badge
             mp.write_text(json.dumps(d), encoding="utf-8")
@@ -1378,6 +1379,94 @@ def check_multimodel(b: Browser, base: str, log):
             need(n_on == n_off + 1, f"badge must count AIFS only when configured in: {n_off} vs {n_on}")
     finally:
         mp.write_text(orig, encoding="utf-8")
+
+
+MM_LABEL_BOXES = """(() => { const el = document.getElementById('mm-chart'), er = el.getBoundingClientRect();
+  const boxes = [...el.querySelectorAll('g.annotation')].map(g => { const r = g.getBoundingClientRect(); return {t: g.textContent, l: r.left, r: r.right, t0: r.top, b: r.bottom}; })
+    .filter(x => x.r > x.l);
+  const hit = [];
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) { const p = boxes[i], q = boxes[j];
+    const ox = Math.min(p.r, q.r) - Math.max(p.l, q.l), oy = Math.min(p.b, q.b) - Math.max(p.t0, q.t0);
+    if (ox > 1 && oy > 1) hit.push([p.t, q.t, Math.round(ox), Math.round(oy)]); }
+  const clipped = boxes.filter(x => x.r > er.right + 1 || x.l < er.left - 1).map(x => x.t);
+  return {n: boxes.length, hit, clipped, names: (el.data || []).map(t => t.name)}; })()"""
+
+
+def check_mm_chips(b: Browser, base: str, log):
+    """dev21 Part 0b: "Precipitation by model" with up to six lines: model chips (>= 40 px, aria-pressed) show/hide lines; default at 375 px = NBM, HRRR, GFS, ECMWF
+    (RRFS / AIFS off), all on at 1280 px; direct labels never overlap (bounding boxes); the table always lists every model; the badge never changes with the chips;
+    the choice is kept for the visit (sessionStorage) and a blocked storage still works. Uses the real multimodel.json plus an AIFS fixture line (6 models)."""
+    area = "alta-ski-area"
+    mp = Path(base_dir_holder["path"]) / "data" / "multimodel.json"
+    orig = mp.read_text(encoding="utf-8")
+    res = {}
+    try:
+        d = json.loads(orig)
+        if not any(m["model"] == "aifs" for m in d["models"]):           # make sure all six lines exist
+            src = max(d["models"], key=lambda m: len(m["hours"]))
+            d["models"].append({**{k: src[k] for k in ("init", "cycle", "hours")}, "model": "aifs", "label": "AIFS (AI, experimental)", "experimental": True, "badge": False})
+            for per in d["areas"].values():
+                if src["model"] in per:
+                    per["aifs"] = {"q": [None if v is None else round(v * 1.3, 2) for v in per[src["model"]]["q"]], "z": None}
+            mp.write_text(json.dumps(d), encoding="utf-8")
+        for width in (375, 1280):
+            b.open(f"{base}/area.html#{area}", width=width, wait=7)
+            b.eval("sessionStorage.removeItem('snowwx.mmHidden'); 1")
+            b.open(f"{base}/area.html#{area}", width=width, wait=7)
+            b.eval("document.getElementById('mm-sec').scrollIntoView(); 1")
+            wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20)
+            chips = b.eval("""[...document.querySelectorAll('#mm-chips .mm-chip')].map(c => ({k: c.dataset.k, on: c.getAttribute('aria-pressed') === 'true',
+                h: Math.round(c.getBoundingClientRect().height), w: Math.round(c.getBoundingClientRect().width)}))""")
+            st = b.eval(MM_LABEL_BOXES)
+            badge0 = b.eval("document.getElementById('mm-badge').textContent")
+            res[f"{width}-default"] = {"chips": [(c["k"], c["on"]) for c in chips], **st}
+            need(len(chips) >= 5 and all(c["h"] >= 40 and c["w"] >= 40 for c in chips), f"chips missing or too small at {width}px: {chips}")
+            on = {c["k"] for c in chips if c["on"]}
+            if width == 375:
+                need("rrfs" not in on and "aifs" not in on and {"nbm", "hrrr", "gfs"} <= on, f"phone default set: {on}")
+            else:
+                need(on == {c["k"] for c in chips}, f"desktop default = all models: {on}")
+            need(not st["hit"] and not st["clipped"], f"direct labels overlap / clipped at {width}px (default): {st}")
+            # every chip on, then every label still clear; table lists every model whatever is hidden
+            b.eval("""(async () => { for (const c of [...document.querySelectorAll('#mm-chips .mm-chip[aria-pressed=false]')].map(c => c.dataset.k)) {
+                document.querySelector(`#mm-chips [data-k=${c}]`).click(); await new Promise(r => setTimeout(r, 400)); } return 1; })()""")
+            st = b.eval(MM_LABEL_BOXES)
+            res[f"{width}-all"] = st
+            need(len(st["names"]) == len(chips) and not st["hit"] and not st["clipped"], f"all lines on at {width}px: {st}")
+            # hide two, check table + badge, then reload: kept for the visit
+            b.eval("(async () => { for (const k of ['gfs', 'hrrr']) { document.querySelector(`#mm-chips [data-k=${k}]`).click(); await new Promise(r => setTimeout(r, 400)); } return 1; })()")
+            t = b.eval("""(() => { const d = document.querySelector('#mm-chart + .chart-table'); d.open = true; d._build && d._build();
+                return {cols: [...d.querySelectorAll('th[scope=col]')].map(t => t.textContent), names: document.getElementById('mm-chart').data.map(t => t.name),
+                        badge: document.getElementById('mm-badge').textContent}; })()""")
+            need(len(t["cols"]) == len(chips) + 1 and not any(n in ("GFS", "HRRR") for n in t["names"]), f"table must list every model, chart hides two: {t}")
+            need(t["badge"] == badge0, f"the badge must not change with the chips: {badge0} -> {t['badge']}")
+            b.open(f"{base}/area.html#{area}", width=width, wait=7)
+            b.eval("document.getElementById('mm-sec').scrollIntoView(); 1")
+            wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20)
+            kept = b.eval("[...document.querySelectorAll('#mm-chips .mm-chip')].filter(c => c.getAttribute('aria-pressed') === 'false').map(c => c.dataset.k).sort()")
+            need(kept == ["gfs", "hrrr"], f"selection not kept for the visit: {kept}")
+            # the last line can never be switched off
+            b.eval("""(async () => { for (const k of [...document.querySelectorAll('#mm-chips .mm-chip[aria-pressed=true]')].map(c => c.dataset.k)) {
+                document.querySelector(`#mm-chips [data-k=${k}]`).click(); await new Promise(r => setTimeout(r, 250)); } return 1; })()""")
+            n_on = b.eval("document.querySelectorAll('#mm-chips .mm-chip[aria-pressed=true]').length")
+            need(n_on == 1 and len(b.eval("document.getElementById('mm-chart').data.map(t => t.name)")) == 1, f"at least one line must stay: {n_on}")
+            b.eval("sessionStorage.removeItem('snowwx.mmHidden'); 1")
+        # storage blocked (private mode): default set, chips still work
+        sid = b.cmd("Page.addScriptToEvaluateOnNewDocument", source="Object.defineProperty(window, 'sessionStorage', {get() { throw new Error('blocked'); }});")["identifier"]
+        try:
+            b.open(f"{base}/area.html#{area}", width=1280, wait=7)
+            b.eval("document.getElementById('mm-sec').scrollIntoView(); 1")
+            wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20)
+            n0 = b.eval("document.getElementById('mm-chart').data.length")
+            b.eval("document.querySelector('#mm-chips [data-k=gfs]').click(); 1")
+            wait_for(b, f"document.getElementById('mm-chart').data.length === {n0 - 1}", 5)
+            need(not b.errors, f"JS errors with storage blocked: {b.errors}")
+        finally:
+            b.cmd("Page.removeScriptToEvaluateOnNewDocument", identifier=sid)
+    finally:
+        mp.write_text(orig, encoding="utf-8")
+    log(f"  mm chips: {json.dumps(res)[:900]}")
+    need(not b.errors, f"JS errors: {b.errors}")
 
 
 def check_models_layout(b: Browser, base: str, log):
@@ -1842,7 +1931,7 @@ def check_mobile_sweep(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle,
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips,
           **{f"failure{k}": functools.partial(check_failure_modes, shard=(k, 3)) for k in (1, 2, 3)}}
 FULL_RUN = [n for n in CHECKS if n != "failure"]          # the full run uses the three failure shards (same coverage, parallel)
 

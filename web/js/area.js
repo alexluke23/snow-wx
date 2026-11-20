@@ -484,6 +484,36 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     rrfs: { color: C.OI.blue, width: 2, dash: "solid" }, gfs: { color: C.OI.green, width: 2, dash: "dash" }, ecmwf: { color: C.OI.purple, width: 2, dash: "dashdot" },
     aifs: { color: "#8a6100", width: 2, dash: "dot" } };          // dev20: ECMWF AIFS (AI model, experimental): dotted dark ochre (5.3:1 on white), never in the badge by default
   let mmDoc, mmMode = "liquid", mmView = "models", ensSrc = "ecmwf";                // view / source = per visit only (not stored)
+  // dev21: model chips show/hide lines (view only: the agreement badge, summary and View-as-table always use EVERY model). Default: all models on wide
+  // screens; at phone width NBM, HRRR, GFS and ECMWF (RRFS sits close to HRRR, AIFS is experimental). The choice is kept for the visit (sessionStorage).
+  const MM_CHIP = { nbm: "NBM", hrrr: "HRRR", rrfs: "RRFS", gfs: "GFS", ecmwf: "ECMWF", aifs: "AIFS (AI)" };
+  const MM_PHONE_OFF = ["rrfs", "aifs"], MM_KEY = "snowwx.mmHidden";
+  let mmHidden = null;
+  const mmHiddenSet = () => {
+    if (mmHidden) return mmHidden;
+    let stored = null;
+    try { stored = JSON.parse(sessionStorage.getItem(MM_KEY)); } catch { /* storage blocked: default set */ }
+    mmHidden = new Set(Array.isArray(stored) ? stored : (window.matchMedia?.("(max-width: 700px)").matches ? MM_PHONE_OFF : []));
+    return mmHidden;
+  };
+  const saveHidden = () => { try { sessionStorage.setItem(MM_KEY, JSON.stringify([...mmHidden])); } catch { /* private mode: kept in memory only */ } };
+  function mmChips(series, redraw) {
+    const box = $("mm-chips");
+    if (!box) return;
+    const hid = mmHiddenSet();
+    const swatch = (k) => { const st = MM_STYLE[k]; const da = { dash: "6 3", dashdot: "6 2 1.5 2", dot: "1.5 2.5" }[st.dash] || "";
+      return `<svg width="22" height="10" aria-hidden="true" focusable="false"><line x1="1" y1="5" x2="21" y2="5" stroke="${st.color}" stroke-width="${Math.min(3, st.width + 0.5)}" ${da ? `stroke-dasharray="${da}"` : ""}/></svg>`; };
+    box.innerHTML = series.map((s) => `<button type="button" class="mm-chip" data-k="${s.key}" aria-pressed="${!hid.has(s.key)}" title="${hid.has(s.key) ? "Show" : "Hide"} ${esc(s.label)}">${swatch(s.key)}${esc(MM_CHIP[s.key] || s.label)}</button>`).join("");
+    box.hidden = false;
+    box.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {
+      const k = btn.dataset.k, on = !hid.has(k);
+      if (on && series.filter((s) => !hid.has(s.key)).length <= 1) { $("mm-announce").textContent = "At least one model stays on the chart."; return; }
+      if (on) hid.add(k); else hid.delete(k);
+      saveHidden();
+      $("mm-announce").textContent = `${MM_CHIP[k] || k} ${on ? "hidden" : "shown"}.`;
+      redraw();
+    }));
+  }
   const plumeList = () => mmDoc?.plumes ?? ((mmDoc?.models || []).some((m) => m.model === "ecmwf" && m.plume) ? ["ecmwf"] : []);   // ensemble plumes published with this build
   const hasPlume = () => plumeList().length > 0;
   /** the two ensemble sources (ECMWF live; GEFS built behind gefs.enabled): the same chart code reads either plume file */
@@ -505,6 +535,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     if (hasPlume() && !plumeList().includes(ensSrc)) ensSrc = plumeList()[0];
     const srcBox = $("ens-src");                                                     // ECMWF | GEFS: only in the Ensemble view and only when both are published
     if (srcBox) srcBox.hidden = !(mmView === "ens" && plumeList().length > 1);
+    if ($("mm-chips")) $("mm-chips").hidden = mmView === "ens";
     if (mmView === "ens") return ensembleChart(el, fc, tz);
     const nbm = { initMs: Date.parse(fc.issued), precip: P.precip, times: fc.times, ratio: P.series.slr_p50 || P.series.slr, psnow: P.series.p_snow };
     // the snow conversion needs NBM's ratio and chance of snow: without them the toggle is disabled (never a silent 10:1 / all-snow guess)
@@ -516,13 +547,17 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     if (r.series.length < 2) { chartMsg(el, `<p class="hint">Only one source covers the next hours here, so there is nothing to compare yet.</p>`); return; }
     const unit = mmMode === "snow" ? "in of snow" : "in of liquid";
     const xs = (s) => s.x.map((t) => C.wall(t, tz));
-    const traces = r.series.map((s) => ({ x: xs(s), y: s.y, mode: "lines+markers", name: s.label, line: { color: MM_STYLE[s.key].color, width: MM_STYLE[s.key].width, dash: MM_STYLE[s.key].dash },
+    mmChips(r.series, () => modelChart(el, fc, tz));
+    const hid = mmHiddenSet();
+    if (r.series.every((s) => hid.has(s.key))) hid.delete(r.series[0].key);                 // never an empty chart
+    const vis = r.series.filter((s) => !hid.has(s.key));
+    const traces = vis.map((s) => ({ x: xs(s), y: s.y, mode: "lines+markers", name: s.label, line: { color: MM_STYLE[s.key].color, width: MM_STYLE[s.key].width, dash: MM_STYLE[s.key].dash },
       marker: { size: s.key === "nbm" ? 3 : 4, color: MM_STYLE[s.key].color }, customdata: s.y.map(() => (s.z === null ? (s.key === "nbm" ? "NBM 2.5 km grid, adjusted to the summit" : `${s.label}: 0.25° grid, not elevation-adjusted`) : `${s.label} terrain ${s.z.toLocaleString()} ft`)),
       hovertemplate: `${s.label}: %{y:.2f} ${unit}<br>%{customdata} vs summit ${Math.round(P.elev_ft).toLocaleString()} ft<extra></extra>` }));
-    const allX = r.series.flatMap((s) => s.x), x0 = C.wall(r.t0, tz), x1 = C.wall(Math.max(...allX), tz);
-    const ymax = Math.max(0.5, ...r.series.flatMap((s) => s.y.filter((v) => v !== null))) * 1.08;
+    const allX = r.series.flatMap((s) => s.x), x0 = C.wall(r.t0, tz), x1 = C.wall(Math.max(...allX), tz);      // the time axis spans every model (hiding one never rescales time)
+    const ymax = Math.max(0.5, ...vis.flatMap((s) => s.y.filter((v) => v !== null))) * 1.08;
     const ax = C.timeAxis(x0, x1, el.clientWidth - C.MARGIN.l - 56);
-    const labels = C.endLabels(r.series.map((s) => ({ xs: xs(s), ys: s.y, text: s.key === "aifs" ? "AIFS (AI)" : s.label, color: MM_STYLE[s.key].color })), { yrange: [0, ymax], plotHeight: 230 - C.MARGIN.t - ax.b + 34 });
+    const labels = C.endLabels(vis.map((s) => ({ xs: xs(s), ys: s.y, text: MM_CHIP[s.key] || s.label, color: MM_STYLE[s.key].color })), { yrange: [0, ymax], plotHeight: 240 - C.MARGIN.t - ax.b, gap: 20 });   // label boxes are ~19 px tall (12 px text + background); browser check mmchips measures them
     C.plot(el, traces, C.layout(240, { margin: { r: 56, b: ax.b }, showlegend: false, shapes: ax.shapes, annotations: [C.axisTitle(mmMode === "snow" ? "Snow (in), at NBM's ratio" : "Liquid precipitation (in)"), ...labels],
       xaxis: ax.axis, yaxis: C.yaxis({ range: [0, ymax] }) }));
     const ag = r.agreement;
@@ -1160,6 +1195,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
         <span class="seg mm-view" id="ens-src" role="group" aria-label="Ensemble source" hidden><button type="button" data-s="ecmwf" class="on" aria-pressed="true">ECMWF</button><button type="button" data-s="gefs" aria-pressed="false">GEFS</button></span>
         <span class="sr" id="mm-announce" role="status" aria-live="polite"></span>
         <span class="seg" id="mm-mode" role="group" aria-label="Units"><button type="button" data-m="liquid" class="on" aria-pressed="true">Liquid (in)</button><button type="button" data-m="snow" aria-pressed="false">Snow (in)</button></span>
+        <div class="mm-chips" id="mm-chips" role="group" aria-label="Models on the chart (the agreement rating and the table always use every model)"></div>
         <div class="chart" id="mm-chart" style="height:240px"><p class="hint">Loading chart…</p></div>
         <p class="note" id="mm-note"></p></section>`}
       <section><h3>Hour by hour <span class="h3sub" id="hbh-sub"></span></h3>

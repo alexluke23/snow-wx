@@ -589,3 +589,11 @@ main.status { max-width: 980px; width: 100%; box-sizing: border-box; } .status .
 /* verification panel / scorecard (dev18 Part 3, behind verification_ui.enabled) */
 #verif-sec .caveats { font-size: 13px; color: #36424f; padding-left: 18px; margin: 8px 0; } #verif-sec .collecting { background: #eef3f8; border: 1px solid var(--line); padding: 10px 12px; border-radius: 6px; }
 #verif-sec .tbl-wrap { overflow-x: auto; }
+/* dev21: model chips above "Precipitation by model" (show/hide lines; the box is reserved so drawing the chart never shifts the page) */
+.mm-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; min-height: 40px; }
+.mm-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 40px; min-width: 44px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 20px;
+  background: #fff; color: var(--ink); font-size: 13px; cursor: pointer; }
+.mm-chip[aria-pressed="false"] { color: #5b6573; background: #f3f5f8; border-style: dashed; }
+.mm-chip[aria-pressed="false"] svg { opacity: 0.35; }
+.mm-chip:focus-visible { outline: 2px solid #2c4a6e; outline-offset: 2px; }
+@media (max-width: 520px) { .mm-chips { min-height: 86px; align-content: flex-start; } }
