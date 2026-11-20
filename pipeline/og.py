@@ -254,7 +254,8 @@ def render(area: dict, doc: dict | None, cfg: dict | None, table=None) -> tuple[
     fm2, ml = fit(c.d, meta, REG, 22, 16, W - 2 * M, 1)
     y = c.text("meta", (M, y + 4), ml, fm2, MUTED, BG) + 22
     sm = (doc or {}).get("summary") or {}
-    left_w = 560
+    days = chart_days(doc or {}, int(oc["days"]))
+    left_w = 560 if days else W - 2 * M                    # dev21 QA: no chart -> the text uses the whole width (was a narrow column beside an empty half)
     yy = y
     if sm.get("tag"):
         fp = _font(BOLD, 21)
@@ -262,11 +263,11 @@ def render(area: dict, doc: dict | None, cfg: dict | None, table=None) -> tuple[
         c.d.rounded_rectangle([M, yy, M + tw + 28, yy + 38], radius=19, fill=PILL)
         c.text("tag", (M + 14, yy + 6), [sm["tag"]], fp, INK, PILL)
         yy += 54
-    sentence = sm.get("sentence") or f"Snow forecast for {area['name']}: NOAA/NWS National Blend of Models, with the likely range for every day."
+    sentence = sm.get("sentence") or (f"Snow forecast for {area['name']}: NOAA/NWS National Blend of Models, with the likely range for every day." if days
+                                      else f"Snow forecast for {area['name']} from the NOAA/NWS National Blend of Models.")      # never promise a chart that is not there
     room = (H - 70) - yy
     fsent, sl = fit(c.d, sentence, REG, 28, 18, left_w, max(1, min(5, int(room // 34))))
     c.text("summary", (M, yy), sl, fsent, INK, BG)
-    days = chart_days(doc or {}, int(oc["days"]))
     if days:
         _chart(c, days, (M + left_w + 48, y, W - M, H - 70), table)
     _footer(c, issued_text(doc) if doc else "NOAA/NWS National Blend of Models")
