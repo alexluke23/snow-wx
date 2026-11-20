@@ -1,4 +1,4 @@
-# Budgets baseline (Nov 19 2026, dev18; for the W1 Cloudflare move)
+# Budgets baseline (Nov 19 2026, dev19 update of the dev18 baseline; for the W1 Cloudflare move)
 
 Numbers measured on the current GitHub Pages setup, so the Cloudflare Pages + R2 move has something to compare against. Sources: the local build (`build/`, one full `pipeline build` of Nov 18 plus the dev18 pages), the public GitHub Actions API (40 most recent completed runs per workflow, read Nov 19 2026 01:55 UTC),
 dev14's production-size measurement (`docs/specs/hosting-seo.md`), local Lighthouse runs (below). Re-measure with the commands in the last section.
@@ -21,7 +21,7 @@ dev14's production-size measurement (`docs/specs/hosting-seo.md`), local Lightho
 | mine.html | 3.2 / 1.3 | | privacy.html | 9.8 / 3.6 |
 | models.html | 4.2 / 1.7 | | terms / disclaimer / 404 | 5.3 / 2.2, 5.3 / 2.2, 3.1 / 1.3 |
 
-Shared assets: our JS 23 files = 305 KB raw / 110 KB gzip (largest: `area.js`); `style.css` 39 KB / 10 KB; Leaflet 144 KB / 42 KB; MapLibre GL (reference layer, lazy) 784 KB / 207 KB; Plotly 2.35.2 basic from the CDN (~1 MB raw, loaded only on chart pages; candidate to self-host).
+Shared assets: our JS 23 files = 305 KB raw / 110 KB gzip (largest: `area.js`); `style.css` 39 KB / 10 KB; Leaflet 144 KB / 42 KB; MapLibre GL (reference layer, lazy) 784 KB / 207 KB; Plotly 2.35.2 basic, **self-hosted since dev19** (`vendor/plotly-2.35.2/plotly-basic.min.js` 1,071 KB raw / 355 KB gzip, loaded only on chart pages, started when the browser is idle after `load` so it does not delay the headline paint; same bytes as before, now from our origin, so no third-party request).
 
 ## 3. Data sizes and file counts
 | Folder | Files | Raw size | Notes |
@@ -30,22 +30,23 @@ Shared assets: our JS 23 files = 305 KB raw / 110 KB gzip (largest: `area.js`); 
 | `data/ndfd/` | 1,446 | 17-21 MB (avg 12 KB, ~2 KB gzip) | |
 | `data/snotel/` | 837 | 5.8-7 MB (avg 7 KB, ~1 KB gzip) | |
 | `models/` (HRRR, RRFS, GFS frames) | ~1,700 (production) | ~123 MB | PNG frames; the local build holds a small subset |
-| `models/ecmwf/` | 162 | 2.5 MB raw (plume files avg 14.9 KB raw / 3.7 KB gzip; 0.6 MB gzip in total) | live since dev18 |
+| `models/ecmwf/` | 162 | 2.5 MB raw (plume files avg 14.9 KB raw / 3.7 KB gzip; 0.6 MB gzip in total) | live since dev18; `index.json` now carries `fetch` (mirror, retries, switches, status counts) and `steps_missing` |
+| `data_cache/ecmwf/<cycle>/` (runner only, not published) | 41 | 1.1 MB per cycle | resume cache (sampled values per step), restored/saved by `actions/cache` in `ecmwf.yml`; a re-run of a finished cycle downloads 0 MB (3.9 s) |
 | `data/*.json` shared | 13 | 2.1 MB | `multimodel.json` 123 KB / 18 KB gz, `search.json` 175 KB / 31 KB, `map_points.json` 177 KB / 28 KB, `ski_areas.json` 172 KB / 36 KB, `webcams.json` 17 KB / 2 KB, `meta.json` 2 KB |
 | NBM forecast overlays (9 layers) | ~18 | 1.72 MB | +8.8 s CI |
-| `vendor/` | 13 | 1.1 MB | Leaflet, MapLibre, plugin |
+| `vendor/` | 17 | 2.2 MB (+1.07 MB, +4 files in dev19) | Leaflet, MapLibre, plugin, **Plotly 2.35.2 + licence files**; on a site of ~5.7 k files and ~220 MB that is +4 files and +1 MB |
 
 ## 4. CI runtimes (GitHub Actions, ubuntu-24.04; read from the API)
 | Workflow | Runs read | Median | p90 | Max | Notes |
 |---|---|---|---|---|---|
 | `update-site.yml` (hourly build + deploy) | 40 (24 ok) | 5.2 min | 8.7 min | 12.6 min | `build` job 3.1-3.3 min typical ("Build site and fetch data" 140 s), 8.8 min when SNOTEL is slow or restores; deploy 0.2-0.4 min; monitor 0.1-0.3 min |
 | `models.yml` (model maps, NBM points, NDFD, NOHRSC) | 40 (all ok) | 3.6 min | 4.5 min | 4.7 min | jobs run in parallel; slowest = RRFS render 202-216 s, HRRR 150-157 s, GFS 52-131 s, points 95-139 s, NDFD 24 s, NOHRSC ~30 s; most runs exit early when nothing is new |
-| `tests.yml` (pull requests: pytest) | 6 | 0.5 min | 0.6 min | 0.6 min | 421 tests offline |
-| `ecmwf.yml` (new in dev18) | measured locally | ~5-6 min | | | 300 s / 1,214 MB (00Z) and 336 s / 1,205 MB (12Z) on a laptop; the runner's network is faster, CPU slower: expect 5-8 min; timeout set to 30 |
+| `tests.yml` (pull requests: pytest) | 6 | 0.5 min | 0.6 min | 0.6 min | 421 tests offline at the time of the read; 467 passed + 9 skipped locally after dev19 (102 s on a laptop, includes the real-HTTP-server fetch tests) |
+| `ecmwf.yml` (dev18; resilient since dev19) | measured locally | ~5-8 min | | | 300 s / 1,214 MB (00Z) and 336 s / 1,205 MB (12Z) on a laptop on the AWS mirror (dev18); **dev19, Nov 19 12Z run: the AWS regional mirror tripped the breaker, the run failed over to Google: 456 s / 1,275 MB, 18 retries, 0 steps missing**; an immediate re-run reads the per-step cache: 3.9 s, 0 MB. Expect 5-10 min on a runner when a mirror throttles; timeout 30 |
 
 Per-run network volume of the model jobs (from the model-maps assets, PLAN §2 history): HRRR tar ~98 MB, RRFS ~83 MB, GFS ~23 MB; ECMWF ~1.2 GB downloaded (0.6 MB published).
 
-## 5. Lighthouse (local, gzip server like Pages, mobile profile; dev18 branch, Nov 19 2026)
+## 5. Lighthouse (local, gzip server like Pages, mobile profile; dev18 branch, Nov 19 2026; dev19 rows added below the table)
 Accessibility is **100 on every one of the 15 page states** (target >= 95). Performance (single run per page unless stated; the obs map and area page are medians of 3 interleaved runs against main):
 
 | Page state | Perf | A11y | CLS | LCP s | TBT ms |
@@ -57,6 +58,14 @@ Accessibility is **100 on every one of the 15 page states** (target >= 95). Perf
 | My mountains | 100 | 100 | 0.008 | 1.1 | 0 |
 | model maps | **100** (was 90) | 100 | **0.01** (was 0.21) | 1.2 | 0 |
 | status, about, sources, privacy, terms, disclaimer, 404 | 100 | 100 | 0.00-0.04 | 1.1-1.4 | 0-13 |
+
+**dev19 re-measurement (6 interleaved runs each against main's web files with the same data; main loads Plotly from cdn.plot.ly, dev19 from our own host):**
+
+| Page | dev19 | main | Notes |
+|---|---|---|---|
+| obs map (index) | 88.0 (CLS 0.021, LCP 3.25 s, TBT 200 ms) | 88.5 (0.016, 3.16 s, 188 ms) | same within run-to-run noise |
+| area page, ski area | **88.0** (CLS 0.014, LCP 2.02 s, TBT 416 ms) | 88.0 (0.014, 2.01 s, 421 ms) | the FIRST self-hosted version scored **75** (LCP 4.2 s): the early same-origin Plotly request is part of Lighthouse's simulated LCP graph (the CDN request on another origin was not), so the download now starts when the browser is idle after `load`; real users see the same headline paint, charts follow |
+| Sno-Park Finder (5 runs) | **93** (TBT 276 ms) | 86 (TBT 506 ms; same data) | 447 DOM Sno-Park markers (divIcon + tooltip + popup) replaced by squares drawn on the map canvas; "Show all" and the 200-row cap are unchanged |
 
 The model-maps CLS (0.21 with a catalog whose frames are missing, the worst case; 0.20 reproduced with a slow catalog at 412 px) came from the player row re-wrapping when the hour label arrived; fixed with a reserved row (`browser_check --only models` now delays the catalog and fails on the old CSS). Remaining ceiling for the obs map is tile-server timing (bimodal 71-91, see PLAN §2).
 

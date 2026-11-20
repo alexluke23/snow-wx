@@ -41,11 +41,24 @@ def test_workflow_yaml_has_the_required_keys():
     job = d["jobs"]["ecmwf"]
     assert job["runs-on"] == "ubuntu-24.04" and job["timeout-minutes"] == 30
     names = [s.get("name") or s.get("uses") for s in job["steps"]]
-    assert names == ["actions/checkout@v7", "mamba-org/setup-micromamba@v3", "Find the published cycle", "Fetch, sample, write",
-                     "Upload to the model-maps release", "Redeploy the site"]
+    assert names == ["actions/checkout@v7", "mamba-org/setup-micromamba@v3", "Find the published cycle", "Restore the resume cache",
+                     "Fetch, sample, write", "Save the resume cache", "Upload to the model-maps release", "Redeploy the site"]
     by = {s.get("name"): s for s in job["steps"] if s.get("name")}
     assert by["Upload to the model-maps release"]["if"] == "steps.render.outputs.new == 'true'" == by["Redeploy the site"]["if"]
     assert "gh workflow run update-site.yml" in by["Redeploy the site"]["run"]
+
+
+def test_resume_cache_steps_restore_before_and_save_always_after_the_python_step():
+    steps = load(WF)["jobs"]["ecmwf"]["steps"]
+    names = [s.get("name") for s in steps]
+    assert names.index("Restore the resume cache") < names.index("Fetch, sample, write") < names.index("Save the resume cache")
+    restore = steps[names.index("Restore the resume cache")]
+    save = steps[names.index("Save the resume cache")]
+    assert restore["uses"] == "actions/cache/restore@v6" and save["uses"] == "actions/cache/save@v6"                       # the same major as models.yml's actions/cache@v6
+    assert restore["with"]["path"] == save["with"]["path"] == "data_cache/ecmwf" and restore["with"]["restore-keys"].strip() == "ecmwf-"
+    assert save["if"] == "always()" and "run_id" in save["with"]["key"] and "run_attempt" in save["with"]["key"]            # always, and a fresh key per attempt (a cache key is immutable)
+    models_cache = {s["uses"] for job in load(REPO / ".github" / "workflows" / "models.yml")["jobs"].values() for s in job["steps"] if s.get("uses", "").startswith("actions/cache")}
+    assert "actions/cache@v6" in models_cache
 
 
 def test_action_versions_are_copied_from_models_yml():

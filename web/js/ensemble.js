@@ -50,12 +50,17 @@ const Ensemble = (() => {
       const cum = cumTenths.map(toIn);
       const base = MultiModel.interpAt(xs, cum, t0Ms);
       if (base === null) return null;
-      const pts = xs.map((x, i) => [x, cum[i] === null ? null : Math.max(0, cum[i] - base)]).filter(([x, y]) => x >= t0Ms && y !== null);
-      if (!pts.length) return null;
+      // a missing step (null) stays in the series as a gap: the line breaks there and nothing is interpolated (dev19)
+      const pts = xs.map((x, i) => [x, cum[i] === null ? null : Math.max(0, cum[i] - base)]).filter(([x]) => x >= t0Ms);
+      if (!pts.length || pts.every(([, y]) => y === null)) return null;
       if (pts[0][0] > t0Ms) pts.unshift([t0Ms, 0]);
       if (mode === "snow") {                                      // sf is already snow: water-equivalent increments x NBM's ratio
-        let acc = 0;
-        return pts.map(([x, y], i) => { if (i === 0) return [x, 0]; acc += Math.max(0, y - pts[i - 1][1]) * ratioAt((x + pts[i - 1][0]) / 2); return [x, acc]; });
+        let acc = 0, last = null;
+        return pts.map(([x, y]) => {
+          if (y === null) return [x, null];
+          if (last === null) { last = [x, y]; return [x, 0]; }
+          acc += Math.max(0, y - last[1]) * ratioAt((x + last[0]) / 2); last = [x, y]; return [x, acc];
+        });
       }
       return pts;
     };

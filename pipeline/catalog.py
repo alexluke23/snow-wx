@@ -562,7 +562,7 @@ def build_catalog(session, cfg: dict, ccfg: dict, obs_dir: Path, refresh: bool =
             "state": st,
             "region": r["ov"].get("region") or region_for(r["summit"][0], r["summit"][1], st, ccfg),
             "tz": tz,
-            "url": r["ov"].get("url") or ((p.get("websites") or [None])[0]),
+            "url": None if r["ov"].get("url") is False else (r["ov"].get("url") or ((p.get("websites") or [None])[0])),      # `url: false` in the overrides = no link (dead, no verified replacement)
             "major": p["id"] in major_ids,
             "base": pts_out["base"],
             "summit": pts_out["summit"],

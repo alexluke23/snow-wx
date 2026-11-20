@@ -10,773 +10,773 @@ areas:
   - label: Sunrise Park Resort webcams (resort site)
     url: https://sunrise.ski/winter/trails-and-camera/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   kirkwood-mountain-resort:
   - label: Kirkwood Mountain Resort webcams (resort site)
     url: https://www.kirkwood.com/the-mountain/mountain-conditions/mountain-cams.aspx
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Caltrans road conditions and cameras
     url: https://roads.dot.ca.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   mammoth-mountain:
   - label: Mammoth Mountain webcams (resort site)
     url: https://www.mammothmountain.com/on-the-mountain
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Caltrans road conditions and cameras
     url: https://roads.dot.ca.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   northstar-at-tahoe-resort:
   - label: Northstar at Tahoe Resort webcams (resort site)
     url: https://www.northstarcalifornia.com/the-mountain/mountain-conditions/mountain-cams.aspx
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Caltrans road conditions and cameras
     url: https://roads.dot.ca.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   palisades-tahoe-alpine-meadows:
   - label: Palisades Tahoe Alpine Meadows webcams (resort site)
     url: https://www.palisadestahoe.com/mountain-information/webcams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Caltrans road conditions and cameras
     url: https://roads.dot.ca.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   palisades-tahoe-olympic-valley:
   - label: Palisades Tahoe Olympic Valley webcams (resort site)
     url: https://www.palisadestahoe.com/mountain-information/webcams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Caltrans road conditions and cameras
     url: https://roads.dot.ca.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   sugar-bowl-resort:
   - label: Sugar Bowl Resort webcams (resort site)
     url: https://www.sugarbowl.com/webcams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Caltrans road conditions and cameras
     url: https://roads.dot.ca.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   arapahoe-basin:
   - label: Arapahoe Basin webcams (resort site)
     url: https://www.arapahoebasin.com/mountain-cams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   aspen-highlands:
   - label: Aspen Highlands webcams (resort site)
     url: https://www.aspensnowmass.com/four-mountains/aspen-highlands/mountain-cams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   aspen-mountain:
   - label: Aspen Mountain webcams (resort site)
     url: https://www.aspensnowmass.com/four-mountains/aspen-mountain/mountain-cams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   beaver-creek:
   - label: Beaver Creek webcams (resort site)
     url: https://www.beavercreek.com/the-mountain/mountain-conditions/mountain-cams.aspx
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   breckenridge-ski-resort:
   - label: Breckenridge Ski Resort webcams (resort site)
     url: https://www.breckenridge.com/the-mountain/mountain-conditions/mountain-cams.aspx
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   buttermilk:
   - label: Buttermilk webcams (resort site)
     url: https://www.aspensnowmass.com/four-mountains/buttermilk/mountain-cams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   copper-mountain:
   - label: Copper Mountain webcams (resort site)
     url: https://www.coppercolorado.com/the-mountain/webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   crested-butte-mountain-resort:
   - label: Crested Butte Mountain Resort webcams (resort site)
     url: https://www.skicb.com/the-mountain/mountain-conditions/mountain-cams.aspx
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   keystone:
   - label: Keystone webcams (resort site)
     url: https://www.keystoneresort.com/the-mountain/mountain-conditions/mountain-cams.aspx
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   loveland-basin-ski-area:
   - label: Loveland Basin Ski Area webcams (resort site)
     url: https://skiloveland.com/webcams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   monarch-mountain:
   - label: Monarch Mountain webcams (resort site)
     url: https://skimonarch.com/conditions/cams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   powderhorn:
   - label: Powderhorn webcams (resort site)
     url: https://www.powderhorn.com/webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   purgatory-resort:
   - label: Purgatory Resort webcams (resort site)
     url: https://www.purgatory.ski/mountain/weather-conditions-webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   snowmass:
   - label: Snowmass webcams (resort site)
     url: https://www.aspensnowmass.com/four-mountains/snowmass/mountain-cams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   steamboat-ski-resort:
   - label: Steamboat Ski Resort webcams (resort site)
     url: https://www.steamboat.com/the-mountain/live-cams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   sunlight-mountain-resort:
-  - label: Sunlight Mountain Resort webcams (resort site)
+  - label: Sunlight Mountain cams (resort site)
     url: https://sunlightmtn.com/explore/mountain-status/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: low
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   telluride-ski-area:
   - label: Telluride Ski Area webcams (resort site)
     url: https://tellurideskiresort.com/webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   vail:
   - label: Vail webcams (resort site)
     url: https://www.vail.com/the-mountain/mountain-conditions/mountain-cams.aspx
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   winter-park-resort:
   - label: Winter Park Resort webcams (resort site)
     url: https://www.winterparkresort.com/the-mountain/mountain-cams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   wolf-creek-ski-area:
   - label: Wolf Creek Ski Area webcams (resort site)
     url: https://wolfcreekski.com/webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: CDOT CoTrip road cameras
     url: https://www.cotrip.org/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   bogus-basin-mountain-recreation-area:
   - label: Bogus Basin Mountain Recreation Area webcams (resort site)
     url: https://bogusbasin.org/your-mountain/conditions-webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Idaho 511 road cameras
     url: https://511.idaho.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   brundage-mountain:
   - label: Brundage Mountain webcams (resort site)
     url: https://brundage.com/live-cams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Idaho 511 road cameras
     url: https://511.idaho.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   lookout-pass:
   - label: Lookout Pass webcams (resort site)
     url: https://skilookout.com/webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Idaho 511 road cameras
     url: https://511.idaho.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   schweitzer-mountain-resort:
   - label: Schweitzer Mountain Resort webcams (resort site)
     url: https://www.schweitzer.com/mountain-info/webcam
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Idaho 511 road cameras
     url: https://511.idaho.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   silver-mountain-resort:
   - label: Silver Mountain Resort webcams (resort site)
     url: https://silvermt.com/webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Idaho 511 road cameras
     url: https://511.idaho.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   sun-valley-bald-mountain:
   - label: Sun Valley (Bald Mountain) webcams (resort site)
     url: https://www.sunvalley.com/the-mountain/web-cams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Idaho 511 road cameras
     url: https://511.idaho.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   tamarack-resort:
   - label: Tamarack Resort webcams (resort site)
     url: https://tamarackidaho.com/about/webcams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Idaho 511 road cameras
     url: https://511.idaho.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   big-sky-resort:
   - label: Big Sky Resort webcams (resort site)
     url: https://www.bigskyresort.com/current-conditions/webcams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Montana 511 road cameras
     url: https://www.511mt.net/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   bridger-bowl:
   - label: Bridger Bowl webcams (resort site)
     url: https://bridgerbowl.com/weather/webcams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Montana 511 road cameras
     url: https://www.511mt.net/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   discovery-ski-area:
-  - label: Discovery Ski Area webcams (resort site)
+  - label: Discovery Ski Area (resort site)
     url: https://www.skidiscovery.com/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: low
     status: 200
   - label: Montana 511 road cameras
     url: https://www.511mt.net/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   great-divide-ski-area:
   - label: Great Divide Ski Area webcams (resort site)
     url: https://www.skigd.com/webcam
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Montana 511 road cameras
     url: https://www.511mt.net/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   montana-snowbowl:
   - label: Montana Snowbowl webcams (resort site)
     url: https://montanasnowbowl.com/sbblog/base-web-cam/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: low
     status: 200
   - label: Montana 511 road cameras
     url: https://www.511mt.net/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   whitefish-mountain-resort:
   - label: Whitefish Mountain Resort webcams (resort site)
     url: https://skiwhitefish.com/webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: Montana 511 road cameras
     url: https://www.511mt.net/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   angel-fire-resort:
   - label: Angel Fire Resort webcams (resort site)
     url: https://www.angelfireresort.com/weather/
     type: resort
-    last_checked: '2026-11-18'
-    confidence: low
+    last_checked: '2026-11-19'
+    confidence: high
     status: 200
   - label: NMDOT road cameras
     url: https://nmroads.com/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   taos-ski-valley:
-  - label: Taos Ski Valley webcams (resort site)
-    url: https://www.skitaos.com/weather
+  - label: Taos Ski Valley weather and webcams (resort site)
+    url: https://taosskivalley.com/weather-snow-report/
     type: resort
-    last_checked: '2026-11-18'
-    confidence: low
+    last_checked: '2026-11-19'
+    confidence: high
     status: 200
   - label: NMDOT road cameras
     url: https://nmroads.com/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   heavenly-mountain-resort:
   - label: Heavenly Mountain Resort webcams (resort site)
     url: https://www.skiheavenly.com/the-mountain/mountain-conditions/mountain-cams.aspx
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: NDOT road cameras
     url: https://nvroads.com/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   mt-bachelor:
   - label: Mt. Bachelor webcams (resort site)
     url: https://www.mtbachelor.com/the-mountain/webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: ODOT TripCheck road cameras
     url: https://tripcheck.com/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   mt-hood-meadows-ski-resort:
   - label: Mt. Hood Meadows Ski Resort webcams (resort site)
     url: https://www.skihood.com/explore/live-web-cams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: ODOT TripCheck road cameras
     url: https://tripcheck.com/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   timberline-lodge-ski-area:
   - label: Timberline Lodge Ski Area webcams (resort site)
     url: https://timberlinelodge.com/webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: ODOT TripCheck road cameras
     url: https://tripcheck.com/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   alta-ski-area:
   - label: Alta Ski Area webcams (resort site)
     url: https://www.alta.com/weather
     type: resort
-    last_checked: '2026-11-18'
-    confidence: low
+    last_checked: '2026-11-19'
+    confidence: high
     status: 200
-  - label: UDOT road cameras (canyon roads)
+  - label: UDOT road cameras
     url: https://udottraffic.utah.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   brian-head-resort:
   - label: Brian Head Resort webcams (resort site)
     url: https://www.brianhead.com/weather-conditions-webcams/webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
-  - label: UDOT road cameras (canyon roads)
+  - label: UDOT road cameras
     url: https://udottraffic.utah.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   brighton-resort:
   - label: Brighton Resort webcams (resort site)
     url: https://www.brightonresort.com/conditions
     type: resort
-    last_checked: '2026-11-18'
-    confidence: low
+    last_checked: '2026-11-19'
+    confidence: high
     status: 200
-  - label: UDOT road cameras (canyon roads)
+  - label: UDOT road cameras
     url: https://udottraffic.utah.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   deer-valley-resort:
   - label: Deer Valley Resort webcams (resort site)
     url: https://www.deervalley.com/explore-the-mountain/webcams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
-  - label: UDOT road cameras (canyon roads)
+  - label: UDOT road cameras
     url: https://udottraffic.utah.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   park-city-mountain-resort:
   - label: Park City Mountain Resort webcams (resort site)
     url: https://www.parkcitymountain.com/the-mountain/mountain-conditions/mountain-cams.aspx
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
-  - label: UDOT road cameras (canyon roads)
+  - label: UDOT road cameras
     url: https://udottraffic.utah.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   powder-mountain-ski-resort:
   - label: Powder Mountain Ski Resort webcams (resort site)
     url: https://powdermountain.com/conditions
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
-  - label: UDOT road cameras (canyon roads)
+  - label: UDOT road cameras
     url: https://udottraffic.utah.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   snowbasin-resort:
   - label: Snowbasin Resort webcams (resort site)
     url: https://www.snowbasin.com/the-mountain/web-cams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
-  - label: UDOT road cameras (canyon roads)
+  - label: UDOT road cameras
     url: https://udottraffic.utah.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   snowbird:
   - label: Snowbird webcams (resort site)
     url: https://www.snowbird.com/the-mountain/webcams/view-all-webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
-  - label: UDOT road cameras (canyon roads)
+  - label: UDOT road cameras
     url: https://udottraffic.utah.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   solitude-mountain-resort:
   - label: Solitude Mountain Resort webcams (resort site)
     url: https://www.solitudemountain.com/mountain-and-village/webcams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
-  - label: UDOT road cameras (canyon roads)
+  - label: UDOT road cameras
     url: https://udottraffic.utah.gov/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   49-north-mountain-resort:
   - label: 49° North Mountain Resort webcams (resort site)
     url: https://www.ski49n.com/webcams/
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: WSDOT mountain pass cameras
     url: https://wsdot.com/travel/real-time/mountainpasses
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   crystal-mountain:
   - label: Crystal Mountain webcams (resort site)
     url: https://www.crystalmountainresort.com/the-mountain/mountain-report-and-webcams/webcams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: WSDOT mountain pass cameras
     url: https://wsdot.com/travel/real-time/mountainpasses
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   the-summit-at-snoqualmie:
   - label: The Summit at Snoqualmie webcams (resort site)
     url: https://www.summitatsnoqualmie.com/webcams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: WSDOT mountain pass cameras
     url: https://wsdot.com/travel/real-time/mountainpasses
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   grand-targhee-resort:
   - label: Grand Targhee Resort webcams (resort site)
     url: https://www.grandtarghee.com/the-mountain/cams-conditions/webcams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: WYDOT road cameras
     url: https://map.wyoroad.info/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   jackson-hole-mountain-resort:
   - label: Jackson Hole Mountain Resort webcams (resort site)
     url: https://www.jacksonhole.com/live-mountain-cams
     type: resort
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200
   - label: WYDOT road cameras
     url: https://map.wyoroad.info/
     type: dot
-    last_checked: '2026-11-18'
+    last_checked: '2026-11-19'
     confidence: high
     status: 200

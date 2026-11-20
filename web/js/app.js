@@ -28,7 +28,7 @@
   const loadPlotly = () => (plotlyPromise ||= new Promise((resolve, reject) => {
     if (window.Plotly) return resolve(window.Plotly);
     const sc = document.createElement("script");
-    sc.src = "https://cdn.plot.ly/plotly-basic-2.35.2.min.js"; sc.async = true;
+    sc.src = "vendor/plotly-2.35.2/plotly-basic.min.js"; sc.async = true;
     sc.onload = () => resolve(window.Plotly); sc.onerror = () => reject(new Error("chart library failed to load"));
     document.head.appendChild(sc);
   }));

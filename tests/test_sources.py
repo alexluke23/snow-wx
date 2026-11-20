@@ -107,7 +107,7 @@ def test_privacy_page_lists_every_storage_key_the_code_uses_and_no_cookies_are_w
 
 def test_privacy_page_lists_every_browser_side_third_party_host():
     hosts = [h for s in SRC["sources"] for h in (s.get("browser") or [])]
-    assert {"basemap.nationalmap.gov", "tiles.openfreemap.org", "cdn.plot.ly", "api.weather.gov"} <= set(hosts)
+    assert {"basemap.nationalmap.gov", "tiles.openfreemap.org", "mapservices.weather.noaa.gov"} <= set(hosts) and not ({"cdn.plot.ly", "api.weather.gov"} & set(hosts))       # Plotly is self-hosted since dev19
     page = (REPO / "web" / "privacy.html").read_text(encoding="utf-8")
     for h in hosts:
         assert f'<th scope="row">{h}</th>' in page
