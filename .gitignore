@@ -18,3 +18,6 @@ data_cache/
 .vscode/settings.json
 .DS_Store
 Thumbs.db
+
+# Business planning is private and never part of this public repo (local only; keep a backup elsewhere)
+private/

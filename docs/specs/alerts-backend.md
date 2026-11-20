@@ -6,7 +6,7 @@
 
 ---
 
-### 5.11 Alerts backend (W6) — *new, business-enabling*
+### 5.11 Alerts backend (W6) — *new*
 Smallest thing that works:
 - **Worker + store:** Cloudflare Worker with Cron Trigger + D1/KV (free-plan
   limits **[verify]**). Pipeline publishes `summary.json`; the Worker evaluates
@@ -46,7 +46,7 @@ webhooks, a preferences page, the supporter-tier entitlement webhook, SMS.
 1. **E-mail provider** (Resend, Postmark, Amazon SES, Mailgun, …): price at ~5–50 k mails/month, free tier, one-click-unsubscribe support, bounce/complaint webhooks, EU/US data location.
 2. **Cloudflare account** (the W1 account): Workers + Cron Triggers + D1/KV on the free plan limits **[verify]**, or paid Workers ($5/mo) for headroom; which zone/domain hosts `/alerts/*`.
 3. **Sender domain and authentication:** the domain from W1, SPF + DKIM + DMARC records (and a `mail.` sub-domain so alert mail never harms the main domain's reputation).
-4. **Physical postal address** for the CAN-SPAM footer (a PO box or virtual address is allowed; the entity decision in BUSINESS.md §10.1 may determine it) and a monitored reply-to / abuse address.
+4. **Physical postal address** for the CAN-SPAM footer (a PO box or virtual address is allowed; set by owner) and a monitored reply-to / abuse address.
 5. **Privacy policy + terms** covering stored e-mail addresses, retention (suggest: delete 30 days after unsubscribe), deletion on request, and processors (the mail provider, Cloudflare). B2 legal review.
 6. **Secrets handling:** where the HMAC secret and provider key live (Worker secrets), who can rotate them; the token secret needs a rotation plan (the code already verifies a list of keys).
 7. **Web push:** VAPID key pair and applicationServerKey; push only for installed PWAs (W4 must be enabled first, which waits for W1); whether to build push in S5 or ship e-mail first.

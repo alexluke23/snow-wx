@@ -7,7 +7,7 @@ Found and fixed by the rehearsal: `pages.py` and `pwa.py` injected inline script
 Still hard-coded in the repo (all intended): `config/settings.yml` `site.origin` (the one place), links to `github.com/alexluke23/snow-wx` (code/issue/release pages), `docs/` text.
 
 ## A. Owner decisions and accounts (blocks everything below)
-- [ ] Final name + domain bought; DNS under Cloudflare. Cloudflare Pages project (direct upload or Git), R2 bucket + API token if data moves (spec `hosting-seo.md`, "R2 sync").
+- [ ] Domain set by owner at W1; DNS under Cloudflare. Cloudflare Pages project (direct upload or Git), R2 bucket + API token if data moves (spec `hosting-seo.md`, "R2 sync").
 - [ ] Legal drafts reviewed (`web/disclaimer.html`, `privacy.html`, `terms.html`: DRAFT/noindex) and the analytics provider chosen (`docs/specs/launch-readiness.md`).
 
 ## B. One config PR (I can prepare it once the domain exists)

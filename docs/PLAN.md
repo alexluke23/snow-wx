@@ -1,6 +1,7 @@
 # Snow-Wx — Development Plan (v1.1, Nov 15 2026)
 
-> Lean plan read by Claude Code at the start of every session (soft size cap ~20 KB). Detail lives in `docs/specs/`, `docs/DESIGN.md`, `docs/BUSINESS.md` and `docs/ARCHIVE.md` (see "Where things live"). Tick milestones in §8 as they land.
+> Lean plan read by Claude Code at the start of every session (soft size cap ~20 KB). Detail lives in `docs/specs/`, `docs/DESIGN.md` and `docs/ARCHIVE.md` (see "Where things live"). Tick milestones in §8 as they land.
+> **Business planning is private and not part of this repo; do not create business docs here.** Where a technical item waits on a business choice it says "set by owner".
 > Conventions: **[verify]** = re-check at source before relying on it; **◇** = stretch, drop first if behind.
 
 ---
@@ -22,14 +23,13 @@
 | Launch readiness: sources, legal drafts, analytics, link check, headers (dev18) | `docs/specs/launch-readiness.md` |
 | Webcam links | `config/webcams.yml` + `pipeline/webcams.py` (links only) |
 | Charts, colors, maps UI (§6) | `docs/DESIGN.md` |
-| Business, pricing, legal, positioning (§9–10.1) | `docs/BUSINESS.md` — **not for coding sessions** |
 | History, old decisions, done milestones | `docs/ARCHIVE.md` |
 | Forecast archive and M9 verification (files, columns, loading) | `docs/verification.md` — read for archive/verification work |
 | NBM GRIB layouts per cycle, selection rules | `docs/nbm_inventory.md` — read before touching NBM fetch/decode or `inventory.py` |
 | NBM exceedance probabilities vs percentiles | `docs/nbm_prob_consistency_*.md` — read when changing "Chance of ≥ X" |
 | NBM percentiles vs the GSL 1-D viewer | `docs/nbm_validation_gsl_*.md` — read when validating NBM decodes |
 | Sno-Park / recreation sources and licences | `docs/sources_recreation.md` — read before adding or changing a recreation source |
-| Resort-reported snowfall licensing (research only) | `docs/sources_resort_snowfall.md` — questions to ask Mountain News / TWC / OpenSnow |
+| Resort-reported snowfall licensing (research only) | `docs/sources_resort_snowfall.md` — published terms of the candidate feeds; no build without a written licence |
 
 When a task starts, read this file, then only the spec(s) for the active milestone.
 
@@ -37,7 +37,7 @@ When a task starts, read this file, then only the spec(s) for the active milesto
 
 ## 0. TL;DR
 
-A free, open-data snow forecasting site for the western US — point forecasts for every ski area and Sno-Park, with probabilities, snow level, observations, avalanche context and public verification — growing into a small sustainable business. **Free-first:** no paywall before Feb 2027 at the earliest; full paid launch targeted pre-season (Sep–Oct 2027).
+A free, open-data snow forecasting site for the western US — point forecasts for every ski area and Sno-Park, with probabilities, snow level, observations, avalanche context and public verification.
 
 **Priority now:** Foundations (W1 domain/hosting, W2 indexable pages, W3 daily summaries, W4 PWA, W5 analytics/monitoring) → M7/M8 multi-model → W6 alerts. Details in §8.2.
 
@@ -51,13 +51,11 @@ A free, open-data snow forecasting site for the western US — point forecasts f
 
 ---
 
-## 1. Principles & audience
+## 1. Principles & users
 
-Trust first (show uncertainty, issue times, sources; publish misses); safety info always free; the free product is the
-marketing; paid = convenience/personalization/compute, never public data; web/PWA first; license-clean open data;
-automation over people; ~8–12 h/week **[assumption — owner to confirm]**. Audience: skiers/riders, backcountry users,
-snowmobile/Nordic/snowshoe users (Sno-Parks), meteorologists, later B2B (lodging, guides, shops, clubs, avalanche
-centers). Full text: `docs/ARCHIVE.md`.
+Trust first (show uncertainty, issue times, sources; publish misses); safety info is never gated or hidden; web/PWA first;
+license-clean open data; automation over manual work. Users: skiers/riders, backcountry users, snowmobile/Nordic/snowshoe
+users (Sno-Parks), meteorologists.
 
 ---
 
@@ -66,14 +64,15 @@ centers). Full text: `docs/ARCHIVE.md`.
 - **Live:** https://alexluke23.github.io/snow-wx/ — repo `alexluke23/snow-wx` (custom domain: W1).
 - **Done:** M0–M5, M3.5, M3.6, M4.5 Sno-Parks, M9-prep archive (running), "My mountains", NBM forecast overlays, dev10 basemap, **dev11–dev14** ("likely" p25–p75 wording, one powder-quality definition, W3, status page),
   **dev15/16** (monitor bootstrap, W4 PWA built but off, storm totals, hazard text, M7 precipitation by model, M9 scorer), **dev17** (merged: `hazard_text.json`, ECMWF built, W7/W6 skeletons built but off, overlay stale/flag),
-  **dev18** (branch): **ECMWF live** (standalone `ecmwf.yml`, monitored source, member count read from the data), models-page layout shift fixed (fixture frames), agreement badge "Little precipitation expected" + day-type calibration,
+  **dev18** (merged): **ECMWF live** (standalone `ecmwf.yml`, monitored source, member count read from the data), models-page layout shift fixed (fixture frames), agreement badge "Little precipitation expected" + day-type calibration,
   webcam LINKS (60 areas), Sources / disclaimer / privacy / terms drafts, cookieless analytics (off), `linkcheck`, `404.html`, draft Cloudflare `_headers` + CSP check, verification UI (behind `verification_ui.enabled=false`). Details: `docs/ARCHIVE.md`.
-  **dev19** (branch): **ECMWF fetch resilience** (shared `pipeline/fetch_resilient.py`: backoff + jitter, Retry-After, mirror failover AWS regional -> Google -> ECMWF portal, graceful degradation with `steps_missing`, per-cycle resume cache restored/saved by `ecmwf.yml`, fetch health on the status page), webcam link corrections + dead-link removal,
+  **dev19** (merged): **ECMWF fetch resilience** (shared `pipeline/fetch_resilient.py`: backoff + jitter, Retry-After, mirror failover AWS regional -> Google -> ECMWF portal, graceful degradation with `steps_missing`, per-cycle resume cache restored/saved by `ecmwf.yml`, fetch health on the status page), webcam link corrections + dead-link removal,
   **Plotly self-hosted** (`web/vendor/plotly-2.35.2/`; no third-party script host left in the browser), hazard popups served only from our own files (the browser-side api.weather.gov fetch is gone; the pipeline fills missing alert texts).
-  **dev20** (branch): ECMWF mirror preference + 2-cycle cache bound; browser suite ~32 -> ~5 min (parallel isolated workers, frozen inputs, `--quick`); share cards (`pipeline og`, OFF);
+  **dev20** (merged): ECMWF mirror preference + 2-cycle cache bound; browser suite ~32 -> ~5 min (parallel isolated workers, frozen inputs, `--quick`); share cards (`pipeline og`, OFF);
   **ECMWF AIFS line** (on, experimental, out of the badge); `docs/STATE_SNAPSHOT.md` (owner notes).
-  **dev21** (branch): **verification scores in CI** (`verify.yml`, daily; panel still behind its flag; minima projected ~Nov 30), **NOAA GEFS plume live** (`gefs.yml`), Safari/iPhone guards,
+  **dev21** (merged, PR #30): **verification scores in CI** (`verify.yml`, daily; panel still behind its flag; minima projected ~Nov 30), **NOAA GEFS plume live** (`gefs.yml`), Safari/iPhone guards,
   model chips, alert-banner CLS fix, WebKit/Firefox smoke suite (`tools/xbrowser_smoke.py`), `pipeline archive-check`.
+  **scrub-business** (branch): business planning moved out of the repo (local, gitignored `private/`); guard test `tests/test_no_business_content.py`.
 - **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas, Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
 - **Known issues:** the NRCS AWDB (SNOTEL) outage of Nov 16–18 is over (first confirmed live 00:45Z Nov 18); **M9 excludes SNOTEL obs from 2026-11-16 12Z through 2026-11-18 00:45Z** (`config/settings.yml`
   `verification.snotel_outage`). Obs map Lighthouse mobile 71–91 (bimodal; compare with interleaved runs, median of ≥ 3 ≥ 85); site ≈ 220 MB / 5.7 k files.
@@ -84,20 +83,19 @@ centers). Full text: `docs/ARCHIVE.md`.
 
 Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that history still apply: NBM primary + NDFD alongside; day/night 12Z–00Z; bars use NBM deterministic; point snow scaled by P(snow level below point); model images as release assets; surface-only fields on HRRR/RRFS; chart readability and never-blank basemaps; Sno-Parks as a point type; obs map + forecast pages before model maps.
 
-**Nov 15 2026 decisions — accepted by owner Nov 15**
+**Technical decisions in force (Nov 15 2026 onward)**
 
 | Date | Decision |
 |---|---|
-| Nov 15 | **Business intent is active.** Free-first; no paywall before Feb 2027; optional Founding Supporter soft launch Feb 2027 (Gate 3); full paid launch Sep–Oct 2027. |
-| Nov 15 | **Adopt:** Daily Snow summaries (W3), offline-first PWA (W4), multi-model incl. ECMWF (M7/M8). **Reshape** wind-loading (§5.9). **Reject** Open-Meteo API in production (`docs/BUSINESS.md` App. A). |
-| Nov 15 | **Custom domain + Cloudflare Pages + R2 before public promotion** (W1); GitHub Pages stays a redirect/canonical stub (Pages isn't permitted for online businesses; PWA/SEO tie to the origin; file-count limits). |
+| Nov 15 | **Adopt:** Daily Snow summaries (W3), offline-first PWA (W4), multi-model incl. ECMWF (M7/M8). **Reshape** wind-loading (§5.9). **Open-Meteo API not used in production** (free tier is non-commercial only, §10). |
+| Nov 15 | **Custom domain + Cloudflare Pages + R2** (W1; domain set by owner at W1); GitHub Pages stays a redirect/canonical stub (PWA/SEO tie to the origin; file-count limits). |
 | Nov 15 | **Path-based prerendered area URLs** (`/ski/<state>/<id>/`) so ~600 pages are indexable (W2); old `#id` links redirect. |
-| Nov 15 | **Offline cache of the last forecast is free** (trust, PWA installs). |
+| Nov 15 | **Offline cache of the last forecast is always available** (trust; iOS push needs the install). |
 | Nov 15 | **No numeric lee-aspect accumulation adjustment until verified** (M9); wind = informational flag, never an avalanche rating. |
-| Nov 15 | **Alerts: email + web push first; SMS later, optional.** **Payments via a merchant of record** at first (confirm with a CPA). |
+| Nov 15 | **Alerts: email + web push first; SMS later, optional.** |
 | Nov 15 | Models compared in **liquid-equivalent**, inches toggle via NBM SLR. |
 
-**Nov 9–16 2026 (dev11) — accepted by owner**
+**Nov 9–20 2026 (dev11–dev21)**
 
 | Date | Decision |
 |---|---|
@@ -113,7 +111,7 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
 | Nov 17–18 | **dev15–dev17 (merged):** monitor judges a source by the data's own age; hazard popups show NWS text in-page; M7 precipitation by model (agreement badge = documented heuristic); M9 scorer excludes the SNOTEL outage; ECMWF, W7 wind flag and W6 alerts built OFF (details: `docs/ARCHIVE.md`). |
 | Nov 19 | **dev18 (owner-authorized):** ECMWF goes live via its own workflow `.github/workflows/ecmwf.yml` (`ecmwf.enabled: true`); badge shows "Little precipitation expected" when every model is < 0.20 in (never "High"); webcams are links only; legal pages are DRAFTS (`noindex`); analytics and the verification UI are built but OFF (owner picks the provider / flips the flag). |
 | Nov 19 | **dev19 (owner brief):** ECMWF goes through a resilient fetcher with mirror failover; a step that cannot be fetched is a GAP (all members + HRES, never interpolated), a run needs >= 90 % of the steps and the first 120 h, else it exits 0 with `new=false`. Plotly is self-hosted (privacy: no CDN request). Hazard popups never call api.weather.gov from the browser. Webcam links that cannot be verified are removed, not guessed. |
-| Nov 19 | **dev20 (owner brief):** brand is config-driven (`site.name`/`site.tagline` placeholders); share cards only with `pages` AND `og_images` on; AIFS shown as an experimental line, kept OUT of the agreement badge unless `aifs.in_badge`; the browser suite never depends on live data (frozen fixtures). |
+| Nov 19 | **dev20 (owner brief):** the site name is config-driven (`site.name`/`site.tagline` placeholders; set by owner at W1); share cards only with `pages` AND `og_images` on; AIFS shown as an experimental line, kept OUT of the agreement badge unless `aifs.in_badge`; the browser suite never depends on live data (frozen fixtures). |
 | Nov 20 | **dev21 (owner brief):** two more owner-authorized workflows, `verify.yml` and `gefs.yml` (model on `ecmwf.yml`, publish product tars that update-site already unpacks; no edit to existing workflows); GEFS on; model chips change the drawing only (badge and table use every model); the verification panel stays OFF until the owner flips it. |
 | Nov 16 | **Composite ranges are never shown:** where a 24/48/72 h total would add several 6 h percentile windows (fallback cycles), show the expected total only; points JSON marks totals `native: true/false`. Archive columns unchanged (they never carry composite ranges). Lighthouse target: median of ≥ 3 interleaved runs ≥ 85. |
 | Nov 16 | Model-map snowfall colors stay as is for now (backlog §8.4). **Guard:** points JSON and the forecast archive keep their existing fields (p10/p50/p90, P(≥4/8/12″), 24/48/72 h). |
@@ -132,7 +130,6 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
   the public data-status page shows last-success time per source. Trust requires
   knowing when *we* are stale.
 - Schedules are best-effort on GitHub; if gaps persist add an external `workflow_dispatch` trigger (owner decision).
-- Public repo = free Actions minutes (private would cost; code is copyable, our moat is data ops, verification, brand).
 - Size budget: points ≈ 600 areas × ≤ 150 KB ≈ 90 MB in R2 (not in the site bundle).
 
 ---
@@ -141,21 +138,20 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
 
 Done milestones: see `docs/ARCHIVE.md`.
 
-### 8.2 The 12-week plan — Nov 16 2026 → Feb 15 2027
+### 8.2 The 12-week plan — Nov 16 2026 → Feb 15 2027 (engineering)
 
-Assumes ~8–12 h/week; **◇ = drop first if behind.** Peak-traffic windows:
-Thanksgiving (Nov 26), holidays (Dec 24–Jan 2), Presidents' Day weekend
-(Feb 13–15). **Deploy freeze Dec 23–Jan 2** (fixes only).
+**◇ = drop first if behind.** Peak-traffic windows: Thanksgiving (Nov 26), holidays (Dec 24–Jan 2), Presidents' Day weekend
+(Feb 13–15). **Deploy freeze Dec 23–Jan 2** (fixes only). Owner-side tasks are tracked privately.
 
-| Sprint | Dates | Dev (Claude Code) | Owner / business |
-|---|---|---|---|
-| **S1 Foundations** | Nov 16–29 | **W1** domain + Cloudflare Pages + R2 + redirect stub (check file-count/size; parity test). **W5a** cookieless analytics + pipeline-failure alerts. Refresh §2 status. | Pick the name (check trademark/domain/handles; **rename "Powder Finder"**). Buy domain. Cloudflare account. Decide entity path with a CPA/attorney (`docs/BUSINESS.md` §10.1). |
-| **S2 Indexable + summaries** | Nov 30–Dec 13 | **W2** prerendered area pages, sitemap, canonical, OG cards (top 60). **W3** Daily Snow summaries v1 + tests. | Terms/privacy/disclaimer review (**B2**). Newsletter provider chosen; signup form copy. **Gate 1 (Dec 13):** new domain live, analytics firing, indexed pages submitted. |
-| **S3 PWA + first public push** | Dec 14–27 | **W4** PWA (manifest, SW, offline favorites, staleness, install coach, "My mountains" start page). **M4.5** Sno-Parks (if not done) on the new URL scheme. ◇ obs-map performance pass. | **First public share** (~Dec 18–20) before holiday storms: regional communities, avalanche-education contacts, friends. Start the email list. |
-| **S4 Multi-model** | Dec 28–Jan 10 | **M7** HRRR/RRFS/GFS/NBM plumes + model-agreement badge. **M8-lite** ECMWF IFS point sampling + attribution. **Verification panel v0** (~7 weeks of archive). | Weekly "Storm Outlook" email (semi-automated, owner reviews 10 min). **Gate 2 (Jan 10):** read baseline KPIs (§9.7); confirm alerts scope. |
-| **S5 Free alerts** | Jan 11–24 | **W6** alerts backend: magic-link accounts, free preset email alert, web push for installed PWAs. ◇ storm-total tracker. | Publish first **forecast report card** (verification) as content. Outreach to 3–5 local partners (shops, guides, clubs, Nordic/snowmobile). |
-| **S6 Paid foundations** | Jan 25–Feb 7 | Pricing page; entitlements; MoR checkout; custom thresholds + unlimited favorites. ◇ **W7** wind-exposure flag (informational). | Founding-price copy, refund policy; confirm tax/entity setup; draft supporter FAQ. |
-| **Wrap** | Feb 8–15 | Stabilize for Presidents' Day weekend; no risky deploys. | **Gate 3 (Feb 15):** go/no-go on a capped **Founding Supporter soft launch** (e.g., 200 seats) vs. waitlist-only until fall. |
+| Sprint | Dates | Dev (Claude Code) |
+|---|---|---|
+| **S1 Foundations** | Nov 16–29 | **W1** domain + Cloudflare Pages + R2 + redirect stub (domain set by owner at W1; check file-count/size; parity test). **W5a** cookieless analytics + pipeline-failure alerts. Refresh §2 status. |
+| **S2 Indexable + summaries** | Nov 30–Dec 13 | **W2** prerendered area pages, sitemap, canonical, OG cards (top 60). **W3** Daily Snow summaries v1 + tests. |
+| **S3 PWA** | Dec 14–27 | **W4** PWA (manifest, SW, offline favorites, staleness, install coach, "My mountains" start page). **M4.5** Sno-Parks (if not done) on the new URL scheme. ◇ obs-map performance pass. |
+| **S4 Multi-model** | Dec 28–Jan 10 | **M7** HRRR/RRFS/GFS/NBM plumes + model-agreement badge. **M8-lite** ECMWF IFS point sampling + attribution. **Verification panel v0** (~7 weeks of archive). |
+| **S5 Free alerts** | Jan 11–24 | **W6** alerts backend: magic-link accounts, free preset email alert, web push for installed PWAs. ◇ storm-total tracker. |
+| **S6** | Jan 25–Feb 7 | Scope set by owner. ◇ **W7** wind-exposure flag (informational). |
+| **Wrap** | Feb 8–15 | Stabilize for Presidents' Day weekend; no risky deploys. |
 
 **If behind, cut in this order:** W7 → storm-total tracker → obs-map perf pass →
 M8-lite → W6 (shift alerts to the off-season). **Never cut:** W1, W2, W3, W4,
@@ -183,7 +179,7 @@ temps by area/elevation; publish on about.html; later per-site bias correction
 (MOS-lite). A "point verification panel" ("how did forecasts do here this
 season?") ships first.
 
-**M10 — Later:** ensemble plumes, webcams (links), SMS add-on, wind Phase B.
+**M10 — Later:** ensemble plumes, webcams (links), optional SMS alerts, wind Phase B.
 
 **M6 Interactive model layers** (+ HRRR pressure-level file) — last (Track 3).
 
@@ -227,7 +223,7 @@ Key: ✅ built and live · ⏸ built, behind a flag or waiting on the owner · �
 | **Open-Meteo API** | **Free API is non-commercial only; commercial use needs a paid plan. Not used in production** (prototype-only) |
 | OpenSkiMap / OpenStreetMap / OSM Sno-Parks | ODbL: attribution; derived databases shared under ODbL |
 | USFS EDW | Public domain |
-| avalanche.org API | **Verify** commercial terms; contact (see `docs/BUSINESS.md` §10.1) |
+| avalanche.org API | **Verify** terms with avalanche.org before any change in how ratings are used (owner task); show ratings unaltered, link the center |
 | OpenFreeMap vector tiles (roads/towns layer) | No key/limits, commercial OK; credit OpenFreeMap/OpenMapTiles/OSM. Single volunteer-run service: PMTiles backup in §8.4 |
 | State Sno-Park lists (WA/OR/CA/ID) | Not copied; ask permission if ever needed |
 | MADIS | Only category 3 "full distribution" on public pages |
@@ -240,9 +236,6 @@ Key: ✅ built and live · ⏸ built, behind a flag or waiting on the owner · �
 - Kuchera/snow level from 5 pressure levels (Stull wet-bulb warm bias in dry air); NBM's 2.5 km grid under-resolves
   narrow ridges (elevation adjustment approximate; M9 will quantify); raw model snowfall differs → compare liquid
   (§5.5); summary/agreement thresholds are heuristics until verified; GitHub cron is best-effort.
-- **Owner decisions needed:** (1) name + domain (blocks W1); (2) entity/tax, CPA, merchant of record; (3) time budget
-  (~8–12 h/week?); (4) capped Founding Supporter launch Feb 2027 if Gate 3 passes?; (5) hosting move now (recommended);
-  (6) private vs public repo; (7) SMS never/only if asked/launch; (8) external cron trigger; (9) who contacts
-  avalanche.org, and when.
+- Owner decisions are tracked privately (not in this repo); technical items that wait on one say "set by owner".
 
 ---

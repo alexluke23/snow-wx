@@ -6,7 +6,7 @@
 
 ---
 
-### 5.7 Daily Snow summaries (W3) — *new, from Gemini #7*
+### 5.7 Daily Snow summaries (W3) — *new*
 A deterministic rules engine, **not** an LLM, run in the points pipeline.
 
 - **Module:** `pipeline/summary.py` — pure function

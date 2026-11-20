@@ -6,7 +6,7 @@
 
 ---
 
-### 5.9 Wind-exposure flag (W7 ◇) — *reshaped from Gemini #3*
+### 5.9 Wind-exposure flag (W7 ◇) — *reshaped*
 - **Phase A (informational):** when ridge-top wind ≥ ~25 mph sustained or gusts
   ≥ ~35 mph during/after snowfall **[thresholds to tune]**, show "Wind-affected
   snow likely" + wind direction + plain text such as "Wind-loading possible on
@@ -17,8 +17,7 @@
   redistribution or "slab risk" badge could mislead and erodes trust.
 - **Phase B (2027–28, after M9):** verify against observed snow-depth/wind
   changes; consider aspect-aware adjustments with 3DEP slope/aspect (public
-  domain). OpenSnow shipped free slope/aspect overlays in 2026–27, so a
-  slope-aspect map layer is also a parity item (Backlog).
+  domain). A slope-aspect map layer is on the backlog (PLAN §8.4).
 
 ---
 

@@ -74,7 +74,7 @@ Script `tools/parity_check.py`: for 30 sampled URLs/paths (pages + data files) c
 Keep GitHub Pages deploying the full current site (shell + data) until two weeks after cutover; DNS cutover is a CNAME change, so rollback = point the domain back (TTL 5 min) and re-enable the Pages deploy; R2 data is additive and can stay. Do not delete the Pages workflow job until then.
 
 ### [verify] before starting
-Cloudflare Pages direct-upload build counting; image-heavy-site terms for model PNGs on R2/Pages; R2 free-tier operation counts for hourly syncs; CORS + cache headers on custom `data.` domain; whether Pages `_headers` can set `Cache-Control` per path; GitHub Pages online-business terms (why we move).
+Cloudflare Pages direct-upload build counting; image-heavy-site terms for model PNGs on R2/Pages; R2 free-tier operation counts for hourly syncs; CORS + cache headers on custom `data.` domain; whether Pages `_headers` can set `Cache-Control` per path; GitHub Pages usage terms and limits.
 
 ### Cookieless analytics: options (not wired)
 | Option | Cost | Cookieless | Notes |
@@ -83,7 +83,7 @@ Cloudflare Pages direct-upload build counting; image-heavy-site terms for model 
 | Plausible (hosted) | ~$9/mo | yes | Custom events (favorite, install, signup, "view as table"), simple; paid |
 | Plausible/Umami self-hosted | server cost | yes | Needs a server we do not run (no servers rule) |
 | GoatCounter | free for non-commercial; paid otherwise | yes | Tiny, events limited |
-**Recommendation:** Cloudflare Web Analytics now (free, same vendor as hosting, no consent banner), add Plausible only when W5 needs custom events (Feb 2027 paid-launch decisions). Do not add any script until W1 is live.
+**Recommendation:** Cloudflare Web Analytics now (free, same vendor as hosting, no consent banner), add Plausible only when W5 needs custom events (provider set by owner). Do not add any script until W1 is live.
 
 ### Share cards (Open Graph images, dev20; OFF)
 `pipeline/og.py` (`python -m pipeline og --out build [--force] [--only ids]`): one 1200x630 PNG per ski area (`og/<id>.png`) plus generic `og/snopark.png` (all Sno-Parks) and `og/site.png`.

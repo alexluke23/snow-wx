@@ -95,7 +95,7 @@ sources:
     credit: "Avalanche danger: avalanche.org and the local avalanche center (always read the center's full forecast)"
     hosts: [avalanche.org]
     verify: true
-    notes: "PLAN §10: verify commercial terms with avalanche.org / the Utah Avalanche Center before monetising; contact owner decision #9."
+    notes: "PLAN §10: verify terms with avalanche.org / the Utah Avalanche Center before any change in how ratings are used (owner task)."
   - id: osm
     name: OpenStreetMap contributors and OpenSkiMap
     kind: data
