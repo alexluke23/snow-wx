@@ -1,0 +1,127 @@
+# M9 forecast verification, daily (pipeline/verify.py `ci_run`, docs/verification.md). Owner-authorized new workflow (dev21), modelled on ecmwf.yml.
+#
+# Input: the forecast archive on the "verification" prerelease (monthly nbm-/ndfd-/snotel-YYYYMM.csv.gz), written by update-site.yml's archive step after every
+# hourly build: the SNOTEL observations come from there, so this job makes NO SNOTEL request of its own. It runs THE SAME scorer as `python -m pipeline verify`
+# (same SNOTEL-outage window from config verification.snotel_outage, same stale-observation rule: fewer than 20 hourly reports in the 24 h).
+# Output: verify-<YYYYMMDDHH>-<version>.tar on the "model-maps" prerelease (YYYYMMDDHH = the newest 12Z observation scored); update-site.yml already extracts the
+# newest tar of every product into build/models/, so the result lands in build/models/verify/ (verification.json, verification/<site>.json, run.json), where the
+# panel reads it. The panel itself stays behind config verification_ui.enabled (false): this job only keeps the numbers ready.
+# Nothing new (no new observation day, a failed or empty archive download, stale observations already scored): exit 0 with new=false and the last result stays.
+#
+# Schedule: once a day at 15:25 UTC (a quiet minute: the hourly build runs at :17, model jobs at :55, ECMWF at :40). The 12Z SNOTEL hour (04-05 AM local) is in the
+# archive after the 13:17 or 14:17 UTC build (AWDB posts within ~1-2 h); 15:25 leaves margin. Cost: download of the archive months not yet cached (tens of MB),
+# about a minute of pandas, one small tar (a few hundred KB).
+name: Verification (daily scores)
+
+on:
+  schedule:
+    - cron: "25 15 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Re-score even if today's observation day is already published"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # upload / delete this product's assets on the model-maps release (the archive is only read)
+  actions: write    # trigger update-site.yml after a new upload
+
+concurrency:
+  group: verify
+  cancel-in-progress: false
+
+env:
+  RELEASE: model-maps
+  ARCHIVE: verification
+  MODEL: verify
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: Find the published result
+        id: pub
+        run: |
+          cyc=$(gh release view "$RELEASE" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null \
+                | sed -n -E "s/^${MODEL}-([0-9]{10}(-[0-9a-f]{8})?)\.tar$/\1/p" | sort | tail -1 || true)
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then cyc=""; fi
+          echo "published: ${cyc:-none}"
+          echo "cycle=$cyc" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the archive cache
+        # Closed months never change: they come from this cache and only the current and previous month (still being appended) are downloaded again.
+        uses: actions/cache/restore@v6
+        with:
+          path: verify_archive
+          key: verify-archive-${{ github.run_id }}
+          restore-keys: |
+            verify-archive-
+
+      - name: Download the forecast archive
+        id: dl
+        # Never fails the job: a failed listing or download = ok=false, the scoring step is skipped and the last published result stays on the site.
+        run: |
+          mkdir -p verify_archive
+          names=$(gh release view "$ARCHIVE" --json assets -q '.assets[].name' 2>/dev/null | grep -E '^(nbm|ndfd|snotel)-[0-9]{6}\.csv\.gz$' || true)
+          if [ -z "$names" ]; then echo "::warning::forecast archive not reachable or empty: kept the last verification result"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          cur=$(date -u +%Y%m); prev=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y%m)
+          ok=true
+          for n in $names; do
+            m=$(echo "$n" | sed -E 's/^[a-z]+-([0-9]{6})\.csv\.gz$/\1/')
+            if [ -f "verify_archive/$n" ] && [ "$m" != "$cur" ] && [ "$m" != "$prev" ]; then continue; fi
+            if ! gh release download "$ARCHIVE" -p "$n" -D verify_archive --clobber; then echo "::warning::could not download $n"; ok=false; fi
+          done
+          ls -la verify_archive
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+
+      - name: Score
+        id: render
+        if: steps.dl.outputs.ok == 'true'
+        shell: bash -el {0}
+        # Writes new=true|false, cycle=..., and warning=... (stale observations) to $GITHUB_OUTPUT; exit 0 when there is nothing new.
+        run: |
+          python -m pipeline verify-ci --dir verify_archive --out out/models --published "${{ steps.pub.outputs.cycle }}" --github-output "$GITHUB_OUTPUT"
+          w=$(sed -n 's/^warning=//p' "$GITHUB_OUTPUT" | tail -1); if [ -n "$w" ]; then echo "::warning::$w"; fi
+
+      - name: Save the archive cache
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: verify_archive
+          key: verify-archive-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload to the model-maps release
+        if: steps.render.outputs.new == 'true'
+        run: |
+          set -euo pipefail
+          cyc="${{ steps.render.outputs.cycle }}"
+          asset="${MODEL}-${cyc}.tar"
+          tar -C out/models -cf "$asset" "$MODEL"
+          du -h "$asset"
+          if ! gh release view "$RELEASE" >/dev/null 2>&1; then
+            gh release create "$RELEASE" --prerelease --title "Model maps (automated)" \
+              --notes "Newest model-map images per model, replaced automatically by the Model maps workflow. Not a software release." \
+              || gh release view "$RELEASE" >/dev/null
+          fi
+          # Upload the new result first, then delete THIS product's other assets; other products' assets are never touched.
+          gh release upload "$RELEASE" "$asset" --clobber
+          for old in $(gh release view "$RELEASE" --json assets -q '.assets[].name' \
+                       | grep -E "^${MODEL}-[0-9]{10}(-[0-9a-f]{8})?\.tar$" || true); do
+            if [ "$old" != "$asset" ]; then
+              gh release delete-asset "$RELEASE" "$old" -y
+            fi
+          done
+
+      - name: Redeploy the site
+        if: steps.render.outputs.new == 'true'
+        run: gh workflow run update-site.yml --ref "${{ github.event.repository.default_branch }}"

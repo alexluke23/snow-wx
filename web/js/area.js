@@ -668,11 +668,11 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     sec.hidden = false;
     const body = $("verif-body");
     if (!near) { body.innerHTML = `<p class="hint">No SNOTEL site is near enough to compare with.</p>`; return; }
-    const index = await getJSON("data/verification.json").catch(() => null);
+    const index = await getJSON(`${VerificationUI.BASE}verification.json`).catch(() => null);
     if (!index) { body.innerHTML = `<p class="hint">Verification results are not available yet.</p>`; return; }
     const st = VerificationUI.status(index, near.id);
     if (st.state !== "ready") { body.innerHTML = `<p class="collecting" role="status">${esc(VerificationUI.collecting(st))}</p>`; return; }
-    const doc = await getJSON(`data/verification/${encodeURIComponent(near.id.replace(/:/g, "_"))}.json`).catch(() => null);
+    const doc = await getJSON(`${VerificationUI.BASE}verification/${encodeURIComponent(near.id.replace(/:/g, "_"))}.json`).catch(() => null);
     if (!doc) { body.innerHTML = `<p class="hint">Results for this site could not be loaded.</p>`; return; }
     const where = { name: near.name, proxy, distKm: near.dist_km ?? null, dz: near.dz_base_ft ?? null };
     body.innerHTML = `<div class="chart" id="verif-chart" style="height:240px"><p class="hint">Loading chart…</p></div>
