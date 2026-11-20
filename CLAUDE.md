@@ -177,7 +177,11 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 19 2026, dev19 branch; the uncommitted dev19_report.md has the briefing)**
+**Current state (Nov 19 2026, dev20 branch; the uncommitted dev20_report.md has the briefing; owner summary: docs/STATE_SNAPSHOT.md)**
+- **dev20 (branch, on top of merged dev19):** ECMWF remembers the mirror that worked (`data_cache/ecmwf/mirror_pref.json`, others re-probed once a day) and keeps only the newest 2 cycles
+  (<= 300 MB; ~1.1 MB per cycle). ECMWF tests must never write the real data_cache (autouse fixture patches `E.REPO_ROOT`). **AIFS** (`aifs.enabled: true`, `in_badge: false`): fetched inside
+  `pipeline ecmwf` after HRES/ENS are written, own fetcher + time budget, output `models/ecmwf/aifs/precip.json` (AIFS tp is in MM, IFS tp in METRES). Share cards `pipeline og` (OFF,
+  `og_images.enabled`; og:image only with pages too; DejaVu font in pipeline/assets/fonts). Browser suite reworked (see the gotcha below).
 - **dev19 (branch, on top of merged dev18):** ECMWF fetch resilience: `pipeline/fetch_resilient.py` (shared `Fetcher`, also used by `gefs.py`): full-jitter backoff, Retry-After, >= 8 attempts, adaptive workers (3), per-run mirror failover AWS regional
   (`ecmwf-forecasts.s3.eu-central-1.amazonaws.com`) -> Google (`storage.googleapis.com/ecmwf-open-data`) -> ECMWF portal; a step that cannot be fetched is a GAP for all members + HRES (`steps_missing`, never interpolated); a run needs >= 90 % of the steps
   and the first 120 h else exit 0 `new=false`; per-cycle resume cache `data_cache/ecmwf/<cycle>/` restored/saved by `ecmwf.yml` (`actions/cache`, `if: always()`); fetch health in index.json/meta.json/status page. `--published` takes the full tag `<cycle>-<hash>`.
