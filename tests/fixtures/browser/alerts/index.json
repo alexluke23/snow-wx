@@ -1,0 +1,1089 @@
+{
+"generated_at": "2026-11-20T02:22:15Z",
+"count": 6,
+"source": "NOAA/NWS active alerts (api.weather.gov)",
+"alerts": {
+"4b75b1321a": {
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"severity": "Severe",
+"headline": "Winter Storm Warning issued November 19 at 4:46PM PST until November 20 at 4:00AM PST by NWS Hanford CA",
+"sender": "NWS Hanford CA",
+"area": "Yosemite NP outside of the valley; San Joaquin River Canyon; Upper San Joaquin River; Kaiser to Rodgers Ridge; Kings Canyon NP; Grant Grove Area; Sequoia NP; South End of the Upper Sierra",
+"effective": "2026-11-19T16:46:00-08:00",
+"onset": "2026-11-19T16:46:00-08:00",
+"ends": "2026-11-20T04:00:00-08:00",
+"expires": "2026-11-20T01:00:00-08:00"
+},
+"88a8e9c6f1": {
+"event": "Freezing Fog Advisory",
+"short": "Freezing Fog Adv.",
+"level": "advisory",
+"severity": "Moderate",
+"headline": "Freezing Fog Advisory issued November 19 at 4:02PM PST until November 20 at 10:00AM PST by NWS Pendleton OR",
+"sender": "NWS Pendleton OR",
+"area": "Northern Blue Mountains of Oregon",
+"effective": "2026-11-19T16:02:00-08:00",
+"onset": "2026-11-19T16:02:00-08:00",
+"ends": "2026-11-20T10:00:00-08:00",
+"expires": "2026-11-20T10:00:00-08:00"
+},
+"2c673f2095": {
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"severity": "Severe",
+"headline": "Winter Storm Warning issued November 19 at 1:40PM PST until November 20 at 4:00AM PST by NWS Las Vegas NV",
+"sender": "NWS Las Vegas NV",
+"area": "Spring Mountains-Red Rock Canyon",
+"effective": "2026-11-19T13:40:00-08:00",
+"onset": "2026-11-19T13:40:00-08:00",
+"ends": "2026-11-20T04:00:00-08:00",
+"expires": "2026-11-20T04:00:00-08:00"
+},
+"4644fa69d7": {
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"severity": "Severe",
+"headline": "Winter Storm Warning issued November 19 at 1:05PM PST until November 20 at 4:00AM PST by NWS Reno NV",
+"sender": "NWS Reno NV",
+"area": "Lassen-Eastern Plumas-Eastern Sierra Counties",
+"effective": "2026-11-19T13:05:00-08:00",
+"onset": "2026-11-19T13:05:00-08:00",
+"ends": "2026-11-20T04:00:00-08:00",
+"expires": "2026-11-20T04:00:00-08:00"
+},
+"48c8c62746": {
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"severity": "Severe",
+"headline": "Winter Storm Warning issued November 19 at 1:05PM PST until November 20 at 4:00AM PST by NWS Reno NV",
+"sender": "NWS Reno NV",
+"area": "Greater Lake Tahoe Area; Greater Lake Tahoe Area",
+"effective": "2026-11-19T13:05:00-08:00",
+"onset": "2026-11-19T13:05:00-08:00",
+"ends": "2026-11-20T04:00:00-08:00",
+"expires": "2026-11-20T04:00:00-08:00"
+},
+"13575b9749": {
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"severity": "Severe",
+"headline": "Winter Storm Warning issued November 19 at 9:56AM PST until November 20 at 4:00AM PST by NWS Sacramento CA",
+"sender": "NWS Sacramento CA",
+"area": "Lassen Volcanic National Park; Sierra Nevada of Tehama-Butte-Plumas Counties Above 3000 ft; Sierra Nevada of Yuba-Sierra-Nevada-Placer Counties Between 3000-5000 ft Including Interstate 80; Sierra Nevada of Sierra-Nevada-Placer Counties Above 5000 ft Including Interstate 80; Sierra Nevada of El Dorado and Amador Counties Between 3000-5000 ft Including Highway 50; Sierra Nevada of El Dorado-Amador-Northern Alpine Counties Above 5000 ft Including Highway 50; Sierra Nevada of Calaveras and Tuolumne Counties Between 3000-5000 ft; Sierra Nevada of Calaveras-Tuolumne-Southern Alpine Counties Above 5000 ft",
+"effective": "2026-11-19T09:56:00-08:00",
+"onset": "2026-11-19T09:56:00-08:00",
+"ends": "2026-11-20T04:00:00-08:00",
+"expires": "2026-11-20T04:00:00-08:00"
+}
+},
+"areas": {
+"alta-sierra-ski-resort": [
+{
+"id": "4b75b1321a",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"badger-pass-ski-area": [
+{
+"id": "4b75b1321a",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"china-peak-mountain-resort": [
+{
+"id": "4b75b1321a",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-balsam-meadows-sno-park": [
+{
+"id": "4b75b1321a",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-coyote-sno-park": [
+{
+"id": "4b75b1321a",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-eastwood-sno-park": [
+{
+"id": "4b75b1321a",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-goat-meadow-trailhead-snow-play": [
+{
+"id": "4b75b1321a",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-huntington-lake-sno-park": [
+{
+"id": "4b75b1321a",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-tamarack-ridge-sno-park": [
+{
+"id": "4b75b1321a",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-andies-prairie-sp": [
+{
+"id": "88a8e9c6f1",
+"event": "Freezing Fog Advisory",
+"short": "Freezing Fog Adv.",
+"level": "advisory",
+"ends": "2026-11-20T10:00:00-08:00",
+"relevant": true
+}
+],
+"sp-emily-sno-park": [
+{
+"id": "88a8e9c6f1",
+"event": "Freezing Fog Advisory",
+"short": "Freezing Fog Adv.",
+"level": "advisory",
+"ends": "2026-11-20T10:00:00-08:00",
+"relevant": true
+}
+],
+"sp-morning-creek-sno-park": [
+{
+"id": "88a8e9c6f1",
+"event": "Freezing Fog Advisory",
+"short": "Freezing Fog Adv.",
+"level": "advisory",
+"ends": "2026-11-20T10:00:00-08:00",
+"relevant": true
+}
+],
+"sp-snow-park-or": [
+{
+"id": "88a8e9c6f1",
+"event": "Freezing Fog Advisory",
+"short": "Freezing Fog Adv.",
+"level": "advisory",
+"ends": "2026-11-20T10:00:00-08:00",
+"relevant": true
+}
+],
+"sp-spout-springs": [
+{
+"id": "88a8e9c6f1",
+"event": "Freezing Fog Advisory",
+"short": "Freezing Fog Adv.",
+"level": "advisory",
+"ends": "2026-11-20T10:00:00-08:00",
+"relevant": true
+}
+],
+"sp-woodland-sp": [
+{
+"id": "88a8e9c6f1",
+"event": "Freezing Fog Advisory",
+"short": "Freezing Fog Adv.",
+"level": "advisory",
+"ends": "2026-11-20T10:00:00-08:00",
+"relevant": true
+}
+],
+"lee-canyon": [
+{
+"id": "2c673f2095",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"coppervale": [
+{
+"id": "4644fa69d7",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-fredonyer": [
+{
+"id": "4644fa69d7",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-gold-lake-staging-area": [
+{
+"id": "4644fa69d7",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-swain-mountain-snowmobile-park": [
+{
+"id": "4644fa69d7",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+},
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"homewood-ski-area": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"northstar-at-tahoe-resort": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"palisades-tahoe-alpine-meadows": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+},
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"palisades-tahoe-olympic-valley": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+},
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"tahoe-donner-downhill-ski-area": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"diamond-peak": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"heavenly-mountain-resort": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"mount-rose-ski-tahoe": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sky-tavern": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-adventure-mountain-snow-play-area": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+},
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-echo-summit-nordic-at-adventure-mountain": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+},
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-hope-valley-sno-park": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-hope-valley-trailhead-snowpark": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"bear-valley": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"boreal-mountain-resort": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"dodge-ridge-ski-area": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"donner-ski-ranch": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"kirkwood-mountain-resort": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sierra-at-tahoe-ski-resort": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"soda-springs": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sugar-bowl-resort": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-ashpan-snow-park": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-bvac-ski-and-sledding-area-trailhead": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-big-creek-snowpark-parking": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-bucks-summit-snowpark": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-crabtree-x-country-trailhead": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-donner-summit-california-state-snopark": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-eskimo-hill": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-four-trees-warming-hut": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-highway-108-sno-park": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-iron-mountain-sno-park": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-jonesville-snow-park": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-kirkwood-nordic": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-lake-alpine-sno-park": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-mooreville-warming-hut": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-morgan-summit-snowmobile-park": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-onion-valley-warming-hut": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-sawmill-ridge-warming-hut": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-south-fork-warming-hut": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-spicer-sno-park": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"sp-yuba-pass-snow-park": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+]
+},
+"points": {
+"snotel-470-OR-SNTL": [
+{
+"id": "88a8e9c6f1",
+"event": "Freezing Fog Advisory",
+"short": "Freezing Fog Adv.",
+"level": "advisory",
+"ends": "2026-11-20T10:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-523-OR-SNTL": [
+{
+"id": "88a8e9c6f1",
+"event": "Freezing Fog Advisory",
+"short": "Freezing Fog Adv.",
+"level": "advisory",
+"ends": "2026-11-20T10:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-1079-OR-SNTL": [
+{
+"id": "88a8e9c6f1",
+"event": "Freezing Fog Advisory",
+"short": "Freezing Fog Adv.",
+"level": "advisory",
+"ends": "2026-11-20T10:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-1111-NV-SNTL": [
+{
+"id": "2c673f2095",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-1112-NV-SNTL": [
+{
+"id": "2c673f2095",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-1350-NV-SNTL": [
+{
+"id": "2c673f2095",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-1110-NV-SNTL": [
+{
+"id": "2c673f2095",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-1277-CA-SNTL": [
+{
+"id": "4644fa69d7",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-539-CA-SNTL": [
+{
+"id": "4644fa69d7",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-540-CA-SNTL": [
+{
+"id": "4644fa69d7",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-1051-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-462-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-463-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-473-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-508-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-518-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-1050-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-541-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-633-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-697-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-724-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-778-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-809-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-834-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-848-CA-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-340-NV-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-1242-NV-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-615-NV-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-652-NV-SNTL": [
+{
+"id": "48c8c62746",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-356-CA-SNTL": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-1067-CA-SNTL": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-428-CA-SNTL": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-1049-CA-SNTL": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-1331-CA-SNTL": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+],
+"snotel-784-CA-SNTL": [
+{
+"id": "13575b9749",
+"event": "Winter Storm Warning",
+"short": "Winter Storm Warn.",
+"level": "warning",
+"ends": "2026-11-20T04:00:00-08:00",
+"relevant": true
+}
+]
+}
+}

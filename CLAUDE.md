@@ -190,7 +190,10 @@ Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-
   cookieless analytics (`analytics.enabled: false`; `web/js/analytics.js` is fetched only when enabled), `pipeline linkcheck`, `web/404.html`, `docs/cloudflare_headers.draft` (+ `browser_check --only csp`),
   verification UI behind `verification_ui.enabled: false` (`pipeline verify --publish`), W1 rehearsal (`tools/w1_rehearsal.py`, `pipeline stub`, `docs/w1_cutover_checklist.md`).
 - **Built but OFF (never enable from a dev session):** `wind_exposure.enabled` (W7), `alerts_backend.enabled` (W6), `analytics.enabled`, `verification_ui.enabled`, `pages.enabled`, `pwa.enabled` (W1 first).
-- Browser suite: `tools/browser_check.py` has 28 checks (adds models, webcams, privacy, analytics, csp, verifyui, failure); full run ~15-20 min: run it to a FILE (`> out.txt`), a pipe to `tail` hides the ok/FAIL lines.
+- Browser suite (dev20): `tools/browser_check.py` 29 checks (the full run splits `failure` into failure1-3), 4 parallel workers (`--jobs`), each check in its own Chrome profile + server port on a
+  private build copy with FROZEN inputs (`tools/browser_fixtures.py`: recorded alert snapshot shifted to "active now"; third-party hosts answered from `tests/fixtures/browser/`, anything
+  else refused). Full run ~5-6 min; `--quick` (8 checks) ~1.5 min for per-item runs. No fixed sleeps: `open()` waits for the page's READY signal then for quiet (`settle`); background
+  work with no page signal (service worker, analytics queue) must be POLLED, never slept on. Re-record fixtures only with `tools/browser_fixtures.py record` (network once).
 - Open: W3 meta description (W2) + Low-confidence rule; `HEALTHCHECK_URL` secret; W1 then enable pwa/pages; real-device PWA tests; M9 verification when the archive grows; owner: analytics provider, legal review, W6 decisions, W7 reviewer.
 
 **Reusable gotchas (earlier session log: docs/ARCHIVE.md)**
