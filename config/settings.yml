@@ -127,7 +127,8 @@ aifs:
   # ECMWF AIFS Single (AI model, CC BY 4.0) total precipitation as one more, EXPERIMENTAL line in "Precipitation by model" (dev20). Fetched INSIDE `pipeline ecmwf`
   # (no new workflow) after the HRES/ENS files are written, with its own fetcher and a time budget: a failure is recorded in the fetch health, never raised.
   # in_badge: false keeps it out of the model-agreement badge (an unverified ML model would tilt a heuristic that is not verified either; docs/specs/multi-model.md).
-  enabled: false
+  # ON since dev20 after the live validation (9 of 9 values match an independent read); false drops the line (status row: "not enabled").
+  enabled: true
   in_badge: false
   max_seconds: 180
 
