@@ -65,7 +65,17 @@ site:
   # Folder the site is served from ("" = root; "/snow-wx" on GitHub Pages today). Pages emit scripts as "<base_path>/js/...", and
   # web/js/site-config.js loads data/meta.json relative to its own location, so nested pages (W2) work. Used by pages.py (W2).
   base_path: "/snow-wx"     # GitHub Pages project site today; "" at the W1 custom-domain cutover
+  # Brand (dev20): PLACEHOLDERS until the owner picks the name. Used by the share cards (pipeline/og.py) and the W2 page titles (pages.py).
+  name: "Snow-Wx"
+  tagline: "Open snow forecasts for western US mountains"
   feedback_email: "alexluke2323@gmail.com"
+
+og_images:
+  # Share-card images 1200x630 (pipeline/og.py, `python -m pipeline og`): one per ski area + a generic Sno-Park and site card. OFF; pages.py
+  # references og:image only when BOTH this and pages.enabled are on (W1/W2 first). days = whole 12Z-12Z days on the card's chart.
+  enabled: false
+  days: 5
+  colors: 64
 
 pages:
   # W2 prerendered area pages (pipeline/pages.py, `python -m pipeline pages`). OFF until the domain/base path is decided and the
