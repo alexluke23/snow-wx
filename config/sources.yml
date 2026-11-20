@@ -32,6 +32,15 @@ sources:
     credit: "Data: NOAA / National Weather Service"
     hosts: [weather.gov, noaa.gov, noaa-gefs-pds.s3.amazonaws.com, noaa-nbm-grib2-pds.s3.amazonaws.com, noaa-ndfd-pds.s3.amazonaws.com, noaa-hrrr-bdp-pds.s3.amazonaws.com, noaa-rrfs-pds.s3.amazonaws.com, noaa-gfs-bdp-pds.s3.amazonaws.com, mapservices.weather.noaa.gov]
     notes: "Model data comes from the NOAA Open Data Dissemination (NODD) buckets on AWS. api.weather.gov is called by OUR pipeline only (alerts, forecast discussions, the hazard text); since dev19 the visitor's browser never calls it. It asks for an identifying User-Agent; ours is generic (no e-mail address)."
+  - id: noaa-gefs
+    name: NOAA / NWS NCEP Global Ensemble Forecast System (GEFS)
+    kind: data
+    role: "The NOAA GEFS ensemble plume (Ensemble view, ECMWF ENS | NOAA GEFS switch): total precipitation and a snow estimate at ski-area summits, all members"
+    licence: "US Government work: public domain"
+    licence_url: https://www.weather.gov/disclaimer
+    credit: "Data: NOAA / NWS National Centers for Environmental Prediction (NCEP) GEFS, via the NOAA Open Data Dissemination program"
+    hosts: []
+    notes: "Fetched by our pipeline only (.github/workflows/gefs.yml, byte ranges from noaa-gefs-pds.s3.amazonaws.com); the visitor's browser never contacts NOAA for it."
   - id: nws-hazards-map
     name: NOAA / National Weather Service winter-hazard map service
     kind: data

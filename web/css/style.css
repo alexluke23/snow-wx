@@ -317,7 +317,7 @@ main.finder { display: block; overflow-y: auto; padding: 10px 14px 24px; width: 
 .chart-sum { margin: 6px 0 6px; font-size: 14px; line-height: 1.4; color: #1d2733; font-weight: 500; }
 .chart { min-height: 200px; }
 .chart-table { margin: 4px 0 10px; font-size: 13px; }
-.chart-table > summary { cursor: pointer; color: #1f5fa8; padding: 10px 0; min-height: 24px; list-style-position: inside; }  /* >= 40 px tap target */
+.chart-table > summary { cursor: pointer; color: #1f5fa8; padding: 10px 0; min-height: 40px; box-sizing: border-box; line-height: 20px; list-style-position: inside; }  /* >= 40 px tap target (dev21: was 37 px in WebKit/Firefox) */
 .chart-table > summary:focus-visible { outline: 2px solid #1f5fa8; outline-offset: 2px; }
 .tbl-wrap { overflow-x: auto; max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
 .tbl-wrap table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
@@ -600,3 +600,10 @@ main.status { max-width: 980px; width: 100%; box-sizing: border-box; } .status .
 /* dev21 Part 0c: the "report a bad summary" mailto link is revealed later by site-config.js (address from meta.json): keep its inline space from the first paint
    (invisible, not announced) so revealing it never shifts the page. With an active NWS alert the summary outgrows its reserved height and this was a 21 px shift. */
 .summary-note [data-mailto-wrap][hidden], .summary-note [data-mailto-wrap][hidden] a[data-mailto][hidden] { display: inline !important; visibility: hidden; }   /* beats the global [hidden] rule (more specific) */
+/* dev21 Part 3 (WebKit / Firefox smoke): tap targets >= 40 px at phone width. Firefox and Safari draw selects, search boxes and range sliders shorter than Chrome,
+   and Leaflet's touch zoom buttons are 30 px. */
+@media (max-width: 520px) {
+  body .leaflet-touch .leaflet-bar a { width: 40px; height: 40px; line-height: 40px; }
+  select, input[type="search"], input[type="text"], .search input { min-height: 40px; box-sizing: border-box; }
+  input[type="range"] { min-height: 40px; }
+}

@@ -395,6 +395,12 @@ def main(argv=None) -> int:
     p.add_argument("--publish", default=None, help="also write the public verification JSON (data/verification.json + data/verification/<site>.json) into this data folder")
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("archive-check", help="forecast-archive integrity: columns never change, rows only grow, no month missing (exit 1 on a problem)")
+    p.add_argument("--dir", default=None, help="folder with the monthly CSVs")
+    p.add_argument("--release", default=None, help="download from this release instead (needs gh), e.g. verification")
+    p.add_argument("--state", default=None, help="JSON of the previous check (read, then rewritten): header and row count per file")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("verify-ci", help="CI (verify.yml): score the downloaded archive into <out>/verify/ (verification.json + per-site files + run.json); exit 0 when nothing new")
     p.add_argument("--dir", required=True, help="folder with the archive CSVs (gh release download verification)")
     p.add_argument("--out", default="out/models", help="models folder of the product tar (the result lands in <out>/verify/)")
@@ -489,6 +495,12 @@ def main(argv=None) -> int:
         from . import verify
         print(json.dumps(verify.run(Path(args.dir), Path(args.out), load_config(args.config), args.min_hours, Path(args.publish) if args.publish else None), indent=1, default=str))
         return 0
+    if args.cmd == "archive-check":
+        from . import archive_check
+        if not args.dir and not args.release:
+            print("archive-check: give --dir or --release")
+            return 2
+        return archive_check.run(Path(args.dir) if args.dir else None, Path(args.state) if args.state else None, args.release)
     if args.cmd == "verify-ci":
         from . import verify
         res = verify.ci_run(Path(args.dir), Path(args.out), load_config(args.config), args.published, args.github_output)

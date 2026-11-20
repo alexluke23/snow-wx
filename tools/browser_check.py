@@ -1244,21 +1244,22 @@ def check_ensemble(b: Browser, base: str, log):
         # GEFS (dev18 stretch, built OFF): when its plume is in the build, an ECMWF | GEFS switch appears in the Ensemble view only, and GEFS draws 31 members with no HRES line
         gplume = Path(base_dir_holder["path"]) / "models" / "gefs" / "plume" / "alta-ski-area.json"
         if gplume.exists() and "gefs" in (json.loads((Path(base_dir_holder["path"]) / "data" / "multimodel.json").read_text(encoding="utf-8")).get("plumes") or []):
+            gn = json.loads(gplume.read_text(encoding="utf-8"))["n_members"]           # member count from the data, never hard-coded
             for width in (1280, 375):
                 b.open(f"{base}/area.html#alta-ski-area", width=width, wait=8)
                 wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20); b.settle(3)
                 hid = b.eval("document.getElementById('ens-src').hidden")
                 b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1"); b.settle(3.5)
                 shown = b.eval("(() => { const s = document.getElementById('ens-src'); return {hidden: s.hidden, btns: [...s.querySelectorAll('button')].map(x => [x.textContent.trim(), x.getAttribute('aria-pressed'), Math.round(x.getBoundingClientRect().height)])}; })()")
-                need(hid is True and shown["hidden"] is False and [x[0] for x in shown["btns"]] == ["ECMWF", "GEFS"] and all(x[2] >= 40 for x in shown["btns"]), f"source switch only in the Ensemble view: {hid} {shown}")
+                need(hid is True and shown["hidden"] is False and [x[0] for x in shown["btns"]] == ["ECMWF ENS", "NOAA GEFS"] and all(x[2] >= 40 for x in shown["btns"]), f"source switch only in the Ensemble view: {hid} {shown}")
                 b.eval("[...document.querySelectorAll('#ens-src button')].find(x => x.dataset.s === 'gefs').click(); 1"); b.settle(3.5)
                 g = b.eval("""(() => { const el = document.getElementById('mm-chart'), d = el.data || [];
                   return {names: d.map(t => t.name), nulls: d[0] ? d[0].x.filter(v => v === null).length : 0, aria: el.getAttribute('aria-label'), badge: document.getElementById('mm-badge').textContent,
                           note: document.getElementById('mm-note').textContent, announce: document.getElementById('mm-announce').textContent,
                           pressed: [...document.querySelectorAll('#ens-src button')].map(x => x.getAttribute('aria-pressed')), hscroll: document.documentElement.scrollWidth > innerWidth + 2}; })()""")
                 log(f"  gefs {width}px: {g['names']}, segments {g['nulls']}, aria: {g['aria']}")
-                need(g["nulls"] == 31 and "HRES" not in g["names"] and {"Median", "Mean"} <= set(g["names"]), f"GEFS plume traces: {g['names']} segments {g['nulls']}")
-                need((g["aria"] or "").startswith("GEFS ensemble (31 members): median ") and "NOAA GEFS" in g["badge"] and "control run plus the perturbed members" in g["badge"], f"GEFS headline / badge: {g['aria']} / {g['badge']}")
+                need(g["nulls"] == gn and "HRES" not in g["names"] and {"Median", "Mean"} <= set(g["names"]), f"GEFS plume traces: {g['names']} segments {g['nulls']}")
+                need((g["aria"] or "").startswith(f"GEFS ensemble ({gn} members): median ") and "NOAA GEFS" in g["badge"] and "control run plus the perturbed members" in g["badge"], f"GEFS headline / badge: {g['aria']} / {g['badge']}")
                 need("public domain" in g["note"] and "not bias-corrected" in g["note"] and "ECMWF" not in g["note"], f"GEFS note: {g['note'][:200]}")
                 need(g["announce"].startswith("Showing the GEFS ensemble") and g["pressed"] == ["false", "true"] and not g["hscroll"], f"GEFS announce / state: {g}")
                 b.eval("[...document.querySelectorAll('#mm-mode button')].find(x => x.dataset.m === 'snow').click(); 1"); b.settle(2.5)
