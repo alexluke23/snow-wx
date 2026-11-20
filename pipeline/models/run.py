@@ -325,7 +325,7 @@ def run_model(cfg: dict, model: str, out: Path, *, fhours: list[int] | None = No
         log.error("%s: no images produced", model)
         return 1
 
-    index = build_index(cfg, model, cycle, ok)
+    index = build_index(cfg, model, cycle, ok, frame_sizes(run_dir, ok))
     index["seconds"] = round(time.time() - t_start, 1)
     index["failed_frames"] = failed_frames
     write_json(model_dir / "index.json", index)
@@ -344,7 +344,34 @@ def run_model(cfg: dict, model: str, out: Path, *, fhours: list[int] | None = No
     return 0
 
 
-def build_index(cfg: dict, model: str, cycle: datetime, ok: list[dict]) -> dict:
+PNG_MAGIC = bytes([137, 80, 78, 71, 13, 10, 26, 10])
+
+
+def png_size(path: Path) -> list[int] | None:
+    """[width, height] from a PNG's IHDR chunk (stdlib only), None when the file is not a readable PNG."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(24)
+    except OSError:
+        return None
+    if len(head) < 24 or head[:8] != PNG_MAGIC or head[12:16] != b"IHDR":
+        return None
+    return [int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")]
+
+
+def frame_sizes(run_dir: Path, ok: list[dict]) -> dict[str, dict[str, list[int]]]:
+    """{field: {domain: [w, h]}}: the viewer reserves the picture's box from this before the PNG arrives (no layout shift)."""
+    out: dict[str, dict[str, list[int]]] = {}
+    for r in ok:
+        d = out.setdefault(r["field"], {})
+        if r["domain"] not in d:
+            sz = png_size(Path(run_dir) / r["field"] / r["domain"] / f"f{r['f']:03d}.png")
+            if sz:
+                d[r["domain"]] = sz
+    return out
+
+
+def build_index(cfg: dict, model: str, cycle: datetime, ok: list[dict], sizes: dict | None = None) -> dict:
     """Index JSON the viewer reads: fields, domains and forecast hours that exist."""
     mcfg = cfg["models"][model]
     cid = cycle.strftime("%Y%m%d%H")
@@ -367,7 +394,8 @@ def build_index(cfg: dict, model: str, cycle: datetime, ok: list[dict]) -> dict:
         "fields": {
             name: {**FIELD_INFO[name],
                    "domains": sorted(fields[name]["domains"], key=order.index),
-                   "fhours": sorted(fields[name]["fhours"])}
+                   "fhours": sorted(fields[name]["fhours"]),
+                   **({"size": sizes[name]} if sizes and sizes.get(name) else {})}
             for name in mcfg["fields"] if name in fields
         },
         "images": len(ok),

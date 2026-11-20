@@ -135,7 +135,7 @@ def test_run_is_gated_by_the_config_flag(monkeypatch):
     import yaml
     from pathlib import Path
     cfg = yaml.safe_load((Path(__file__).resolve().parents[1] / "config" / "settings.yml").read_text(encoding="utf-8"))
-    assert cfg["ecmwf"]["enabled"] is False and E.steps_for(E.configure(cfg))[:3] == [0, 6, 12] and E.steps_for(E.configure(cfg))[-1] == 240
+    assert cfg["ecmwf"]["enabled"] is True and E.DEFAULTS["enabled"] is False and E.steps_for(E.configure(cfg))[:3] == [0, 6, 12] and E.steps_for(E.configure(cfg))[-1] == 240
 
 
 def test_attribution_names_the_source_licence_and_that_the_data_were_adapted():
@@ -152,8 +152,8 @@ class _Resp:
 class FakeMirror:
     """serves .index text and byte-range 'GRIB' blobs; HEAD for the cycle probe. `members_missing` drops member messages at every step."""
 
-    def __init__(self, members=50, missing=0, steps=(0, 6, 12), head_ok=True):
-        self.members, self.missing, self.steps, self.head_ok = members, missing, steps, head_ok
+    def __init__(self, members=50, missing=0, steps=(0, 6, 12), head_ok=True, missing_from=12):
+        self.members, self.missing, self.steps, self.head_ok, self.missing_from = members, missing, steps, head_ok, missing_from
         self.headers = {}
         self.gets = []
 
@@ -164,7 +164,7 @@ class FakeMirror:
                 rows.append({"type": "fc", "stream": "oper", "levtype": "sfc", "step": str(step), "param": p, "_offset": off, "_length": 10}); off += 10
         else:
             for p in ("tp", "sf"):
-                for n in range(1, self.members + 1 - self.missing):
+                for n in range(1, self.members + 1 - (self.missing if step >= self.missing_from else 0)):     # the count is read from the FIRST ensemble step; later gaps are missing members
                     rows.append({"type": "pf", "stream": "enfo", "levtype": "sfc", "number": str(n), "step": str(step), "param": p, "_offset": off, "_length": 10}); off += 10
         return "\n".join(json.dumps(r) for r in rows)
 
@@ -224,7 +224,7 @@ def test_too_many_missing_member_messages_fail_the_run_and_write_nothing(tmp_pat
     assert not (tmp_path / "models" / "ecmwf").exists()
     res, _ = run_fake(tmp_path, monkeypatch, FakeMirror(missing=4), force=False)                    # 4 of 50 missing: tolerated, counted
     d = json.loads((tmp_path / "models" / "ecmwf" / "plume" / "alta.json").read_text(encoding="utf-8"))
-    assert res["missing_member_messages"] == 8 and d["tp"][1][49] is None and d["tp"][1][0] is not None
+    assert res["missing_member_messages"] == 4 and d["tp"][2][49] is None and d["tp"][2][0] is not None and d["tp"][1][49] is not None
 
 
 def test_disabled_flag_downloads_nothing(tmp_path, monkeypatch):
@@ -263,3 +263,19 @@ def test_missing_hres_files_leave_a_gap_not_a_failure_and_an_empty_result_keeps_
     with pytest.raises(RuntimeError, match="not on the mirror"):
         E.run({"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 1}}, NoEns(), tmp_path / "m", cycle=CYC, points=PTS[:1])
     assert (tmp_path / "m" / "ecmwf" / "plume" / "alta.json").read_bytes() == before
+
+
+def test_member_count_comes_from_the_data_never_a_constant(tmp_path, monkeypatch):
+    """the mirror happens to list 50 perturbed members today; if that changes (a control member joins, a member is dropped) the plume, index and wording follow the file"""
+    for n in (50, 53, 31):
+        out = tmp_path / f"m{n}"
+        res = E.run({"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 1}}, FakeMirror(members=n), out, cycle=CYC, points=PTS[:1]) if _patched(monkeypatch) else None
+        d = json.loads((out / "ecmwf" / "plume" / "alta.json").read_text(encoding="utf-8"))
+        idx = json.loads((out / "ecmwf" / "index.json").read_text(encoding="utf-8"))
+        assert res["n_members"] == d["n_members"] == idx["n_members"] == n and len(d["tp"][1]) == n and d["control_member"] is False
+
+
+def _patched(monkeypatch):
+    monkeypatch.setattr(E, "decode", lambda blob: np.full((721, 1440), 0.002, dtype="float32"))
+    monkeypatch.setattr(E.time, "sleep", lambda s: None)
+    return True

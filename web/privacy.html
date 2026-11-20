@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snow-Wx · Privacy</title>
+  <meta name="description" content="What Snow-Wx stores in your browser and which other services your browser contacts: no cookies, no accounts, no analytics (draft for owner and lawyer review).">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="about-page doc-page">
+  <header>
+    <h1>Snow-Wx <span>Western US</span></h1>
+    <nav class="site-nav">
+      <a href="mine.html"><span class="nav-long">★ My mountains</span><span class="nav-short">★ Mine</span></a>
+      <a href="index.html"><span class="nav-long">Obs map</span><span class="nav-short">Map</span></a>
+      <a href="finder.html"><span class="nav-long">Powder Finder</span><span class="nav-short">Finder</span></a>
+      <a href="models.html"><span class="nav-long">Model maps</span><span class="nav-short">Models</span></a>
+      <a href="about.html">About</a>
+    </nav>
+    <form class="site-search" role="search" autocomplete="off">
+      <button type="button" class="ss-toggle" aria-label="Search ski areas and SNOTEL sites" aria-expanded="false" aria-controls="ss-input">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </button>
+      <div class="ss-box">
+        <label class="sr" for="ss-input">Search ski areas and SNOTEL sites</label>
+        <input id="ss-input" type="search" placeholder="Search ski areas, SNOTEL…" role="combobox" aria-autocomplete="list"
+          aria-expanded="false" aria-controls="ss-list" spellcheck="false" enterkeyhint="go">
+        <ul id="ss-list" class="search-results" role="listbox" aria-label="Search results" hidden></ul>
+      </div>
+    </form>
+  </header>
+
+  <main class="about">
+    <p class="draft-banner" role="note"><b>DRAFT</b> for the owner and a lawyer to review. It is written in plain language, it is not legal advice, and it is not final: nothing here is binding until the owner publishes a final version.</p>
+    <h2>Privacy</h2>
+    <p class="lead"><strong>Snow-Wx sets no cookies, has no accounts, and runs no analytics or advertising today.</strong> This page lists exactly what the site does with your browser,
+      so you can check it. It describes the site as it is built now and will be updated before anything changes.</p>
+    <nav class="toc" aria-label="On this page"><a href="#ours">What we keep</a> · <a href="#browser">What stays in your browser</a> · <a href="#third">Other companies your browser contacts</a> ·
+      <a href="#links">Links to other sites</a> · <a href="#later">If this changes</a></nav>
+    <section id="ours"><h3>What we keep about you</h3>
+      <ul>
+        <li><b>Nothing</b> that identifies you. The site is a set of static files: there is no login, no form and no database that holds visitors.</li>
+        <li>The site is served from GitHub Pages (planned: Cloudflare). Like any web host, the host sees your IP address and the pages you request and keeps ordinary server logs under its own privacy
+          policy. We do not receive or use those logs. [OWNER: update when the host changes.]</li>
+        <li>If you click "Send feedback" or "Report a bust", your e-mail program opens with a message to the feedback address. Nothing is sent until you send it; if you do, we receive your e-mail address and what you wrote.</li>
+      </ul></section>
+    <section id="browser"><h3>What stays in your browser</h3>
+      <p><b>No cookies.</b> The site stores a few settings in your browser's own storage, on your device only. They are never sent to us. Clear them any time with your browser's "clear site data".</p>
+      <div class="tbl-wrap"><table class="st-tbl"><caption class="sr">What Snow-Wx stores in your browser</caption>
+        <thead><tr><th scope="col">Key</th><th scope="col">Where</th><th scope="col">What it holds</th><th scope="col">How long</th></tr></thead>
+        <tbody>
+        <tr><th scope="row"><code>snowwx.favorites</code></th><td>localStorage</td><td>Your favorite ski areas and SNOTEL sites (&quot;My mountains&quot;)</td><td>until you remove them or clear site data</td></tr>
+        <tr><th scope="row"><code>snowwx.home</code></th><td>localStorage</td><td>Whether you chose &quot;My mountains&quot; as your start page</td><td>until you change it</td></tr>
+        <tr><th scope="row"><code>snowwx.home.dismissed</code></th><td>sessionStorage</td><td>That you closed the start-page prompt in this tab</td><td>until you close the tab</td></tr>
+        <tr><th scope="row"><code>snowwx.layers</code></th><td>localStorage</td><td>Which map layers you switched on</td><td>until you reset or clear site data</td></tr>
+        <tr><th scope="row"><code>snowwx.layers.v</code></th><td>localStorage</td><td>The version of the default map layers (so a new default is not forced on you twice)</td><td>until you clear site data</td></tr>
+        <tr><th scope="row"><code>snowwx.finder</code></th><td>localStorage</td><td>Your Powder Finder choices (sort, filters, units)</td><td>until you clear site data</td></tr>
+        <tr><th scope="row"><code>snowwx.pwa.coach</code></th><td>localStorage</td><td>That the &quot;install this app&quot; hint was shown (only if the offline app mode is switched on, which it is not yet)</td><td>until you clear site data</td></tr>
+        </tbody></table></div>
+      <p class="hint">When the optional offline app mode is switched on (not yet), your browser also keeps a copy of the pages and your favorites' forecasts in its cache storage so they work without a connection.</p></section>
+    <section id="third"><h3>Other companies your browser contacts</h3>
+      <p>To draw maps and charts, <b>your browser itself asks the services below for files</b>. Each one therefore sees your IP address, your browser type and what you ask for (for map tiles,
+        roughly the area you are looking at). We do not control their logs; see their privacy policies. Nothing else is requested from other sites when a page loads.</p>
+      <div class="tbl-wrap"><table class="st-tbl"><caption class="sr">Third-party requests your browser makes</caption>
+        <thead><tr><th scope="col">Host</th><th scope="col">Service</th><th scope="col">When</th></tr></thead>
+        <tbody>
+        <tr><th scope="row">api.weather.gov</th><td>NOAA / National Weather Service</td><td>only when you open a winter-hazard popup whose text is not already in our own files (last resort, one request to the National Weather Service)</td></tr>
+        <tr><th scope="row">mapservices.weather.noaa.gov</th><td>NOAA / National Weather Service winter-hazard map service</td><td>when the map loads with the NWS winter hazards layer on (the default on the obs map): map-image requests to NOAA (your IP address and the area you look at go to NOAA)</td></tr>
+        <tr><th scope="row">basemap.nationalmap.gov</th><td>U.S. Geological Survey (The National Map, 3DEP)</td><td>every time the map loads: USGS tile requests (your IP address and the area you look at go to the USGS)</td></tr>
+        <tr><th scope="row">tiles.openfreemap.org</th><td>OpenFreeMap and OpenMapTiles</td><td>when the reference layer is on (default): vector tile and style requests (your IP address and the area you look at go to OpenFreeMap)</td></tr>
+        <tr><th scope="row">cdn.plot.ly</th><td>Plotly.js</td><td>when a page with charts opens (area pages, the obs-map station panel): one script download; your IP address goes to the Plotly CDN</td></tr>
+        </tbody></table></div>
+      <p class="hint">No external fonts, trackers, advertising, social-media buttons or embedded videos are used. Webcams are links only: no webcam picture is loaded here.</p></section>
+    <section id="links"><h3>Links to other sites</h3>
+      <p>Links to the National Weather Service, avalanche centers, resorts, road-condition sites and others open their own websites, which have their own privacy practices. We add no tracking to those links
+        and they open with <code>rel="noopener noreferrer"</code>, so the destination is not told which page you came from.</p></section>
+    <section id="later"><h3>If this changes</h3>
+      <ul>
+        <li><b>Analytics:</b> if we add visitor counts they will be cookieless, with no personal data, no fingerprinting, and they will honour "Do Not Track" and Global Privacy Control. Until then none is loaded
+          (the code is switched off and makes no request).</li>
+        <li><b>E-mail alerts</b> (planned) would need your e-mail address; we would ask you to confirm it, send you a one-click unsubscribe link and delete it when you unsubscribe. This page will say so before launch.</li>
+        <li>Children: the site is not directed at children and collects no personal data from anyone.</li>
+        <li>[OWNER / LAWYER: add your contact details, region-specific rights (for example California and EU/UK) and the date of the final version.]</li>
+      </ul></section>
+    <p class="hint">See also: <a href="sources.html">Sources</a> · <a href="disclaimer.html">Disclaimer</a> · <a href="terms.html">Terms</a>.</p>
+  </main>
+  <footer>Forecasts: NOAA/NWS. Snowpack: USDA NRCS, NOAA/NWS NOHRSC. Ski areas © OpenStreetMap contributors,
+    OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center. · <a href="status.html">Data status</a> · <a href="sources.html">Sources</a> · <a href="disclaimer.html">Disclaimer</a> · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a> <span data-mailto-wrap hidden>· <a class="site-feedback" data-mailto data-subject="Snow-Wx feedback" hidden>Send feedback</a></span>
+  </footer>
+  <script src="js/site-config.js"></script>
+  <script src="js/search.js" defer></script>
+</body>
+</html>

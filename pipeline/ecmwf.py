@@ -156,9 +156,9 @@ def member_shares(totals_mm: np.ndarray, thresholds_in: list[float]) -> dict:
 class Sampler:
     """Collects values at the area cells, step by step: ens[param] -> {step: (n_members, n_areas)}, hres[param] -> {step: (n_areas,)}."""
 
-    def __init__(self, points: list[dict], members: int):
+    def __init__(self, points: list[dict], members: int, index_fn=None):
         self.points, self.n = points, members
-        self.idx = [grid_index(p["lat"], p["lon"]) for p in points]
+        self.idx = [(index_fn or grid_index)(p["lat"], p["lon"]) for p in points]      # index_fn: another 0.25 degree grid (GEFS starts at 0 E, not 180 E)
         self.flat = np.array([i * 1440 + j for i, j in self.idx])
         self.ens: dict[str, dict[int, np.ndarray]] = {"tp": {}, "sf": {}}
         self.hres: dict[str, dict[int, np.ndarray]] = {"tp": {}, "sf": {}}
@@ -191,8 +191,8 @@ class Sampler:
         return monotone(v[:, None])[:, 0]
 
 
-def area_docs(sampler: Sampler, cycle: datetime, steps: list[int]) -> tuple[dict, dict]:
-    """(per-area plume documents, HRES precip.json in the M7 format). Pure given the sampler."""
+def area_docs(sampler: Sampler, cycle: datetime, steps: list[int], model: str = "ECMWF IFS ENS") -> tuple[dict, dict]:
+    """(per-area plume documents, HRES precip.json in the M7 format). Pure given the sampler. `model` names the ensemble in each document (GEFS reuses this)."""
     init = cycle.strftime("%Y-%m-%dT%H:00Z")
     plume, hres_areas = {}, {}
     for a, p in enumerate(sampler.points):
@@ -203,8 +203,8 @@ def area_docs(sampler: Sampler, cycle: datetime, steps: list[int]) -> tuple[dict
         z_ft = None if sampler.z is None or not np.isfinite(sampler.z[a]) else int(round(float(sampler.z[a]) * 3.28084))
         if not np.isfinite(tp[-1]).any() and not np.isfinite(h_tp).any():
             continue
-        plume[p["id"]] = {"id": p["id"], "model": "ECMWF IFS ENS", "init": init, "cycle": cycle.strftime("%Y%m%d%H"), "generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "hours": steps,
-                          "n_members": sampler.n, "unit": f"{Q_STEP_MM} mm", "z_ft": z_ft,
+        plume[p["id"]] = {"id": p["id"], "model": model, "init": init, "cycle": cycle.strftime("%Y%m%d%H"), "generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "hours": steps,
+                          "n_members": sampler.n, "control_member": bool(getattr(sampler, "control_member", False)), "unit": f"{Q_STEP_MM} mm", "z_ft": z_ft,
                           "tp": to_tenths_mm(tp), "sf": to_tenths_mm(sf), "hres_tp": [r[0] for r in to_tenths_mm(h_tp[:, None])],
                           "hres_sf": [r[0] for r in to_tenths_mm(h_sf[:, None])]}
         hres_areas[p["id"]] = {"q": [None if not math.isfinite(v) else round(v * 39.3701, 2) for v in h_tp], "z": z_ft}
@@ -276,7 +276,11 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     now = now or utcnow()
     cyc = cycle or newest_cycle(session, c, now)
     if cyc is None:
-        raise RuntimeError("no complete ECMWF cycle on the mirror yet")
+        # nothing complete on the mirror (a new cycle not released yet, and no older one within 72 h): not an error of ours. new=false, exit 0;
+        # the monitor judges how old the last PUBLISHED run is (monitoring.sources.ecmwf.max_age_hours), so a long outage still alerts
+        log.warning("ecmwf: no complete cycle on the mirror yet; nothing to publish")
+        emit(new="false")
+        return {"ok": True, "skipped": "not-released"}
     from .version import stamp
     tag = stamp(cyc.strftime("%Y%m%d%H"), "ecmwf")
     if published == tag:
@@ -286,7 +290,6 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     steps = steps_for(c)
     t0 = time.time()
     nbytes = {"n": 0}
-    sam = Sampler(pts, c["members"])
     session.headers["User-Agent"] = session.headers.get("User-Agent", "snow-wx")
 
     def fetch(u, row):
@@ -312,6 +315,10 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
             return []
         return parse_index(r.text)
 
+    # the member count comes from the DATA (the perturbed members listed in the first ensemble step), never from a constant: config `members` is only the fallback
+    n_members = len(select(index("enfo", steps[1], True), "tp", "pf")) or c["members"]
+    sam = Sampler(pts, n_members)
+    log.info("ecmwf %s: %d perturbed members in the ensemble index", cyc.strftime("%Y%m%d%H"), n_members)
     # HRES: terrain once, then tp / sf per step (HRES is optional per step: a gap in the line, the ensemble still publishes)
     z = select(index("oper", 0, False), "z").get(0)
     if z:
@@ -329,8 +336,8 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
                 sel = select(erows, param, "pf")
                 fetched = dict(zip(sel, ex.map(lambda k: maybe(url(c, cyc, "enfo", s, "grib2"), sel[k]), sel)))
                 sam.add_ens(param, s, {k: v for k, v in fetched.items() if v is not None})
-            if sam.missing.get(s, 0) > c["max_missing_frac"] * c["members"]:
-                raise RuntimeError(f"ECMWF ENS step {s}: {sam.missing[s]} of {c['members']} member messages missing")
+            if sam.missing.get(s, 0) > c["max_missing_frac"] * n_members:
+                raise RuntimeError(f"ECMWF ENS step {s}: {sam.missing[s]} of {n_members} member messages missing")
     plume, hres_doc = area_docs(sam, cyc, steps)
     if not plume:                                      # nothing usable: fail BEFORE touching the last good files
         raise RuntimeError("ECMWF: no area has data")
@@ -345,7 +352,7 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     write_json(out / "ecmwf" / "precip.json", hres_doc)
     secs = round(time.time() - t0, 1)
     index = {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "cycle": cyc.strftime("%Y%m%d%H"), "init": cyc.strftime("%Y-%m-%dT%H:00Z"),
-             "hours": steps, "n_members": c["members"], "areas": len(plume), "resolution": "0.25 degree", "control_member": False,
+             "hours": steps, "n_members": n_members, "areas": len(plume), "resolution": "0.25 degree", "control_member": False,
              "stale_hours": c["stale_hours"], "missing_member_messages": sum(sam.missing.values()), "bytes_downloaded": nbytes["n"], "seconds": secs,
              "source": "ECMWF Open Data (IFS HRES and ENS), AWS mirror", "attribution": ATTRIBUTION, "license": LICENSE_URL, "terms": TERMS_URL}
     write_json(out / "ecmwf" / "index.json", index)
