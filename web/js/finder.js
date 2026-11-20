@@ -264,6 +264,22 @@
     s.onload = () => resolve(window.L); s.onerror = () => reject(new Error("map failed to load"));
     document.head.appendChild(s);
   }));
+  // Sno-Park symbol: the same 11 px rounded square as before, but drawn on the map's canvas like the ski-area dots. 447 DOM markers (divIcon + tooltip + popup each)
+  // cost ~400 ms of main-thread time on a throttled phone (Lighthouse 86 -> 98, dev19). Not keyboard-focusable before either (the list beside the map is the keyboard path).
+  let SquareMarker = null;
+  function squareMarker(latlng, opts) {
+    SquareMarker ||= L.CircleMarker.extend({
+      _updatePath() {
+        const rd = this._renderer;
+        if (!rd._drawing || this._empty()) return;
+        const p = this._point, h = this._radius, ctx = rd._ctx;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(p.x - h, p.y - h, 2 * h, 2 * h, 2); else ctx.rect(p.x - h, p.y - h, 2 * h, 2 * h);
+        rd._fillStroke(ctx, this);
+      },
+    });
+    return new SquareMarker(latlng, opts);
+  }
   function drawMap(list) {
     if (!map) return;
     layer.clearLayers();
@@ -281,8 +297,7 @@
       }
       const txt = prob ? `${r.prob ?? "–"}% chance ≥ ${st.px}"${r.pmean === null ? "" : ` (expected ${fmt(r.pmean)}")`}` : `expected ${fmt(r.snow)}"${r.hi === null || r.hi === undefined ? "" : ` (${fmt(r.lo)}–${fmt(r.hi)}")`}`;
       (isRec(r.a)
-        ? L.marker([r.a.lat, r.a.lon], { icon: L.divIcon({ className: "sp-icon", html: `<span style="background:${c}"></span>`, iconSize: [11, 11] }),
-            keyboard: false, title: r.a.name })
+        ? squareMarker([r.a.lat, r.a.lon], { radius: 5.5, color: "#14202e", weight: 1.4, fillColor: c, fillOpacity: 1 })
         : L.circleMarker([r.a.lat, r.a.lon], { radius: r.a.major ? 7 : 5, color: "#14202e", weight: 1.4, fillColor: c, fillOpacity: 1 }))
         .bindTooltip(`${esc(r.a.name)}: ${txt}`, { direction: "top" })
         .bindPopup(`<strong>${esc(r.a.name)}</strong><br>${txt}<br><a href="area.html#${encodeURIComponent(r.a.id)}">Forecast →</a>`)
