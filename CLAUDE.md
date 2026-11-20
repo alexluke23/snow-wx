@@ -60,7 +60,7 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 - `pipeline/search.py` — header search index (data/search.json); `web/js/search.js` (header + shared ranking).
 - `tools/browser_check.py` — headless-Chrome regression checks (basemap, fallback, layout, search, charts).
 - `pipeline/ecmwf.py` (ECMWF HRES + ENS plume, LIVE via `.github/workflows/ecmwf.yml`), `pipeline/webcams.py` + `config/webcams.yml` (links only), `pipeline/linkcheck.py`, `pipeline/stub.py` (W1 redirect stub), `config/sources.yml` (+ `tools/gen_site_pages.py`), `pipeline/wind_exposure.py` (W7 flag, off), `pipeline/alerts_backend.py` (W6 offline skeleton, off), `docs/workflow_snippets/` (workflow text for
-  the OWNER to add; dev sessions never edit .github/ (one owner-authorized exception: `ecmwf.yml`, dev18)), `docs/sources_resort_snowfall.md` (licensing research, no scraping).
+  the OWNER to add; dev sessions never edit .github/ (owner-authorized exceptions: `ecmwf.yml` dev18, `verify.yml` + `gefs.yml` dev21)), `docs/sources_resort_snowfall.md` (licensing research, no scraping).
 - `pipeline/archive.py` — forecast archive for verification (docs/verification.md);
   `pipeline/cache.py` — data_cache pruning at the start of every run.
 - `config/models.yml` + `pipeline/models/` — model maps (see below); `web/models.html`
@@ -177,28 +177,26 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 19 2026, dev20 branch; the uncommitted dev20_report.md has the briefing; owner summary: docs/STATE_SNAPSHOT.md)**
-- **dev20 (branch, on top of merged dev19):** ECMWF remembers the mirror that worked (`data_cache/ecmwf/mirror_pref.json`, others re-probed once a day) and keeps only the newest 2 cycles
-  (<= 300 MB; ~1.1 MB per cycle). ECMWF tests must never write the real data_cache (autouse fixture patches `E.REPO_ROOT`). **AIFS** (`aifs.enabled: true`, `in_badge: false`): fetched inside
-  `pipeline ecmwf` after HRES/ENS are written, own fetcher + time budget, output `models/ecmwf/aifs/precip.json` (AIFS tp is in MM, IFS tp in METRES). Share cards `pipeline og` (OFF,
-  `og_images.enabled`; og:image only with pages too; DejaVu font in pipeline/assets/fonts). Browser suite reworked (see the gotcha below).
-- **dev19 (branch, on top of merged dev18):** ECMWF fetch resilience: `pipeline/fetch_resilient.py` (shared `Fetcher`, also used by `gefs.py`): full-jitter backoff, Retry-After, >= 8 attempts, adaptive workers (3), per-run mirror failover AWS regional
-  (`ecmwf-forecasts.s3.eu-central-1.amazonaws.com`) -> Google (`storage.googleapis.com/ecmwf-open-data`) -> ECMWF portal; a step that cannot be fetched is a GAP for all members + HRES (`steps_missing`, never interpolated); a run needs >= 90 % of the steps
-  and the first 120 h else exit 0 `new=false`; per-cycle resume cache `data_cache/ecmwf/<cycle>/` restored/saved by `ecmwf.yml` (`actions/cache`, `if: always()`); fetch health in index.json/meta.json/status page. `--published` takes the full tag `<cycle>-<hash>`.
-  **Plotly self-hosted** (`web/vendor/plotly-2.35.2/`, hash pinned; upgrade = new folder + loaders + `pwa_sw.js` + README hash). Hazard popups: no browser call to api.weather.gov (pipeline `alerts.complete_hazard_texts` fills missing texts, `coverage` in hazard_text.json).
-  Webcam link corrections; dead resort/Sno-Park links removed (`url: false` in `config/ski_areas.yml`, `rec_url_overrides`). `make_session` retries HEAD + jitter. The one allowed workflow edit this branch: `.github/workflows/ecmwf.yml` (cache steps).
-- main has dev13-dev18 (dev18: **ECMWF is LIVE**: `.github/workflows/ecmwf.yml` (standalone, the ONE workflow file a dev session may create; owner-authorized, edited again in dev19), `ecmwf.enabled: true`, monitored source `ecmwf`
-  (`max_age_hours: 30`; status page "not enabled" / "waiting for the first run" / age); the member count is read from the data (`n_members`; no page text hard-codes it); HRES drawn as a labelled reference line.
-- Also dev18: models page fixture frames (`tools/model_fixture.py`, index carries per-field PNG sizes; CLS fixed), agreement badge "Little precipitation expected" (all models < 0.20 in) + day-type calibration (spec multi-model.md),
-  webcam LINKS (`config/webcams.yml`, `pipeline/webcams.py`, `pipeline webcams --check`), Sources register (`config/sources.yml` -> `web/sources.html`), DRAFT disclaimer/privacy/terms (`tools/gen_site_pages.py`; noindex),
-  cookieless analytics (`analytics.enabled: false`; `web/js/analytics.js` is fetched only when enabled), `pipeline linkcheck`, `web/404.html`, `docs/cloudflare_headers.draft` (+ `browser_check --only csp`),
-  verification UI behind `verification_ui.enabled: false` (`pipeline verify --publish`), W1 rehearsal (`tools/w1_rehearsal.py`, `pipeline stub`, `docs/w1_cutover_checklist.md`).
+**Current state (Nov 20 2026, dev21 branch; the uncommitted dev21_report.md has the briefing; owner summary: docs/STATE_SNAPSHOT.md)**
+- **dev21 (branch, on top of merged dev20):** TWO new owner-authorized workflows (the only `.github/` change): `verify.yml` (daily 15:25 UTC: archive CSVs -> `pipeline verify-ci` = the same
+  `verify.run` -> `verify-<YYYYMMDDHH>-<hash>.tar` on model-maps -> update-site's existing unpack -> `build/models/verify/`; the panel reads `models/verify/` (`VerificationUI.BASE`), flag
+  `verification_ui.enabled` still OFF; switch `verification.ci_enabled`; NEVER an index.json in models/verify: the model catalog collects */index.json) and `gefs.yml` (06:10/08:10/18:10/20:10
+  UTC from MEASURED S3 release times; `gefs.enabled: true`; resume cache `data_cache/gefs/<cycle>`; too many missing members = new=false). Monitored sources `verify` (50 h) and `gefs` (30 h).
+  Safari: idle/observer guards use `typeof x === "function"` (never `"x" in window`); model chips on Precipitation by model (`#mm-chips`, sessionStorage; badge/table use every model);
+  area-page alert CLS fixed (the summary's mailto link reserves its space); tap targets >= 40 px at phone width also in WebKit/Firefox. `pipeline archive-check` (archive integrity).
+  Cross-browser smoke (optional): `C:/miniforge3/envs/pw/python.exe tools/xbrowser_smoke.py` (Playwright 1.49.1 WebKit + Firefox in the separate `pw` env; ~1 min; screenshots in data_cache/xbrowser).
+- **dev20 (merged):** ECMWF mirror preference + 2-cycle cache; AIFS line (`aifs.enabled: true`, `in_badge: false`; AIFS tp in MM, IFS tp in METRES); share cards `pipeline og` (OFF); browser suite rework.
+  Tests must never write the real data_cache (autouse fixtures patch `E.REPO_ROOT` / `G.REPO_ROOT`).
+- **dev19 (merged):** `pipeline/fetch_resilient.py` (shared `Fetcher`: backoff + jitter, Retry-After, mirror failover AWS regional -> Google -> ECMWF portal); a missing step is a GAP, never
+  interpolated; ECMWF resume cache restored/saved by `ecmwf.yml`. **Plotly self-hosted** (`web/vendor/plotly-2.35.2/`, hash pinned). No browser call to api.weather.gov.
+- main has dev13-dev20 (ECMWF LIVE since dev18 via `ecmwf.yml`; member counts are read from the data, never hard-coded). dev18 extras: models-page fixture frames (`tools/model_fixture.py`),
+  webcam LINKS, Sources register (`config/sources.yml` -> `web/sources.html` via `tools/gen_site_pages.py`), DRAFT legal pages, `pipeline linkcheck`, W1 rehearsal tools.
 - **Built but OFF (never enable from a dev session):** `wind_exposure.enabled` (W7), `alerts_backend.enabled` (W6), `analytics.enabled`, `verification_ui.enabled`, `pages.enabled`, `pwa.enabled` (W1 first).
-- Browser suite (dev20): `tools/browser_check.py` 29 checks (the full run splits `failure` into failure1-3), 4 parallel workers (`--jobs`), each check in its own Chrome profile + server port on a
+- Browser suite (dev20/21): `tools/browser_check.py` 32 checks (dev21: `noidle`, `mmchips`, `alertcls`) (the full run splits `failure` into failure1-3), 4 parallel workers (`--jobs`), each check in its own Chrome profile + server port on a
   private build copy with FROZEN inputs (`tools/browser_fixtures.py`: recorded alert snapshot shifted to "active now"; third-party hosts answered from `tests/fixtures/browser/`, anything
   else refused). Full run ~5-6 min; `--quick` (8 checks) ~1.5 min for per-item runs. No fixed sleeps: `open()` waits for the page's READY signal then for quiet (`settle`); background
   work with no page signal (service worker, analytics queue) must be POLLED, never slept on. Re-record fixtures only with `tools/browser_fixtures.py record` (network once).
-- Open: W3 meta description (W2) + Low-confidence rule; `HEALTHCHECK_URL` secret; W1 then enable pwa/pages; real-device PWA tests; M9 verification when the archive grows; owner: analytics provider, legal review, W6 decisions, W7 reviewer.
+- Open: W3 meta description (W2) + Low-confidence rule; `HEALTHCHECK_URL` secret; W1 then enable pwa/pages; real-device PWA tests; M9: verify.yml publishes daily, the minima (14 days, 30 pairs) are projected for about Nov 30, then the owner flips verification_ui.enabled; owner: analytics provider, legal review, W6 decisions, W7 reviewer.
 
 **Reusable gotchas (earlier session log: docs/ARCHIVE.md)**
 - Lighthouse: `PATH=/c/miniforge3/envs/tools:$PATH npx -y lighthouse@12.6.1 URL --only-categories=performance,accessibility`
