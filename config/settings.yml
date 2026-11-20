@@ -105,9 +105,10 @@ analytics:
   script_url: ""      # optional https URL of a self-hosted copy of the provider's script
 
 gefs:
-  # NOAA GEFS ensemble plume (pipeline/gefs.py, `python -m pipeline gefs`): 31 members, 0.25 degree, liquid + a snow estimate. BUILT BEHIND THIS FLAG, default OFF; a workflow, if wanted,
-  # is text in docs/workflow_snippets/gefs.yml for the owner to add (dev sessions create no second workflow file).
-  enabled: false
+  # NOAA GEFS ensemble plume (pipeline/gefs.py, `python -m pipeline gefs`): control + 30 perturbed members (count read from the data), 0.25 degree, liquid + a snow estimate.
+  # ON since dev21 (owner-authorized .github/workflows/gefs.yml, 06:10/08:10/18:10/20:10 UTC) after the offline tests and a real end-to-end run (00Z Nov 20: 376 MB, 275 s,
+  # 0 missing; a retry of the same cycle resumed 40/40 steps from data_cache/gefs). false = the job does nothing and the status row reads "not enabled".
+  enabled: true
   cycles: [0, 12]
   step_h: 6
   max_step_h: 240

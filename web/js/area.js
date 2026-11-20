@@ -523,6 +523,9 @@ What actually happened (snow measured/seen, where, photos or links welcome):
   };
   async function modelChart(el, fc, tz) {
     const sec = $("mm-sec"), P = fc.points.summit;
+    if (typeof MultiModel === "undefined" || typeof Ensemble === "undefined") {           // a helper script failed to load: say so, never throw
+      chartMsg(el, `<p class="hint">The model comparison could not be loaded. Reload the page to try again.</p>`); return;
+    }
     if (mmDoc === undefined) mmDoc = await getJSON("data/multimodel.json").catch(() => null);
     if (!mmDoc?.areas?.[fc.id] || !P) {
       chartMsg(el, `<p class="hint">The model comparison is not available for this area yet (it needs a recent HRRR, RRFS or GFS run).</p>`);
@@ -1192,7 +1195,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
       ${isStation || isRec ? "" : `<section id="mm-sec"><h3>Precipitation by model <a class="info" href="about.html#model-agreement" title="NBM, HRRR, RRFS and GFS precipitation at the summit, cumulative, in liquid-equivalent inches (or snow at NBM's ratio)." aria-label="About the model comparison">ⓘ</a></h3>
         <p class="mm-badge" id="mm-badge" aria-live="polite"></p>
         <span class="seg mm-view" id="mm-view" role="group" aria-label="View" hidden><button type="button" data-v="models" class="on" aria-pressed="true">Models</button><button type="button" data-v="ens" aria-pressed="false">Ensemble</button></span>
-        <span class="seg mm-view" id="ens-src" role="group" aria-label="Ensemble source" hidden><button type="button" data-s="ecmwf" class="on" aria-pressed="true">ECMWF</button><button type="button" data-s="gefs" aria-pressed="false">GEFS</button></span>
+        <span class="seg mm-view" id="ens-src" role="group" aria-label="Ensemble source" hidden><button type="button" data-s="ecmwf" class="on" aria-pressed="true">ECMWF ENS</button><button type="button" data-s="gefs" aria-pressed="false">NOAA GEFS</button></span>
         <span class="sr" id="mm-announce" role="status" aria-live="polite"></span>
         <span class="seg" id="mm-mode" role="group" aria-label="Units"><button type="button" data-m="liquid" class="on" aria-pressed="true">Liquid (in)</button><button type="button" data-m="snow" aria-pressed="false">Snow (in)</button></span>
         <div class="mm-chips" id="mm-chips" role="group" aria-label="Models on the chart (the agreement rating and the table always use every model)"></div>

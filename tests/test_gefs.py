@@ -149,9 +149,12 @@ def test_newest_cycle_needs_the_last_step_of_the_control_and_the_last_member():
     assert G.newest_cycle(Mirror(), c, datetime(2026, 11, 18, 14, tzinfo=timezone.utc)) == CYC                        # 12Z is only 2 h old: take 00Z
 
 
-def test_config_default_is_off_and_the_cli_does_nothing_without_force(tmp_path):
-    from pipeline.__main__ import main
+def test_live_since_dev21_and_the_cli_does_nothing_when_switched_off(tmp_path, monkeypatch):
+    from pipeline import __main__ as M
     from pipeline.common import load_config
-    assert load_config()["gefs"]["enabled"] is False
+    cfg = load_config()
+    assert cfg["gefs"]["enabled"] is True and G.DEFAULTS["enabled"] is False          # on in the config (dev21, gefs.yml); the code default stays off
+    cfg["gefs"]["enabled"] = False
+    monkeypatch.setattr(M, "load_config", lambda *a, **k: cfg)
     gh = tmp_path / "gh.txt"
-    assert main(["gefs", "--out", str(tmp_path / "o"), "--github-output", str(gh)]) == 0 and "new=false" in gh.read_text(encoding="utf-8") and not (tmp_path / "o").exists()
+    assert M.main(["gefs", "--out", str(tmp_path / "o"), "--github-output", str(gh)]) == 0 and "new=false" in gh.read_text(encoding="utf-8") and not (tmp_path / "o").exists()
