@@ -31,12 +31,20 @@
   const POINT_LABEL = { summit: "Summit", base: "Base", point: "Station" };
 
   let plotlyPromise = null;
+  // The library is 355 KB gzip from OUR host since dev19. It is started when the browser is idle after the page's own load, so it does not compete with the page's first
+  // data requests and the headline paint (the charts below are placeholders of fixed height until it arrives).
+  const whenIdle = (f) => {
+    const run = () => (window.requestIdleCallback ? window.requestIdleCallback(f, { timeout: 1200 }) : setTimeout(f, 150));
+    if (document.readyState === "complete") run(); else window.addEventListener("load", run, { once: true });
+  };
   const loadPlotly = () => (plotlyPromise ||= new Promise((resolve, reject) => {
     if (window.Plotly) return resolve(window.Plotly);
-    const s = document.createElement("script");
-    s.src = PLOTLY_URL; s.async = true;
-    s.onload = () => resolve(window.Plotly); s.onerror = () => reject(new Error("chart library failed to load"));
-    document.head.appendChild(s);
+    whenIdle(() => {
+      const s = document.createElement("script");
+      s.src = PLOTLY_URL; s.async = true;
+      s.onload = () => resolve(window.Plotly); s.onerror = () => reject(new Error("chart library failed to load"));
+      document.head.appendChild(s);
+    });
   }));
 
   // ---------------------------------------------------------------- formatting
