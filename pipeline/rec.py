@@ -322,7 +322,7 @@ def build_rec_points(session, cfg: dict, ccfg: dict, obs_dir: Path, out: Path = 
             "id": rid, "kind": "snopark", "subtype": s["subtype"], "type_label": SUBTYPE_LABEL[s["subtype"]],
             "name": s["name"], "state": st, "region": region_for(s["lon"], s["lat"], st, ccfg),
             "tz": (nb or {}).get("tz") or state_tz(st, s["lat"], ccfg),
-            "url": s.get("link"), "major": False,
+            "url": rec_url(ccfg, rid, s.get("link")), "major": False,
             "base": {"lat": round(s["lat"], 5), "lon": round(s["lon"], 5), "elev_ft": None if base_ft is None else round(base_ft)},
             "summit": {"lat": round(hla, 5), "lon": round(hlo, 5), "elev_ft": None if hft is None else round(hft)},
             "vertical_ft": None if base_ft is None or hft is None else round(hft - base_ft),
@@ -369,6 +369,14 @@ def read_decisions(path: Path = REVIEW_CSV) -> dict[str, dict]:
             if d in DECISIONS and row.get("id"):
                 out[row["id"].strip()] = {"decision": d, "merge_into": (row.get("merge_into") or "").strip(), "note": (row.get("note") or "").strip()}
     return out
+
+
+def rec_url(ccfg: dict, rid: str, default):
+    """the point's own link, or the config override `rec_url_overrides[id]` (`false` = no link: the source URL is dead and no replacement could be verified)"""
+    ov = ccfg.get("rec_url_overrides") or {}
+    if rid in ov:
+        return None if ov[rid] is False else ov[rid]
+    return default
 
 
 def apply_decisions(recs: list[dict], decisions: dict[str, dict]) -> tuple[list[dict], dict]:

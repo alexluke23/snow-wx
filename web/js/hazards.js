@@ -5,7 +5,7 @@
 // pipeline/hazards.py). Vector GeoJSON (~0.2 MB for the whole West) instead of exported image tiles: one request,
 // real polygons for popups, our own legend. Loaded after the first paint, only when the layer is on.
 // Never a silent blank: if the service fails, or returns nothing while our own alerts index lists winter alerts,
-// the sidebar says so and lists the alerts from data/alerts/index.json (api.weather.gov) instead.
+// the sidebar says so and lists the alerts from data/alerts/index.json (api.weather.gov, fetched by our pipeline) instead.
 
 /* global L */
 // eslint-disable-next-line no-unused-vars
@@ -38,7 +38,6 @@ function SnowHazards(map, { dataBase = "data/", bbox = [-125, 31, -102, 49.5], o
   const getIdx = () => (idxP ||= fetchJSON(`${dataBase}alerts/index.json`, 10000).catch(() => null));
   const getDet = () => (detP ||= fetchJSON(`${dataBase}alerts/details.json`, 15000).catch(() => null));
   const getHT = () => (htP ||= fetchJSON(`${dataBase}alerts/hazard_text.json`, 15000).catch(() => null));
-  const remote = new Map();                             // alert id -> promise (one live fetch per alert, kept in memory)
   /** the alert id ("urn:oid:...") from the service's url field; used ONLY to look the alert up, never as an href */
   const alertId = (u) => { try { return decodeURIComponent(String(u || "").split("/alerts/")[1] || "").split(/[?#]/)[0]; } catch { return ""; } };
   async function sha10(text) {
@@ -57,23 +56,6 @@ function SnowHazards(map, { dataBase = "data/", bbox = [-125, 31, -102, 49.5], o
     if (!a) return null;
     return { event: a.event, headline: a.headline, sender: a.sender, effective: a.effective, expires: a.expires || a.ends, area: a.area,
       description: det?.[key]?.description, instruction: det?.[key]?.instruction };
-  }
-  /** one live fetch of a single alert (CORS-enabled NWS API), only when our files do not carry it (an alert that touches no ski area) */
-  function remoteAlert(id) {
-    if (!id) return Promise.resolve(null);
-    if (!remote.has(id)) {
-      remote.set(id, (async () => {
-        const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 12000);
-        try {
-          const r = await fetch(`https://api.weather.gov/alerts/${encodeURIComponent(id)}`, { signal: ctl.signal, headers: { Accept: "application/geo+json" } });
-          if (!r.ok) return null;
-          const q = (await r.json()).properties || {};
-          return { event: q.event, headline: q.headline, sender: q.senderName, effective: q.effective, expires: q.expires || q.ends, area: q.areaDesc,
-            description: q.description, instruction: q.instruction };
-        } catch { return null; } finally { clearTimeout(t); }
-      })());
-    }
-    return remote.get(id);
   }
   const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   /** DOM for one hazard popup; never uses innerHTML */
@@ -95,10 +77,10 @@ function SnowHazards(map, { dataBase = "data/", bbox = [-125, 31, -102, 49.5], o
     box.append(foot);
     (async () => {
       const id = alertId(p.url);
-      const a = (await localAlert(id).catch(() => null)) || (await remoteAlert(id));
+      const a = await localAlert(id).catch(() => null);                // our own files only: the browser never calls api.weather.gov (dev19)
       body.replaceChildren();
       if (!a) {
-        body.append(mk("p", "hint", "The full text could not be loaded. Open the issuing office on weather.gov for the current warning, and check your local avalanche center."));
+        body.append(mk("p", "hint", "The full text is not in our files. Open the issuing office on weather.gov for the current warning, and check your local avalanche center."));
         return;
       }
       const meta = [a.sender, a.effective ? `issued ${fmtTime(a.effective)}` : "", a.expires ? `expires ${fmtTime(a.expires)}` : ""].filter(Boolean).join(" · ");

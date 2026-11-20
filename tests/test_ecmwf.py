@@ -10,6 +10,13 @@ import pytest
 from pipeline import ecmwf as E
 
 CYC = datetime(2026, 11, 18, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def fast_fetch(monkeypatch):
+    """no pacing and tiny backoff in tests (real values are in DEFAULTS)"""
+    monkeypatch.setitem(E.DEFAULTS, "min_interval_s", 0.0)
+    monkeypatch.setitem(E.DEFAULTS, "backoff_s", 0.001)
 PTS = [{"id": "alta", "lat": 40.57, "lon": -111.63, "elev_ft": 10556}, {"id": "dateline", "lat": 10.0, "lon": 179.9, "elev_ft": 0}]
 
 
@@ -42,7 +49,7 @@ def test_index_parsing_selects_members_and_survives_bad_lines():
     assert sorted(tp) == list(range(1, 51)) and len(tp) == 50 and all(r["param"] == "tp" for r in tp.values())    # 50 perturbed members, numbers 1-50
     assert len(E.select(rows, "2t", "pf")) == 50 and E.select(rows, "tp", "cf") == {}                            # no control in the file layout we found
     assert E.select(rows, "tp", "pf", step=12) == {}
-    assert E.url(E.configure(None), CYC, "enfo", 24, "grib2") == "https://ecmwf-forecasts.s3.amazonaws.com/20261118/00z/ifs/0p25/enfo/20261118000000-24h-enfo-ef.grib2"
+    assert E.url(E.configure(None), CYC, "enfo", 24, "grib2") == "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20261118/00z/ifs/0p25/enfo/20261118000000-24h-enfo-ef.grib2"
     assert E.url(E.configure(None), CYC, "oper", 240, "index").endswith("/oper/20261118000000-240h-oper-fc.index")
 
 
@@ -194,7 +201,7 @@ def run_fake(tmp_path, monkeypatch, mirror, **kw):
     monkeypatch.setattr(E.time, "sleep", lambda s: None)
     cfg = {"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 2}}
     gh = tmp_path / "gh.txt"
-    return E.run(cfg, mirror, tmp_path / "models", cycle=CYC, points=PTS[:1], github_output=str(gh), **kw), gh
+    return E.run(cfg, mirror, tmp_path / "models", cycle=CYC, points=PTS[:1], github_output=str(gh), cache_dir=False, **kw), gh
 
 
 def test_run_writes_the_plume_the_hres_line_and_the_index_with_a_fake_mirror(tmp_path, monkeypatch):
@@ -218,13 +225,13 @@ def test_a_cycle_already_published_is_skipped_without_downloading(tmp_path, monk
     assert not [g for g in mirror.gets if g.endswith(".grib2")] and not (tmp_path / "models" / "ecmwf").exists()
 
 
-def test_too_many_missing_member_messages_fail_the_run_and_write_nothing(tmp_path, monkeypatch):
-    with pytest.raises(RuntimeError, match="member messages missing"):
-        run_fake(tmp_path, monkeypatch, FakeMirror(missing=11), force=False)                      # 11 of 50 > 20 %
-    assert not (tmp_path / "models" / "ecmwf").exists()
+def test_too_many_missing_member_messages_drop_the_step_and_an_incomplete_run_publishes_nothing(tmp_path, monkeypatch):
+    res, gh = run_fake(tmp_path, monkeypatch, FakeMirror(missing=11), force=False)                 # 11 of 50 > 20 % at step 12: the step is dropped; 1 of 2 steps < 90 %
+    assert res["ok"] is True and res["skipped"] == "incomplete" and res["fetch"]["steps_missing"] == [12]                 # exit 0, a warning, not an error
+    assert "new=false" in gh.read_text(encoding="utf-8") and not (tmp_path / "models" / "ecmwf").exists()
     res, _ = run_fake(tmp_path, monkeypatch, FakeMirror(missing=4), force=False)                    # 4 of 50 missing: tolerated, counted
     d = json.loads((tmp_path / "models" / "ecmwf" / "plume" / "alta.json").read_text(encoding="utf-8"))
-    assert res["missing_member_messages"] == 4 and d["tp"][2][49] is None and d["tp"][2][0] is not None and d["tp"][1][49] is not None
+    assert res["missing_member_messages"] == 4 and d["tp"][2][49] is None and d["tp"][2][0] is not None and d["tp"][1][49] is not None and d["steps_missing"] == []
 
 
 def test_disabled_flag_downloads_nothing(tmp_path, monkeypatch):
@@ -237,12 +244,12 @@ def test_one_failed_member_download_is_a_missing_member_not_a_dead_run(tmp_path,
 
     def flaky(blob):
         calls["n"] += 1
-        if calls["n"] % 40 == 7:                                   # a decode / fetch error now and then
+        if calls["n"] % 9 == 7:                                   # a decode / fetch error now and then
             raise ValueError("corrupt message")
         return np.full((721, 1440), 0.002, dtype="float32")
     monkeypatch.setattr(E, "decode", flaky)
     monkeypatch.setattr(E.time, "sleep", lambda s: None)
-    res = E.run({"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 1}}, FakeMirror(), tmp_path / "m", cycle=CYC, points=PTS[:1])
+    res = E.run({"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 1}}, FakeMirror(), tmp_path / "m", cycle=CYC, points=PTS[:1], cache_dir=False)
     assert res["ok"] and res["missing_member_messages"] >= 1 and calls["n"] > 100
 
 
@@ -252,16 +259,16 @@ def test_missing_hres_files_leave_a_gap_not_a_failure_and_an_empty_result_keeps_
             return _Resp(status=404) if "/oper/" in u else super().get(u, headers=headers, timeout=timeout)
     monkeypatch.setattr(E, "decode", lambda blob: np.full((721, 1440), 0.002, dtype="float32"))
     monkeypatch.setattr(E.time, "sleep", lambda s: None)
-    res = E.run({"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 1}}, NoHres(), tmp_path / "m", cycle=CYC, points=PTS[:1])
+    res = E.run({"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 1}}, NoHres(), tmp_path / "m", cycle=CYC, points=PTS[:1], cache_dir=False)
     d = json.loads((tmp_path / "m" / "ecmwf" / "plume" / "alta.json").read_text(encoding="utf-8"))
     assert res["ok"] and d["hres_tp"] == [0, None, None] and d["tp"][1][0] == 20
-    # an ENS index that is not on the mirror fails the run and the files written before stay
+    # an ENS index that is not on any mirror: nothing to publish this attempt, the files written before stay
     class NoEns(FakeMirror):
         def get(self, u, headers=None, timeout=None, **k):
             return _Resp(status=404) if "/enfo/" in u else super().get(u, headers=headers, timeout=timeout)
     before = (tmp_path / "m" / "ecmwf" / "plume" / "alta.json").read_bytes()
-    with pytest.raises(RuntimeError, match="not on the mirror"):
-        E.run({"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 1}}, NoEns(), tmp_path / "m", cycle=CYC, points=PTS[:1])
+    res = E.run({"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 1}}, NoEns(), tmp_path / "m", cycle=CYC, points=PTS[:1], cache_dir=False)
+    assert res == {"ok": True, "skipped": "unreachable", "fetch": res["fetch"]}                      # exit 0 with new=false (a warning), nothing touched
     assert (tmp_path / "m" / "ecmwf" / "plume" / "alta.json").read_bytes() == before
 
 
@@ -269,7 +276,7 @@ def test_member_count_comes_from_the_data_never_a_constant(tmp_path, monkeypatch
     """the mirror happens to list 50 perturbed members today; if that changes (a control member joins, a member is dropped) the plume, index and wording follow the file"""
     for n in (50, 53, 31):
         out = tmp_path / f"m{n}"
-        res = E.run({"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 1}}, FakeMirror(members=n), out, cycle=CYC, points=PTS[:1]) if _patched(monkeypatch) else None
+        res = E.run({"ecmwf": {"enabled": True, "max_step_h": 12, "workers": 1}}, FakeMirror(members=n), out, cycle=CYC, points=PTS[:1], cache_dir=False) if _patched(monkeypatch) else None
         d = json.loads((out / "ecmwf" / "plume" / "alta.json").read_text(encoding="utf-8"))
         idx = json.loads((out / "ecmwf" / "index.json").read_text(encoding="utf-8"))
         assert res["n_members"] == d["n_members"] == idx["n_members"] == n and len(d["tp"][1]) == n and d["control_member"] is False

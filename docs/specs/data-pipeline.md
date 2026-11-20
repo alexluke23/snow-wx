@@ -107,3 +107,16 @@ Built earlier (`pipeline/nbm/layers.py`, `web/js/overlays.js`, "Forecast" group)
 - **Colours:** amounts use `colors.js` SNOWFALL (NWS table) with the shared legend; chances use `PROB`, a single-hue sequential blue ramp whose lightness now falls monotonically (the old purple/magenta top steps were equal in lightness; dE ≥ 7.8 between steps under simulated deuteranopia / protanopia / tritanopia, DESIGN §6-B).
 - **State shown:** default OFF; legend; cycle, valid window, "run started <local time>" and the grid-cell caveat; **stale data greyed**: a layer whose model cycle started more than `forecast_overlays.stale_hours` (14) ago is drawn grey at ≤ 40 % opacity with an "Out of date" note (browser check: 3 h old = normal, 30 h old = grey + note).
 - **Switch:** config `forecast_overlays.enabled` (written to `data/meta.json`); false removes the whole Forecast group. It stays true: obs-map Lighthouse (6 interleaved runs, gzip server, same data) dev17 median 89 vs main 88; accessibility 100.
+
+### Fetch retry policy review (dev19)
+Shared tool: `pipeline/fetch_resilient.py` (`Fetcher`: backoff with full jitter, Retry-After, mirror failover, adaptive concurrency; used by ECMWF and GEFS). Everything else still uses `common.make_session` (urllib3 Retry: 4 tries, factor 2, 429/500/502/503/504; **dev19 changes:** HEAD is retried too, jitter 0.5 s). Its weak point: when every try gets 503 it raises `RetryError` (the ECMWF failure of Nov 19); each source catches that per source (sources fail independently), so a throttled source costs its data, not the build.
+
+| Fetcher | Current policy | Would benefit from `Fetcher`? | Changed in dev19 |
+|---|---|---|---|
+| NBM points (`nbm/run.py` `_get`, 6 workers, ~hundreds of byte-range GETs on `noaa-nbm-grib2-pds`) | 4 own attempts (3 s, 6 s, 9 s, no jitter) on top of urllib3's 4 | **Yes (high):** same S3 SlowDown risk and the job is the core product; jitter + Retry-After + adaptive workers would help | No (core job; change only with a live A/B run) |
+| Model maps (`models/fetch.py`, Herbie, one download per product/hour) | 3 attempts | Maybe (medium): Herbie owns the download | No |
+| NOHRSC, NDFD (a few large files) | session defaults | Low: few requests, hourly retries by cron | No |
+| SNOTEL AWDB | `session.fast` (1 quick retry) by design: the source handles an outage itself (`snotel.py`) | No | No |
+| IEM/ASOS, avalanche.org, NWS api (alerts, AFD, hazard text fill) | session defaults; every request is independent and failures are per item | Low | HEAD/jitter only (via `make_session`) |
+| Catalog lookups (`catalog._get_json`, 3DEP, NWS /points) | 4 own attempts, on demand | Low (manual command) | No |
+| Link/webcam checks | GET after any HEAD error, per URL | No | No |

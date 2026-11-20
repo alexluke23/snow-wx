@@ -166,3 +166,19 @@ def test_merge_validity_does_not_depend_on_row_order():
     # if b's own merge has no valid target, b stays and a -> b becomes valid
     out, rep = apply_decisions(recs, {"a": chain["a"], "b": {"decision": "merge", "merge_into": "", "note": ""}})
     assert [r["id"] for r in out] == ["b", "c"] and rep["merge"] == [("a", "b")]
+
+
+def test_rec_url_override_replaces_or_removes_a_dead_link():
+    from pipeline.rec import rec_url
+    cfg = {"rec_url_overrides": {"sp-a": "https://ok.example/", "sp-b": False}}
+    assert rec_url(cfg, "sp-a", "https://dead.example/") == "https://ok.example/"
+    assert rec_url(cfg, "sp-b", "https://dead.example/") is None                          # false = no link at all
+    assert rec_url(cfg, "sp-c", "https://keep.example/") == "https://keep.example/" and rec_url({}, "sp-c", None) is None
+
+
+def test_shipped_overrides_cover_the_dead_links_found_by_the_link_check():
+    import yaml
+    from pathlib import Path
+    cfg = yaml.safe_load((Path(__file__).resolve().parents[1] / "config" / "ski_areas.yml").read_text(encoding="utf-8"))
+    assert cfg["rec_url_overrides"]["sp-emily-sno-park"] is False
+    assert cfg["overrides"]["Snow Valley Mountain Resort"]["url"] is False and cfg["overrides"]["Ferguson Ridge Ski Area"]["url"] is False

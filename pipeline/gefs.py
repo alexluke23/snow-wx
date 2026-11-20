@@ -31,7 +31,8 @@ from .common import utcnow, write_json
 
 log = logging.getLogger("snow-wx.gefs")
 MIRROR = "https://noaa-gefs-pds.s3.amazonaws.com"
-DEFAULTS = {"enabled": False, "mirror": MIRROR, "cycles": [0, 12], "step_h": 6, "max_step_h": 240, "max_missing_frac": 0.2, "workers": 6, "stale_hours": 24, "release_lag_h": 6}
+DEFAULTS = {"enabled": False, "mirror": MIRROR, "cycles": [0, 12], "step_h": 6, "max_step_h": 240, "max_missing_frac": 0.2, "workers": 3, "stale_hours": 24, "release_lag_h": 6,
+            "attempts": 8, "max_request_s": 300, "trip_after": 6, "backoff_s": 1.0, "min_interval_s": 0.05}
 ATTRIBUTION = "NOAA/NCEP Global Ensemble Forecast System (GEFS) via the NOAA Open Data Dissemination (AWS): public domain. Values sampled at ski-area summit points and accumulated per member by Snow-Wx."
 MEMBERS = ["gec00"] + [f"gep{n:02d}" for n in range(1, 31)]          # control first (member 1), then the 30 perturbed members
 
@@ -53,9 +54,19 @@ def grid_index(lat: float, lon: float) -> tuple[int, int]:
     return min(max(i, 0), 720), j
 
 
+def rel(cycle: datetime, member: str, step: int, ext: str = "") -> str:
+    return f"gefs.{cycle:%Y%m%d}/{cycle:%H}/atmos/pgrb2sp25/{member}.t{cycle:%H}z.pgrb2s.0p25.f{step:03d}{ext}"
+
+
 def url(c: dict, cycle: datetime, member: str, step: int, ext: str = "") -> str:
-    d = f"{cycle:%Y%m%d}/{cycle:%H}"
-    return f"{c['mirror']}/gefs.{d}/atmos/pgrb2sp25/{member}.t{cycle:%H}z.pgrb2s.0p25.f{step:03d}{ext}"
+    return f"{c['mirror']}/{rel(cycle, member, step, ext)}"
+
+
+def make_fetcher(c: dict, session):
+    """the shared resilient fetcher (pipeline/fetch_resilient.py), one mirror: backoff + jitter, Retry-After, adaptive concurrency; a single mirror cannot fail over"""
+    from .fetch_resilient import Fetcher, Mirror
+    return Fetcher([Mirror("aws", c["mirror"])], session=session, workers=int(c["workers"]), attempts=int(c["attempts"]), max_total_s=float(c["max_request_s"]),
+                   trip_after=int(c["trip_after"]), backoff=float(c["backoff_s"]), min_interval=float(c["min_interval_s"]))
 
 
 IDX = re.compile(r"^(\d+):(\d+):d=\d+:([A-Z0-9]+):([^:]+):(\d+)-(\d+) hour (acc|ave) fcst")
@@ -93,14 +104,21 @@ def byte_range(row: dict) -> str:
 
 
 def newest_cycle(session, c: dict, now: datetime) -> datetime | None:
-    """newest configured cycle whose LAST step index exists for the control and the last perturbed member (HEAD only)"""
+    """newest configured cycle whose LAST step index exists for the control and the last perturbed member (HEAD only); `session` may be a Fetcher. A mirror that stays
+    throttled through every retry means "cannot tell": None (new=false, exit 0)."""
+    from .fetch_resilient import Fetcher, FetchError
+    f = session if isinstance(session, Fetcher) else make_fetcher(c, session)
     t = now.replace(minute=0, second=0, microsecond=0)
     for back in range(0, 72):
         cyc = t - timedelta(hours=back)
         if cyc.hour not in c["cycles"] or (now - cyc) < timedelta(hours=c["release_lag_h"] - 1):
             continue
-        if all(session.head(url(c, cyc, m, c["max_step_h"], ".idx"), timeout=30).status_code == 200 for m in (MEMBERS[0], MEMBERS[-1])):
-            return cyc
+        try:
+            if all(f.head(rel(cyc, m, c["max_step_h"], ".idx")).status_code == 200 for m in (MEMBERS[0], MEMBERS[-1])):
+                return cyc
+        except FetchError as exc:
+            log.warning("gefs: cannot tell whether %s is complete (%s)", cyc.strftime("%Y%m%d%H"), exc)
+            return None
     return None
 
 
@@ -122,7 +140,8 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     from .version import stamp
     pts = points or load_points()
     now = now or utcnow()
-    cyc = cycle or newest_cycle(session, c, now)
+    fetcher = make_fetcher(c, session)
+    cyc = cycle or newest_cycle(fetcher, c, now)
     if cyc is None:
         log.warning("gefs: no complete cycle on the mirror yet; nothing to publish")
         emit(new="false")
@@ -136,7 +155,6 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     width = int(c["step_h"])
     t0 = time.time()
     nbytes = {"n": 0}
-    session.headers["User-Agent"] = session.headers.get("User-Agent", "snow-wx")
     sam = E.Sampler(pts, len(MEMBERS), index_fn=grid_index)
     sam.control_member = True
     cum = {p: np.zeros((len(MEMBERS), len(pts))) for p in ("tp", "sf")}            # running totals (m of water) per member and area: each member's OWN buckets are summed
@@ -144,7 +162,7 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     def member_buckets(member: str, step: int):
         """(apcp mm field | None, csnow fraction | None) for one member and 6-h window; None = missing (counted)"""
         try:
-            r = E._get(session, url(c, cyc, member, step, ".idx"))
+            r = fetcher.get(rel(cyc, member, step, ".idx"))
             if r is None:
                 return None
             rows = parse_idx(r.text)
@@ -156,7 +174,7 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
                 if row is None:
                     got.append(None)
                     continue
-                g = E._get(session, url(c, cyc, member, step), {"Range": byte_range(row)})
+                g = fetcher.get(rel(cyc, member, step), {"Range": byte_range(row)})
                 if g is None:
                     got.append(None)
                     continue
@@ -204,7 +222,7 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     secs = round(time.time() - t0, 1)
     index = {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "cycle": cyc.strftime("%Y%m%d%H"), "init": cyc.strftime("%Y-%m-%dT%H:00Z"), "hours": steps,
              "n_members": len(MEMBERS), "control_member": True, "areas": len(plume), "resolution": "0.25 degree", "stale_hours": c["stale_hours"],
-             "missing_member_messages": sum(missing.values()), "bytes_downloaded": nbytes["n"], "seconds": secs, "source": "NOAA GEFS (NODD on AWS)", "attribution": ATTRIBUTION,
+             "missing_member_messages": sum(missing.values()), "bytes_downloaded": nbytes["n"], "seconds": secs, "source": "NOAA GEFS (NODD on AWS)", "attribution": ATTRIBUTION, "fetch": fetcher.stats(),
              "snow": "estimate: APCP x CSNOW (categorical snow fraction) per 6-h bucket"}
     write_json(out / "gefs" / "index.json", index)
     emit(new="true", cycle=tag)

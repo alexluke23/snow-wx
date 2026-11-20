@@ -31,9 +31,7 @@ sources:
     licence_url: https://www.weather.gov/disclaimer
     credit: "Data: NOAA / National Weather Service"
     hosts: [weather.gov, noaa.gov, noaa-gefs-pds.s3.amazonaws.com, noaa-nbm-grib2-pds.s3.amazonaws.com, noaa-ndfd-pds.s3.amazonaws.com, noaa-hrrr-bdp-pds.s3.amazonaws.com, noaa-rrfs-pds.s3.amazonaws.com, noaa-gfs-bdp-pds.s3.amazonaws.com, mapservices.weather.noaa.gov]
-    browser: [api.weather.gov]
-    browser_when: "only when you open a winter-hazard popup whose text is not already in our own files (last resort, one request to the National Weather Service)"
-    notes: "Model data comes from the NOAA Open Data Dissemination (NODD) buckets on AWS. api.weather.gov asks for an identifying User-Agent; ours is generic (no e-mail address)."
+    notes: "Model data comes from the NOAA Open Data Dissemination (NODD) buckets on AWS. api.weather.gov is called by OUR pipeline only (alerts, forecast discussions, the hazard text); since dev19 the visitor's browser never calls it. It asks for an identifying User-Agent; ours is generic (no e-mail address)."
   - id: nws-hazards-map
     name: NOAA / National Weather Service winter-hazard map service
     kind: data
@@ -116,7 +114,7 @@ sources:
     licence: "Creative Commons Attribution 4.0 (CC BY 4.0); the data are ADAPTED here (point values, accumulations, percentiles across members)"
     licence_url: https://creativecommons.org/licenses/by/4.0/
     credit: 'Adapted from "ECMWF IFS 15-day Forecast Data" by ECMWF, licensed under CC BY 4.0 (creativecommons.org/licenses/by/4.0). See the ECMWF Terms of Use (apps.ecmwf.int/datasets/licences/general/).'
-    hosts: [ecmwf.int, ecmwf-forecasts.s3.amazonaws.com]
+    hosts: [ecmwf.int, ecmwf-forecasts.s3.amazonaws.com, ecmwf-forecasts.s3.eu-central-1.amazonaws.com, storage.googleapis.com]
   - id: usfs
     name: US Forest Service, state parks and land managers (Sno-Park information)
     kind: data
@@ -128,14 +126,12 @@ sources:
   - id: plotly
     name: Plotly.js
     kind: software
-    role: "Charts (loaded from a CDN)"
+    role: "Charts (self-hosted from our own site since dev19: web/vendor/plotly-2.35.2/, version pinned, licence files included)"
     licence: MIT
     licence_url: https://github.com/plotly/plotly.js/blob/master/LICENSE
     credit: "Charts: Plotly.js (MIT)"
     hosts: []
-    browser: [cdn.plot.ly]
-    browser_when: "when a page with charts opens (area pages, the obs-map station panel): one script download; your IP address goes to the Plotly CDN"
-    notes: "Candidate to self-host (vendor) before launch to remove this third-party request: privacy audit item."
+    notes: "Self-hosted: no third-party request any more (the CDN request was the privacy audit's first removal candidate). Upgrading = replace the folder, the loaders and the pinned hash together."
   - id: analytics-providers
     name: Cookieless analytics (provider chosen by the owner; OFF today)
     kind: software

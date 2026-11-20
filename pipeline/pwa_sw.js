@@ -12,7 +12,7 @@
 const VERSION = "__VERSION__";
 const BASE = "__BASE__";                       // "" or "/snow-wx" (config site.base_path)
 const SHELL = __SHELL__;                       // paths relative to BASE
-const PLOTLY = "https://cdn.plot.ly/plotly-basic-2.35.2.min.js";
+const PLOTLY = self.location.origin + BASE + "/vendor/plotly-2.35.2/plotly-basic.min.js";      // self-hosted since dev19 (same origin; cache-first in the lib cache)
 const CORE = `snowwx-shell-${VERSION}`, DATA = "snowwx-data-v1", LIB = "snowwx-lib-v1";
 const FAV_KEY = "https://snowwx.invalid/favorites";
 const SMALL_DATA = ["data/points/summary.json", "data/meta.json", "data/alerts/index.json", "data/avalanche_ratings.json",
