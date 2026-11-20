@@ -75,6 +75,7 @@ def serve(folder: Path):
 
     class Server(socketserver.ThreadingTCPServer):
         daemon_threads = True
+        request_queue_size = 128          # dev21: the default listen backlog (5) refused connections in page-load bursts under parallel workers (flaky script loads)
         allow_reuse_address = True
 
         def handle_error(self, request, client_address):
