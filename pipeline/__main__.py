@@ -322,6 +322,12 @@ def main(argv=None) -> int:
     p.add_argument("--report", default=None, help="write the per-link report here (JSON)")
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("og", help="share-card images 1200x630 (dev20; no-op unless config og_images.enabled)")
+    p.add_argument("--out", default="build", help="site folder (data/ already merged)")
+    p.add_argument("--force", action="store_true", help="write even when og_images.enabled is false (local preview)")
+    p.add_argument("--only", nargs="*", default=None, help="area ids")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("pages", help="prerendered area pages + sitemap + robots (W2; no-op unless config pages.enabled)")
     p.add_argument("--out", default="build", help="site folder (data/ already merged)")
     p.add_argument("--force", action="store_true", help="write even when pages.enabled is false (local preview)")
@@ -411,6 +417,9 @@ def main(argv=None) -> int:
             print("nothing to do: use --check")
             return 0
         return webcams.run_check(args.update, make_session(cfg), Path(args.report) if args.report else None)
+    if args.cmd == "og":
+        from . import og
+        return og.run(load_config(args.config), Path(args.out), force=args.force, only=args.only)
     if args.cmd == "pages":
         from . import pages
         return pages.run(load_config(args.config), Path(args.out), force=args.force)

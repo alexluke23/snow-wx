@@ -40,12 +40,30 @@ def description(a: dict, doc: dict | None) -> str:
     return re.sub(r"\s+", " ", txt).strip()[:300]
 
 
+def og_image_url(a: dict, cfg: dict) -> str | None:
+    """the share card (pipeline/og.py) ONLY when both pages.enabled and og_images.enabled are on (dev20); Sno-Parks use the generic card"""
+    if not ((cfg.get("pages") or {}).get("enabled") and (cfg.get("og_images") or {}).get("enabled")):
+        return None
+    name = "snopark" if str(a.get("id", "")).startswith("sp-") or a.get("kind") == "snopark" else a["id"]
+    return f"{base_url(cfg)}/og/{name}.png"
+
+
+def og_meta(url: str | None, title: str) -> str:
+    if not url:
+        return ""
+    e = html.escape
+    return (f'<meta property="og:image" content="{e(url)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">'
+            f'<meta property="og:image:alt" content="{e(title)}: share card with the likely snowfall for the next days">\n')
+
+
 def render_page(a: dict, doc: dict | None, cfg: dict) -> str:
     e = html.escape
     bp = _bp(cfg)
     canon = f"{base_url(cfg)}/{page_path(a)}"
     desc = description(a, doc)
-    title = f"{a['name']} snow forecast ({a['state']}) · Snow-Wx"
+    site = str((cfg.get("site") or {}).get("name") or "Snow-Wx")         # brand-agnostic (dev20): config site.name
+    title = f"{a['name']} snow forecast ({a['state']}) · {site}"
+    og_img = og_image_url(a, cfg)
     sm = (doc or {}).get("summary") or {}
     t72 = ((doc or {}).get("points") or {}).get("summit", {}).get("totals", {}).get("72h") or {}
     head = f"<p><b>{e(sm.get('tag', ''))}</b> {e(sm['sentence'])}</p>" if sm.get("sentence") else f"<p>{e(desc)}</p>"
@@ -66,9 +84,9 @@ def render_page(a: dict, doc: dict | None, cfg: dict) -> str:
 <title>{e(title)}</title>
 <meta name="description" content="{e(desc)}">
 <link rel="canonical" href="{e(canon)}">
-<meta property="og:type" content="website"><meta property="og:site_name" content="Snow-Wx">
+<meta property="og:type" content="website"><meta property="og:site_name" content="{e(site)}">
 <meta property="og:title" content="{e(title)}"><meta property="og:description" content="{e(desc)}"><meta property="og:url" content="{e(canon)}">
-<meta name="twitter:card" content="summary"><meta name="twitter:title" content="{e(title)}"><meta name="twitter:description" content="{e(desc)}">
+{og_meta(og_img, title)}<meta name="twitter:card" content="{'summary_large_image' if og_img else 'summary'}"><meta name="twitter:title" content="{e(title)}"><meta name="twitter:description" content="{e(desc)}">
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="{bp}/css/style.css">
 <script type="application/ld+json">{ld_json}</script>
