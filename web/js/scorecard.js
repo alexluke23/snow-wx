@@ -8,6 +8,6 @@
     if (!meta?.verification_ui?.enabled) return;
     sec.hidden = false;
     const body = document.getElementById("scorecard-body");
-    try { body.innerHTML = VerificationUI.scorecardHtml(await get("data/verification.json")); } catch { body.innerHTML = `<p class="hint">Verification results are not available yet.</p>`; }
+    try { body.innerHTML = VerificationUI.scorecardHtml(await get(`${VerificationUI.BASE}verification.json`)); } catch { body.innerHTML = `<p class="hint">Verification results are not available yet.</p>`; }
   });
 })();

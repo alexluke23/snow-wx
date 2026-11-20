@@ -109,3 +109,17 @@ forecast at a SNOTEL site with the observed 24-h depth change (3-h median, clipp
 `scores_by_state_days12.csv`, `scores_by_elevation_days12.csv`, `summary.json` and a `README.md`. It EXCLUDES observations whose 24-h window overlaps `verification.snotel_outage`
 (config; the NRCS outage, ending at the first confirmed live recovery 2026-11-18 00:45Z) and observations with fewer than 20 hourly reports (stale/carried/patchy),
 and counts what it dropped. Temperature is not scored (the archive has no temperatures). First look: `docs/verification_first_look.md`.
+
+## Daily scores in CI (dev21)
+`.github/workflows/verify.yml` runs daily at 15:25 UTC (and by hand). It downloads the archive CSVs (closed months come from its Actions cache), runs
+`python -m pipeline verify-ci` (`verify.ci_run`: THE SAME `run()` as above, so the same outage window and the same 20-hourly-reports rule) and publishes
+`verify-<YYYYMMDDHH>-<version>.tar` on the `model-maps` prerelease, where YYYYMMDDHH is the newest 12Z observation scored. update-site.yml's existing unpack loop
+extracts it into `build/models/verify/`: `verification.json` (counts per site + scorecard), `verification/<site>.json` (only sites that meet the minima) and `run.json`
+(days, pairs, exclusions, and a projection of when the minima are met). The panel and the about.html scorecard read `models/verify/` (`VerificationUI.BASE`) and stay behind
+`verification_ui.enabled` (false). The job exits 0 with new=false when there is no new observation day, the archive cannot be downloaded, or the newest observation
+is already scored (a stale archive warns: "newest SNOTEL observation is N h old"); the last good result then stays on the site. Switch: `verification.ci_enabled`.
+Monitored as source `verify` (max 50 h; "waiting for the first run" before the first result).
+
+**First live run (local, Nov 20 2026, 13:40Z, archive Nov 14-20):** 4 observation days after the outage exclusion, 88,131 pairs over 790 SNOTEL sites, best site 4 days / 13
+pairs (days 1-2 leads), no site ready yet. At this pace the 14-day / 30-pair minimum is reached about **Nov 30** (the days rule binds; a new outage or archive gap moves it).
+Runtime 7.6 s; output 28 KB.

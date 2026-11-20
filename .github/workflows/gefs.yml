@@ -1,0 +1,108 @@
+# NOAA GEFS ensemble plume at every ski-area summit (pipeline/gefs.py, docs/specs/multi-model.md). Owner-authorized new workflow (dev21), modelled on ecmwf.yml.
+#
+# Stores its newest run as gefs-<YYYYMMDDHH>-<version>.tar on the "model-maps" prerelease; update-site.yml already downloads the newest tar of every product into each
+# build (gefs -> build/models/gefs/{index.json,plume/<area>.json}) and the site build's multimodel merge lists `gefs` in `plumes`, which shows the "ECMWF | GEFS" switch.
+# Does nothing (exit 0, new=false) while config gefs.enabled is false.
+#
+# Schedule: 00Z and 12Z cycles only. NCO publishes no per-file time for the 0.25 degree pgrb2s files, so the release time was MEASURED on the AWS mirror (S3 Last-Modified of
+# gep30 ...pgrb2s.0p25.f240.idx, the last file of a cycle; 11 cycles Nov 15-20 2026): +5.48 to +5.65 h after init (f006 at ~+3.8 h). First attempt at init + 6 h 10 min
+# (06:10 / 18:10 UTC, >= 30 min margin), retry 2 h later (08:10 / 20:10 UTC) for a late release or a throttled first attempt; minute :10 avoids the hourly build (:17),
+# the model jobs (:55) and ECMWF (:40). The pipeline takes the newest 00/12Z cycle whose f240 index exists for the control and the last member, and exits 0 with new=false
+# when it is already published or not released yet.
+# Cost (measured, dev20 end-to-end): ~376 MB of anonymous byte-range GETs (APCP + CSNOW of 31 members x 40 steps), ~250 s; 161 files on the site (one plume per ski area +
+# index.json). Decoding is serialized (ecCodes is not thread-safe); downloads stay parallel. Data: NOAA, public domain. No secret, no key.
+name: GEFS (plume)
+
+on:
+  schedule:
+    - cron: "10 6,8,18,20 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Re-run even if the newest cycle is already published"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # create the release / upload and delete this product's assets
+  actions: write    # trigger update-site.yml after a new upload
+
+concurrency:
+  group: gefs
+  cancel-in-progress: false
+
+env:
+  RELEASE: model-maps
+  MODEL: gefs
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  gefs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: Find the published cycle
+        id: pub
+        run: |
+          cyc=$(gh release view "$RELEASE" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null \
+                | sed -n -E "s/^${MODEL}-([0-9]{10}(-[0-9a-f]{8})?)\.tar$/\1/p" | sort | tail -1 || true)
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then cyc=""; fi
+          echo "published: ${cyc:-none}"
+          echo "cycle=$cyc" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the resume cache
+        # The retry attempt continues where the first stopped: pipeline/gefs.py keeps the SAMPLED buckets of every finished step under data_cache/gefs/<cycle>
+        # (a few hundred KB) and skips those steps next time; a cache of another cycle is ignored (only the newest 2 cycles are kept).
+        uses: actions/cache/restore@v6
+        with:
+          path: data_cache/gefs
+          key: gefs-${{ github.run_id }}
+          restore-keys: |
+            gefs-
+
+      - name: Fetch, sample, write
+        id: render
+        shell: bash -el {0}
+        # Writes new=true|false and cycle=... to $GITHUB_OUTPUT. Exit 0 with new=false when the newest complete cycle is already published, not released yet, or
+        # too many members are missing this attempt (the finished steps stay in the resume cache).
+        run: python -m pipeline gefs --out out/models --published "${{ steps.pub.outputs.cycle }}" --github-output "$GITHUB_OUTPUT"
+
+      - name: Save the resume cache
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: data_cache/gefs
+          key: gefs-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload to the model-maps release
+        if: steps.render.outputs.new == 'true'
+        run: |
+          set -euo pipefail
+          cyc="${{ steps.render.outputs.cycle }}"
+          asset="${MODEL}-${cyc}.tar"
+          tar -C out/models -cf "$asset" "$MODEL"
+          du -h "$asset"
+          if ! gh release view "$RELEASE" >/dev/null 2>&1; then
+            gh release create "$RELEASE" --prerelease --title "Model maps (automated)" \
+              --notes "Newest model-map images per model, replaced automatically by the Model maps workflow. Not a software release." \
+              || gh release view "$RELEASE" >/dev/null
+          fi
+          # Upload the new run first, then delete THIS product's other assets; other products' assets are never touched.
+          gh release upload "$RELEASE" "$asset" --clobber
+          for old in $(gh release view "$RELEASE" --json assets -q '.assets[].name' \
+                       | grep -E "^${MODEL}-[0-9]{10}(-[0-9a-f]{8})?\.tar$" || true); do
+            if [ "$old" != "$asset" ]; then
+              gh release delete-asset "$RELEASE" "$old" -y
+            fi
+          done
+
+      - name: Redeploy the site
+        if: steps.render.outputs.new == 'true'
+        run: gh workflow run update-site.yml --ref "${{ github.event.repository.default_branch }}"

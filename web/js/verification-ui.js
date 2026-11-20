@@ -1,11 +1,13 @@
 // M9 verification panel (dev18 Part 3): "How did forecasts do here?" on the area page and the regional scorecard on about.html.
-// BUILT BEHIND config verification_ui.enabled (default false, never enabled by a dev session): while the flag is off the pages show nothing and never fetch data/verification*.json.
-// Reads what `python -m pipeline verify --publish <data folder>` writes: data/verification.json (counts per SNOTEL site + the scorecard) and, only for sites that meet the minimum
-// (default >= 14 observation days AND >= 30 forecast/observation pairs, configurable), data/verification/<site>.json (metrics + a daily series).
+// BUILT BEHIND config verification_ui.enabled (default false, never enabled by a dev session): while the flag is off the pages show nothing and never fetch models/verify/verification*.json.
+// Reads what the daily verification job writes (dev21: .github/workflows/verify.yml -> `pipeline verify-ci` -> verify-*.tar, which update-site extracts into build/models/verify/):
+// models/verify/verification.json (counts per SNOTEL site + the scorecard) and, only for sites that meet the minimum
+// (default >= 14 observation days AND >= 30 forecast/observation pairs, configurable), models/verify/verification/<site>.json (metrics + a daily series).
 // Honest by construction: below the minimum it says "Collecting data: X of 14 days" and shows no numbers; the observation is the 24-h SNOTEL depth change, a LOWER BOUND of snowfall.
 // Pure functions here (tested with Node); drawing helpers use the shared chart theme (js/charts/theme.js, DESIGN §6-B).
 // eslint-disable-next-line no-unused-vars
 const VerificationUI = (() => {
+  const BASE = "models/verify/";            // dev21: where update-site extracts the verify product tar
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const f1 = (v) => (v === null || v === undefined ? "–" : (Math.round(v * 100) / 100).toFixed(2));
   const pct = (v) => (v === null || v === undefined ? "–" : `${Math.round(v * 100)}%`);
@@ -74,5 +76,5 @@ const VerificationUI = (() => {
         <thead><tr>${METRIC_COLS.map((c) => `<th scope="col">${esc(c)}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
-  return { status, collecting, sentence, metricRows, METRIC_COLS, dailyRows, caveats, scorecardHtml, esc };
+  return { BASE, status, collecting, sentence, metricRows, METRIC_COLS, dailyRows, caveats, scorecardHtml, esc };
 })();

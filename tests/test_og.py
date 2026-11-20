@@ -103,3 +103,13 @@ def test_pages_reference_og_image_only_when_both_flags_are_on():
         assert "· Placeholder Name</title>" in h and 'og:site_name" content="Placeholder Name"' in h
     h = pages.render_page({**AREA, "id": "sp-wing-mountain"}, DOC, CFG)
     assert 'content="https://example.test/og/snopark.png"' in h
+
+
+def test_a_card_without_forecast_days_uses_the_full_width_and_promises_no_chart():
+    """dev21 visual QA: no chart -> the sentence spans the card and does not mention daily ranges"""
+    from pipeline import og
+    png, lay = og.render({"id": "x", "name": "Bogus Basin Mountain Recreation Area", "region": "Central Idaho", "state": "ID"}, {"points": {}}, {})
+    names = {x["name"] for x in lay["boxes"]}
+    summ = [x for x in lay["boxes"] if x["name"] == "summary"]
+    assert "chart-title" not in names and summ and "every day" not in " ".join(x["text"] for x in summ)
+    assert max(x["box"][2] - x["box"][0] for x in summ) > 600                     # wider than the 560 px column used beside a chart

@@ -183,7 +183,9 @@
       <p>Each forecast page compares NBM with three NOAA models sampled at the summit: <b>HRRR</b> (to 48 h), <b>RRFS</b> (to 84 h) and <b>GFS</b> (to 10 days), plus the <a href="#ecmwf">ECMWF</a> operational run (to 10 days) when it is available. They are
         drawn as cumulative <b>liquid-equivalent</b> precipitation, because the models' own snowfall products differ. The "Snow (in)" toggle converts each model's liquid
         with NBM's median snow ratio and NBM's chance of snow at the point ("inches assume NBM SLR"); the NBM line is NBM's own expected snowfall. All lines start at
-        the newest model start, so they are comparable; each model's own terrain height at the point is in the tooltip, since a coarse grid can sit well below or above the summit.</p>
+        the newest model start, so they are comparable; each model's own terrain height at the point is in the tooltip, since a coarse grid can sit well below or above the summit.
+        Buttons above the chart show or hide single models (on a phone RRFS and the experimental AIFS line start hidden, to keep the chart readable); this changes the drawing only:
+        the agreement rating, the sentence above the chart and "View as table" always use every model.</p>
       <p><b>Model agreement</b> (High / Medium / Low) is a <b>heuristic until verified</b>, not an accuracy claim. Over the longest window (72, 48, 36, 24, 12 or 6 hours after
         the common start) that at least three of NBM, HRRR, RRFS and GFS reach, we take each model's liquid total and the median of those totals. A model "agrees" if it is within
         ±25% of the median (or within 0.10 inch when the median is small). If at least 80% of the sources agree the badge is <b>High</b> (all of three, all of four, 4 of 5), at least two thirds <b>Medium</b>, otherwise
@@ -209,6 +211,12 @@
         elevation-adjusted), a missing time is a gap, and it is <b>not part of the model-agreement rating</b>: an AI model that we have not verified here should not tilt a rating that is itself a heuristic.
         Adapted from ECMWF AIFS Single open data (Copyright ECMWF), licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>; see the
         <a href="https://apps.ecmwf.int/datasets/licences/general/">ECMWF Terms of Use</a>.</p>
+      <p id="gefs"><b>NOAA GEFS ensemble (when shown).</b> In the Ensemble view an <b>ECMWF ENS | NOAA GEFS</b> switch shows the second plume: NOAA's Global Ensemble Forecast System
+        (the control run plus the perturbed members; the page shows the actual count, 31 at the time of writing), 0.25°, every 6 hours to 10 days. It is built exactly like the ECMWF plume: each member's
+        own running total, then percentiles and the mean across members at each time, nothing added across time, greyed when the run is more than 24 hours old. Liquid is GEFS total precipitation; GEFS has no
+        snowfall amount, so "Snow (in)" is an <b>estimate</b>: each 6-hour precipitation amount times the share of that window GEFS calls snow (its categorical snow flag), times NBM's median snow ratio.
+        Raw model guidance, not bias-corrected and not elevation-adjusted. Data: NOAA/NWS National Centers for Environmental Prediction (NCEP), via the NOAA Open Data Dissemination program on AWS;
+        public domain.</p>
     </section>
 
     <section id="verification">
@@ -221,6 +229,8 @@
     <section id="scorecard" hidden>
       <h3>Forecast scorecard (first look)</h3>
       <div id="scorecard-body"><p class="hint">Loading…</p></div>
+      <p class="hint">The scores are recomputed once a day from our forecast archive and the SNOTEL observations, leaving out the Nov 16-18 2026 SNOTEL data outage and any day
+        with fewer than 20 hourly reports at a site.</p>
       <ul class="caveats">
         <li>The observation is the 24-hour change in SNOTEL snow depth, a <b>lower bound</b> for snowfall (settling, melt and wind take snow away). A positive bias is therefore expected and is not by itself an error.</li>
         <li>Hit rate counts the days the observed gain was at least 1 inch and asks how often the forecast also said 1 inch or more. Bias and mean absolute error are in inches.</li>
@@ -320,6 +330,8 @@
           via the NOAA Open Data Dissemination program on AWS; NWS alerts and Area Forecast Discussions via
           api.weather.gov.</li>
         <li><b>Model maps:</b> NOAA HRRR, RRFS and GFS (NOAA Open Data Dissemination on AWS).</li>
+        <li><b>NOAA GEFS ensemble:</b> NOAA/NWS NCEP Global Ensemble Forecast System via the NOAA Open Data Dissemination program on AWS (public domain); sampled at ski-area summits and
+          accumulated per member by us.</li>
         <li><b>ECMWF:</b> Adapted from "ECMWF IFS 15-day Forecast Data" by ECMWF, licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, available at
           <a href="https://data.ecmwf.int/forecasts/">https://data.ecmwf.int/forecasts/</a>; see the <a href="https://apps.ecmwf.int/datasets/licences/general/">ECMWF Terms of Use</a>. We sample the
           open data at ski-area points, accumulate per ensemble member and summarise it (adapted), so the figures on this site are ours, not ECMWF's.</li>

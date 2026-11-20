@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -267,3 +268,82 @@ def publish(pairs: pd.DataFrame, summary: dict, data_dir: Path, min_days: int = 
         write_json(vdir / name, doc)
     write_json(data_dir / "verification.json", index)
     return {"stations": len(index["stations"]), "ready_stations": len(files), "scorecard_ready": index["scorecard"]["ready"]}
+
+
+# ---------------------------------------------------------------- CI (dev21 Part 1: .github/workflows/verify.yml)
+# The daily job downloads the archive CSVs from the "verification" release (written by update-site's archive step, SNOTEL obs included) and runs THE SAME
+# scorer as above (run(): same outage window, same stale-observation rule). Its output is a product tar on the model-maps release, verify-<key>-<version>.tar,
+# which update-site already extracts into build/models/: the panel reads models/verify/verification.json (flag verification_ui.enabled stays the only switch).
+# key = the newest SNOTEL observation in the archive (YYYYMMDDHH, the daily 12Z): no new observation day = nothing new (exit 0, the last good result stays).
+OUT_DIR = "verify"
+STALE_OBS_H = 48
+
+
+def newest_obs(archive_dir: Path) -> pd.Timestamp | None:
+    obs = _read(archive_dir, "snotel")
+    if obs.empty or "end" not in obs.columns:
+        return None
+    t = pd.to_datetime(obs["end"], utc=True, errors="coerce").dropna()
+    return t.max() if len(t) else None
+
+
+def ready_estimate(index: dict, newest: pd.Timestamp | None, min_days: int, min_pairs: int) -> dict:
+    """When the minima will be met (a projection from the current pace, not a promise): the first SNOTEL site and the regional scorecard.
+    Days grow by one per observation day; pairs grow at the site's current pairs-per-day rate (several cycles cover each day)."""
+    def when(days: int, pairs: int) -> tuple[int, str | None]:
+        if days >= min_days and pairs >= min_pairs:
+            return 0, str(newest.date()) if newest is not None else None
+        rate = pairs / days if days else 0
+        need_d = max(0, min_days - days)
+        need_p = math.ceil((min_pairs - pairs) / rate) if pairs < min_pairs and rate > 0 else (0 if pairs >= min_pairs else 10 ** 4)
+        n = max(need_d, need_p)
+        return n, (str((newest + pd.Timedelta(days=n)).date()) if newest is not None and n < 10 ** 4 else None)
+    st = index.get("stations") or {}
+    best = max(st.values(), key=lambda s: (min(s["d"] / min_days, s["n"] / min_pairs), s["d"], s["n"]), default=None)
+    sc = index.get("scorecard") or {}
+    first_n, first = when(best["d"], best["n"]) if best else (None, None)
+    sc_n, sc_date = when(int(sc.get("days") or 0), int(sc.get("pairs") or 0))
+    return {"stations_ready": sum(1 for s in st.values() if s.get("ready")), "stations": len(st), "best_station": best,
+            "first_station_ready": first, "first_station_days_to_go": first_n, "scorecard_ready": sc_date, "scorecard_days_to_go": sc_n}
+
+
+def ci_run(archive_dir: Path, out_models: Path, cfg: dict | None, published: str = "", github_output: str | None = None, now: datetime | None = None) -> dict:
+    """Score the downloaded archive and write out_models/verify/{verification.json, verification/<site>.json, run.json}. Never raises for missing / stale input:
+    returns {"new": False, "reason": ...} and the job exits 0, so the last good published result stays on the site."""
+    from .common import write_json
+    from .version import product_version
+    now = now or datetime.now(timezone.utc)
+    ui = (cfg or {}).get("verification_ui") or {}
+    min_days, min_pairs = int(ui.get("min_days", 14)), int(ui.get("min_pairs", 30))
+
+    def out(res: dict) -> dict:
+        if github_output:
+            with open(github_output, "a", encoding="utf-8") as f:
+                f.write(f"new={'true' if res.get('new') else 'false'}\n")
+                if res.get("key"):
+                    f.write(f"cycle={res['key']}\n")
+                if res.get("warning"):
+                    f.write(f"warning={res['warning']}\n")
+        return res
+
+    if not ((cfg or {}).get("verification") or {}).get("ci_enabled", True):
+        return out({"new": False, "reason": "verification.ci_enabled is false"})
+    newest = newest_obs(archive_dir)
+    if newest is None:
+        return out({"new": False, "reason": "no SNOTEL observations in the archive (download failed or empty)", "warning": "no archive observations: kept the last result"})
+    age_h = (pd.Timestamp(now) - newest).total_seconds() / 3600
+    warning = f"newest SNOTEL observation is {age_h:.0f} h old (archive step or SNOTEL fetch behind): kept the last result" if age_h > STALE_OBS_H else None
+    key = f"{newest.strftime('%Y%m%d%H')}-{product_version('verify')}"
+    if published and published == key:
+        return out({"new": False, "key": key, "reason": "already published", "warning": warning})
+    import tempfile
+    vdir = Path(out_models) / OUT_DIR
+    with tempfile.TemporaryDirectory() as tmp:
+        summary = run(Path(archive_dir), Path(tmp), cfg, 20, vdir)
+    index = json.loads((vdir / "verification.json").read_text(encoding="utf-8"))
+    est = ready_estimate(index, newest, min_days, min_pairs)
+    info = {"generated_at": now.strftime("%Y-%m-%dT%H:%MZ"), "key": key, "newest_obs": newest.strftime("%Y-%m-%dT%H:%MZ"), "obs_age_h": round(age_h, 1),
+            "pairs": summary["pairs"], "days": summary["days"], "span": summary["span"], "exclusions": summary["exclusions"], "outage_excluded": summary["outage_excluded"],
+            "min_days": min_days, "min_pairs": min_pairs, **est, **({"warning": warning} if warning else {})}
+    write_json(vdir / "run.json", info)
+    return out({"new": True, **info})

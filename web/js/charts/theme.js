@@ -223,7 +223,7 @@ const SnowCharts = (() => {
   const pending = new Map();
   /** Run draw() now if el has been on screen before, else when it comes within ~300 px. */
   function lazy(el, draw) {
-    if (el.dataset.seen === "1" || !("IntersectionObserver" in window)) { el.dataset.seen = "1"; return draw(); }
+    if (el.dataset.seen === "1" || typeof window.IntersectionObserver !== "function") { el.dataset.seen = "1"; return draw(); }
     pending.set(el, draw);
     io ||= new IntersectionObserver((entries) => {
       for (const e of entries) {
