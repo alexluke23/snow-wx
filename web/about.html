@@ -183,7 +183,9 @@
       <p>Each forecast page compares NBM with three NOAA models sampled at the summit: <b>HRRR</b> (to 48 h), <b>RRFS</b> (to 84 h) and <b>GFS</b> (to 10 days), plus the <a href="#ecmwf">ECMWF</a> operational run (to 10 days) when it is available. They are
         drawn as cumulative <b>liquid-equivalent</b> precipitation, because the models' own snowfall products differ. The "Snow (in)" toggle converts each model's liquid
         with NBM's median snow ratio and NBM's chance of snow at the point ("inches assume NBM SLR"); the NBM line is NBM's own expected snowfall. All lines start at
-        the newest model start, so they are comparable; each model's own terrain height at the point is in the tooltip, since a coarse grid can sit well below or above the summit.</p>
+        the newest model start, so they are comparable; each model's own terrain height at the point is in the tooltip, since a coarse grid can sit well below or above the summit.
+        Buttons above the chart show or hide single models (on a phone RRFS and the experimental AIFS line start hidden, to keep the chart readable); this changes the drawing only:
+        the agreement rating, the sentence above the chart and "View as table" always use every model.</p>
       <p><b>Model agreement</b> (High / Medium / Low) is a <b>heuristic until verified</b>, not an accuracy claim. Over the longest window (72, 48, 36, 24, 12 or 6 hours after
         the common start) that at least three of NBM, HRRR, RRFS and GFS reach, we take each model's liquid total and the median of those totals. A model "agrees" if it is within
         ±25% of the median (or within 0.10 inch when the median is small). If at least 80% of the sources agree the badge is <b>High</b> (all of three, all of four, 4 of 5), at least two thirds <b>Medium</b>, otherwise
@@ -227,6 +229,8 @@
     <section id="scorecard" hidden>
       <h3>Forecast scorecard (first look)</h3>
       <div id="scorecard-body"><p class="hint">Loading…</p></div>
+      <p class="hint">The scores are recomputed once a day from our forecast archive and the SNOTEL observations, leaving out the Nov 16-18 2026 SNOTEL data outage and any day
+        with fewer than 20 hourly reports at a site.</p>
       <ul class="caveats">
         <li>The observation is the 24-hour change in SNOTEL snow depth, a <b>lower bound</b> for snowfall (settling, melt and wind take snow away). A positive bias is therefore expected and is not by itself an error.</li>
         <li>Hit rate counts the days the observed gain was at least 1 inch and asks how often the forecast also said 1 inch or more. Bias and mean absolute error are in inches.</li>
