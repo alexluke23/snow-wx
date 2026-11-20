@@ -1547,6 +1547,38 @@ def check_no_idle(b: Browser, base: str, log):
     log(f"  no idle callback: {res}")
 
 
+def check_alert_cls(b: Browser, base: str, log):
+    """dev21 Part 0c: an ACTIVE NWS alert (the recorded fixture, frozen 'active now' in every worker's site copy) must not shift the area page: CLS <= 0.02 at
+    375 and 1280 px with a 4x CPU slowdown, the banner and the alert summary shown; an area without an alert as the control. Was 0.074: the summary's
+    'report' link (revealed later by site-config) added a line once the alert summary outgrew its reserved height."""
+    idx = json.loads((Path(base_dir_holder["path"]) / "data" / "alerts" / "index.json").read_text(encoding="utf-8"))
+    pts = Path(base_dir_holder["path"]) / "data" / "points"
+    with_alert = next((k for k, refs in idx.get("areas", {}).items() if any(r.get("relevant") is not False for r in refs) and (pts / f"{k}.json").exists()), None)
+    need(with_alert, "the frozen alert fixture names no area with a points file")
+    without = next(k for k in ("alta-ski-area", "mt-bachelor", "brighton-resort") if k not in idx.get("areas", {}) and (pts / f"{k}.json").exists())
+    obs = """(() => { window.__cls = 0; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; }).observe({type: 'layout-shift', buffered: true}); } catch (e) { window.__cls = -1; } })()"""
+    sid = b.cmd("Page.addScriptToEvaluateOnNewDocument", source=obs)["identifier"]
+    b.cmd("Emulation.setCPUThrottlingRate", rate=4)
+    res = {}
+    try:
+        for area in (with_alert, without):
+            for width in (375, 1280):
+                b.open(f"{base}/area.html#{area}", width=width, height=800, wait=10)
+                with contextlib.suppress(Fail):          # site-config reveals the report link when the browser is idle (<= 4 s)
+                    wait_for(b, "[...document.querySelectorAll('a[data-mailto]')].every(a => a.dataset.wired === '1')", 6)
+                b.settle(1.0)
+                r = b.eval("({cls: +window.__cls.toFixed(4), banner: document.querySelectorAll('.alert-banner').length, tag: (document.querySelector('.summary-tag') || {}).textContent || ''})")
+                res[f"{area}-{width}"] = r
+                need(r["cls"] >= 0 and r["cls"] <= 0.02, f"area page layout shift {r['cls']} > 0.02 ({area}, {width}px): {r}")
+                if area == with_alert:
+                    need(r["banner"] >= 1 and "Alert" in r["tag"], f"alert banner / alert summary missing on {area}: {r}")
+    finally:
+        b.cmd("Emulation.setCPUThrottlingRate", rate=1)
+        b.cmd("Page.removeScriptToEvaluateOnNewDocument", identifier=sid)
+    log(f"  alert CLS: {res}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
 def check_webcams(b: Browser, base: str, log):
     """dev18 Part 1: the area page's Webcams row: <= 3 plain outbound links (https, target=_blank, rel noopener noreferrer), each tappable at 375 px, no iframe,
     no image or other resource loaded from a webcam host, no sideways scroll; SNOTEL pages and areas without an entry show no row."""
@@ -1931,7 +1963,7 @@ def check_mobile_sweep(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips,
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips, "alertcls": check_alert_cls,
           **{f"failure{k}": functools.partial(check_failure_modes, shard=(k, 3)) for k in (1, 2, 3)}}
 FULL_RUN = [n for n in CHECKS if n != "failure"]          # the full run uses the three failure shards (same coverage, parallel)
 
