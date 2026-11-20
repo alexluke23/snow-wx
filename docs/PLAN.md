@@ -61,7 +61,7 @@ centers). Full text: `docs/ARCHIVE.md`.
 
 ---
 
-## 2. Status (Nov 19 2026, through dev19)
+## 2. Status (Nov 19 2026, through dev20)
 
 - **Live:** https://alexluke23.github.io/snow-wx/ — repo `alexluke23/snow-wx` (custom domain: W1).
 - **Done:** M0–M5, M3.5, M3.6, M4.5 Sno-Parks, M9-prep archive (running), "My mountains", NBM forecast overlays, dev10 basemap, **dev11–dev14** ("likely" p25–p75 wording, one powder-quality definition, W3, status page),
@@ -70,6 +70,8 @@ centers). Full text: `docs/ARCHIVE.md`.
   webcam LINKS (60 areas), Sources / disclaimer / privacy / terms drafts, cookieless analytics (off), `linkcheck`, `404.html`, draft Cloudflare `_headers` + CSP check, verification UI (behind `verification_ui.enabled=false`). Details: `docs/ARCHIVE.md`.
   **dev19** (branch): **ECMWF fetch resilience** (shared `pipeline/fetch_resilient.py`: backoff + jitter, Retry-After, mirror failover AWS regional -> Google -> ECMWF portal, graceful degradation with `steps_missing`, per-cycle resume cache restored/saved by `ecmwf.yml`, fetch health on the status page), webcam link corrections + dead-link removal,
   **Plotly self-hosted** (`web/vendor/plotly-2.35.2/`; no third-party script host left in the browser), hazard popups served only from our own files (the browser-side api.weather.gov fetch is gone; the pipeline fills missing alert texts).
+  **dev20** (branch): ECMWF mirror preference + 2-cycle cache bound; browser suite ~32 -> ~5 min (parallel isolated workers, frozen inputs, `--quick`); share cards (`pipeline og`, OFF);
+  **ECMWF AIFS line** (on, experimental, out of the badge); `docs/STATE_SNAPSHOT.md` (owner notes).
 - **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas, Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
 - **Known issues:** the NRCS AWDB (SNOTEL) outage of Nov 16–18 is over (first confirmed live 00:45Z Nov 18); **M9 excludes SNOTEL obs from 2026-11-16 12Z through 2026-11-18 00:45Z** (`config/settings.yml`
   `verification.snotel_outage`). Obs map Lighthouse mobile 71–91 (bimodal; compare with interleaved runs, median of ≥ 3 ≥ 85); site ≈ 220 MB / 5.7 k files.
@@ -109,6 +111,7 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
 | Nov 17–18 | **dev15–dev17 (merged):** monitor judges a source by the data's own age; hazard popups show NWS text in-page; M7 precipitation by model (agreement badge = documented heuristic); M9 scorer excludes the SNOTEL outage; ECMWF, W7 wind flag and W6 alerts built OFF (details: `docs/ARCHIVE.md`). |
 | Nov 19 | **dev18 (owner-authorized):** ECMWF goes live via its own workflow `.github/workflows/ecmwf.yml` (`ecmwf.enabled: true`); badge shows "Little precipitation expected" when every model is < 0.20 in (never "High"); webcams are links only; legal pages are DRAFTS (`noindex`); analytics and the verification UI are built but OFF (owner picks the provider / flips the flag). |
 | Nov 19 | **dev19 (owner brief):** ECMWF goes through a resilient fetcher with mirror failover; a step that cannot be fetched is a GAP (all members + HRES, never interpolated), a run needs >= 90 % of the steps and the first 120 h, else it exits 0 with `new=false`. Plotly is self-hosted (privacy: no CDN request). Hazard popups never call api.weather.gov from the browser. Webcam links that cannot be verified are removed, not guessed. |
+| Nov 19 | **dev20 (owner brief):** brand is config-driven (`site.name`/`site.tagline` placeholders); share cards only with `pages` AND `og_images` on; AIFS shown as an experimental line, kept OUT of the agreement badge unless `aifs.in_badge`; the browser suite never depends on live data (frozen fixtures). |
 | Nov 16 | **Composite ranges are never shown:** where a 24/48/72 h total would add several 6 h percentile windows (fallback cycles), show the expected total only; points JSON marks totals `native: true/false`. Archive columns unchanged (they never carry composite ranges). Lighthouse target: median of ≥ 3 interleaved runs ≥ 85. |
 | Nov 16 | Model-map snowfall colors stay as is for now (backlog §8.4). **Guard:** points JSON and the forecast archive keep their existing fields (p10/p50/p90, P(≥4/8/12″), 24/48/72 h). |
 

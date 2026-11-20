@@ -55,6 +55,9 @@ DEFAULTS = {
     "required_hours": 120,                  # every step up to this hour must be present, else the attempt publishes nothing (exit 0, new=false)
     "min_steps_frac": 0.9,                  # and at least this share of the planned steps
     "mirrors": None,                        # override list of {name, base[, max_conc]} (tests)
+    "probe_after_h": 24,                    # the other mirrors are re-probed at most this often (the preferred one is tried first on every other run)
+    "keep_cycles": 2,                       # data_cache/ecmwf keeps the newest N cycles ...
+    "cache_max_mb": 300,                    # ... and never more than this (oldest cycles go first; the newest one is always kept)
     "stale_hours": 24,
     "release_lag_h": 8,                     # ENS lands ~7-9 h after the nominal time
 }
@@ -236,14 +239,67 @@ def mirrors_for(c: dict) -> list:
     return [Mirror("aws", c["mirror"]), Mirror("google", GOOGLE_MIRROR), Mirror("ecmwf", PORTAL_MIRROR, max_conc=2)]
 
 
+PREF_FILE = "mirror_pref.json"
+
+
+def load_pref(root: Path | None) -> dict:
+    """the remembered mirror: {"mirror": name, "at": ISO time it last served a run, "probed_at": ISO time the other mirrors were last tried}; {} when unknown"""
+    if root is None:
+        return {}
+    try:
+        d = json.loads((Path(root) / PREF_FILE).read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def order_mirrors(mirrors: list, pref: dict, now: datetime, probe_after_h: float = 24) -> tuple[list, bool]:
+    """(mirrors in the order this run tries them, is_probe). The preferred mirror (the one that worked last time) goes FIRST; the others are re-probed at most once per
+    `probe_after_h`: on a probe run the highest-priority OTHER mirror goes first and the preferred one second (so a failing probe costs one breaker trip, not the run).
+    The per-run circuit breaker still moves on when the first mirror fails, so a preferred mirror that broke is replaced within the same run."""
+    names = [m.name for m in mirrors]
+    pm = pref.get("mirror")
+    if pm not in names:
+        return list(mirrors), False
+    first = next(m for m in mirrors if m.name == pm)
+    others = [m for m in mirrors if m.name != pm]
+    try:
+        due = (now - datetime.fromisoformat(str(pref.get("probed_at")).replace("Z", "+00:00"))) >= timedelta(hours=float(probe_after_h))
+    except (TypeError, ValueError):
+        due = True
+    if due and others:
+        return [others[0], first, *others[1:]], True
+    return [first, *others], False
+
+
+def save_pref(root: Path | None, old: dict, health: dict, now: datetime, probe: bool, first_mirror: str) -> dict:
+    """remember the mirror that served MOST of this run's successful requests (nothing served = keep the old note). `probed_at` moves only when this run probed (or there was no note)."""
+    used = health.get("mirrors_used") or {}
+    new = dict(old)
+    if used:
+        new["mirror"] = max(used, key=lambda k: used[k])
+        new["at"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if probe or not old.get("probed_at"):
+            new["probed_at"] = new["at"]
+        elif old.get("mirror") != new["mirror"] and first_mirror != old.get("mirror"):
+            new["probed_at"] = new["at"]
+        if root is not None:
+            try:
+                Path(root).mkdir(parents=True, exist_ok=True)
+                (Path(root) / PREF_FILE).write_text(json.dumps(new), encoding="utf-8")
+            except OSError as exc:
+                log.warning("ecmwf: could not save the mirror preference: %s", exc)
+    return new
+
+
 def rel(cycle: datetime, stream: str, step: int, ext: str) -> str:
     kind = "enfo-ef" if stream == "enfo" else "oper-fc"
     return f"{cycle:%Y%m%d}/{cycle:%H}z/ifs/0p25/{stream}/{cycle:%Y%m%d%H}0000-{step}h-{kind}.{ext}"
 
 
-def make_fetcher(c: dict, session):
+def make_fetcher(c: dict, session, mirrors: list | None = None):
     from .fetch_resilient import Fetcher
-    return Fetcher(mirrors_for(c), session=session, workers=int(c["workers"]), attempts=int(c["attempts"]), max_total_s=float(c["max_request_s"]), trip_after=int(c["trip_after"]),
+    return Fetcher(mirrors or mirrors_for(c), session=session, workers=int(c["workers"]), attempts=int(c["attempts"]), max_total_s=float(c["max_request_s"]), trip_after=int(c["trip_after"]),
                    backoff=float(c["backoff_s"]), min_interval=float(c["min_interval_s"]))
 
 
@@ -270,17 +326,37 @@ def newest_cycle(session, c: dict, now: datetime) -> datetime | None:
     return None
 
 
+_ECC_LOCK = __import__("threading").Lock()
+_ECC_READY = False
+_DECODE_LOCK = __import__("threading").Lock()
+
+
+def _eccodes_ready():
+    """ecCodes loads its definitions on the FIRST handle; two threads doing that at once fail ("no definitions found") and can crash the process (seen dev20 in the
+    GEFS end-to-end run, whose first decodes all start in worker threads). One handle from a sample, under a lock, before any parallel decode."""
+    global _ECC_READY
+    import eccodes
+    if not _ECC_READY:
+        with _ECC_LOCK:
+            if not _ECC_READY:
+                h = eccodes.codes_grib_new_from_samples("GRIB2")
+                eccodes.codes_release(h)
+                _ECC_READY = True
+    return eccodes
+
+
 def decode(blob: bytes) -> np.ndarray:
     """One GRIB2 message -> (721, 1440) float32 in the file's units (m)."""
-    import eccodes
-    h = eccodes.codes_new_from_message(blob)
-    try:
-        ni, nj = eccodes.codes_get(h, "Ni"), eccodes.codes_get(h, "Nj")
-        if (ni, nj) != (1440, 721) or eccodes.codes_get(h, "scanningMode") != 0:
-            raise ValueError(f"unexpected ECMWF grid {ni}x{nj}")
-        return eccodes.codes_get_values(h).reshape(nj, ni).astype("float32")
-    finally:
-        eccodes.codes_release(h)
+    eccodes = _eccodes_ready()
+    with _DECODE_LOCK:                     # dev20: ecCodes parses definition files lazily per GRIB template and that is not thread-safe (GEFS crashed with 3 workers): one decode at a time
+        h = eccodes.codes_new_from_message(blob)
+        try:
+            ni, nj = eccodes.codes_get(h, "Ni"), eccodes.codes_get(h, "Nj")
+            if (ni, nj) != (1440, 721) or eccodes.codes_get(h, "scanningMode") != 0:
+                raise ValueError(f"unexpected ECMWF grid {ni}x{nj}")
+            return eccodes.codes_get_values(h).reshape(nj, ni).astype("float32")
+        finally:
+            eccodes.codes_release(h)
 
 
 def partial_tag(tag: str) -> str:
@@ -296,17 +372,15 @@ class StepCache:
     Valid only for the same cycle, area points and member count; anything else is discarded. Other cycles' folders are removed. The Actions cache restores this folder between the
     four daily attempts, so a retry continues where the last one stopped."""
 
-    def __init__(self, root: Path | None, cycle: datetime, points: list[dict]):
+    def __init__(self, root: Path | None, cycle: datetime, points: list[dict], keep: int = 2, max_mb: float = 300):
         import hashlib
-        self.dir = None if root is None else Path(root) / "ecmwf" / cycle.strftime("%Y%m%d%H")
+        self.root = None if root is None else Path(root) / "ecmwf"
+        self.dir = None if root is None else self.root / cycle.strftime("%Y%m%d%H")
         self.key = hashlib.sha1(json.dumps([(p["id"], round(p["lat"], 4), round(p["lon"], 4)) for p in points]).encode()).hexdigest()[:12]
         self.n_members: int | None = None
         if self.dir is None:
             return
-        for sib in self.dir.parent.glob("*"):
-            if sib.is_dir() and sib != self.dir:
-                import shutil
-                shutil.rmtree(sib, ignore_errors=True)
+        self.pruned = prune_cycles(self.root, self.dir.name, keep=keep, max_mb=max_mb)
         meta = self.dir / "meta.json"
         try:
             m = json.loads(meta.read_text(encoding="utf-8"))
@@ -354,6 +428,139 @@ class StepCache:
             np.save(self.dir / "z.npy", z)
 
 
+def _dir_mb(d: Path) -> float:
+    return sum(f.stat().st_size for f in d.rglob("*") if f.is_file()) / 1e6
+
+
+def prune_cycles(root: Path | None, current: str, keep: int = 2, max_mb: float = 300) -> list[str]:
+    """dev20 cache hygiene: keep only the newest `keep` cycle folders (the current one always counts as kept) and never more than `max_mb` in total (oldest first,
+    the current cycle is never removed). Files at the top level (mirror_pref.json) stay. Returns the removed cycle names."""
+    import shutil
+    if root is None or not Path(root).exists():
+        return []
+    dirs = sorted((d for d in Path(root).iterdir() if d.is_dir()), key=lambda d: d.name, reverse=True)
+    others = [d for d in dirs if d.name != current]
+    keep_others = [d for d in others if d.name < current][: max(0, keep - 1)]      # only OLDER cycles may stay beside the current one
+    removed = [d for d in others if d not in keep_others]
+    for d in removed:
+        shutil.rmtree(d, ignore_errors=True)
+    kept = [d for d in keep_others]
+    total = sum(_dir_mb(d) for d in kept) + (_dir_mb(Path(root) / current) if (Path(root) / current).exists() else 0)
+    for d in sorted(kept, key=lambda d: d.name):                                        # oldest first
+        if total <= max_mb:
+            break
+        total -= _dir_mb(d)
+        shutil.rmtree(d, ignore_errors=True)
+        removed.append(d)
+    return [d.name for d in removed]
+
+
+def cache_sizes(root: Path | None) -> dict:
+    """{"cycles": {cycle: MB}, "total_mb": MB} of data_cache/ecmwf (what the Actions cache saves)"""
+    if root is None or not Path(root).exists():
+        return {"cycles": {}, "total_mb": 0.0}
+    cyc = {d.name: round(_dir_mb(d), 2) for d in sorted(Path(root).iterdir()) if d.is_dir()}
+    return {"cycles": cyc, "total_mb": round(_dir_mb(Path(root)), 2)}
+
+
+# ---------------------------------------------------------------- ECMWF AIFS Single (dev20): one more line in "Precipitation by model", experimental, OFF by default
+# FOUND on the real mirror (Google, 12Z Nov 19 2026): {date}/{HH}z/aifs-single/0p25/oper/{date}{HH}0000-{step}h-oper-fc.{index,grib2}; steps every 6 h from 0 to 360 h
+# (no 3-hourly steps); `tp` exists at every step, stepType accum (0-<step> h, cumulative since the run start), grid 1440 x 721 scanning 0 like IFS, and UNITS kg m-2
+# (= mm of water), NOT metres as in the IFS files. One tp message is ~0.28 MB, so 40 steps are ~11 MB.
+AIFS_DEFAULTS = {"enabled": False, "in_badge": False, "step_h": 6, "max_step_h": 240, "max_seconds": 180, "attempts": 4, "max_request_s": 60}
+AIFS_ATTRIBUTION = ("Adapted from ECMWF AIFS Single open data (Copyright ECMWF), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/) and the ECMWF Terms of Use. "
+                    "Total precipitation sampled at ski-area summit points and converted to inches by Snow-Wx (adapted). AIFS is ECMWF's machine-learning (AI) model: experimental here.")
+AIFS_LABEL = "AIFS (AI, experimental)"
+
+
+def aifs_config(cfg: dict | None) -> dict:
+    out = dict(AIFS_DEFAULTS)
+    out.update({k: v for k, v in ((cfg or {}).get("aifs") or {}).items() if k in AIFS_DEFAULTS})
+    return out
+
+
+def rel_aifs(cycle: datetime, step: int, ext: str) -> str:
+    return f"{cycle:%Y%m%d}/{cycle:%H}z/aifs-single/0p25/oper/{cycle:%Y%m%d%H}0000-{step}h-oper-fc.{ext}"
+
+
+def aifs_doc(points: list[dict], cycle: datetime, steps: list[int], fields_mm: dict[int, np.ndarray], steps_missing: list[int], in_badge: bool) -> dict:
+    """the M7 precip document for AIFS (pure): cumulative liquid inches per area since the run start; a missing step is null (a gap, never interpolated);
+    per-area running maximum against GRIB packing noise. fields_mm: {step: (n_areas,) mm}."""
+    areas = {}
+    for a, pt in enumerate(points):
+        v = np.array([0.0 if s == 0 else (fields_mm[s][a] if s in fields_mm else np.nan) for s in steps], dtype="float64")
+        v = monotone(v[:, None])[:, 0]
+        if not np.isfinite(v[1:]).any():
+            continue
+        areas[pt["id"]] = {"q": [None if not math.isfinite(x) else round(x / 25.4, 2) for x in v], "z": None}
+    return {"model": "aifs", "label": AIFS_LABEL, "experimental": True, "badge": bool(in_badge), "cycle": cycle.strftime("%Y%m%d%H"), "init": cycle.strftime("%Y-%m-%dT%H:00Z"),
+            "hours": steps, "areas": areas, "steps_missing": steps_missing, "attribution": AIFS_ATTRIBUTION, "license": LICENSE_URL, "terms": TERMS_URL}
+
+
+def run_aifs(cfg: dict, session, out: Path, cyc: datetime, pts: list[dict], mirrors: list, cache_dir: Path | None, required_hours: int, min_frac: float) -> dict:
+    """ISOLATED: called after the HRES/ENS files are written; every failure is caught by the caller and only recorded (fetch health). Its own fetcher (its throttling
+    never trips the main run's breaker), fewer retries and a hard time budget (`max_seconds`), so it cannot hold the ECMWF job for long. Writes <out>/ecmwf/aifs/precip.json."""
+    from .fetch_resilient import Fetcher, FetchError
+    a = aifs_config(cfg)
+    t0 = time.time()
+    deadline = t0 + float(a["max_seconds"])
+    c = configure(cfg)
+    f = Fetcher(mirrors, session=session, workers=2, attempts=int(a["attempts"]), max_total_s=float(a["max_request_s"]), trip_after=int(c["trip_after"]),
+                backoff=float(c["backoff_s"]), min_interval=float(c["min_interval_s"]))
+    steps = list(range(0, int(a["max_step_h"]) + 1, int(a["step_h"])))
+    planned = steps[1:]
+    sam = Sampler(pts, 1)
+    cdir = None if cache_dir is None else Path(cache_dir)
+    fields, missing, nbytes, cached = {}, [], 0, 0
+    for s in planned:
+        cf = None if cdir is None else cdir / f"aifs_tp_{s:03d}.npy"
+        if cf is not None and cf.exists():
+            try:
+                v = np.load(cf)
+                if v.shape == (len(pts),):
+                    fields[s] = v
+                    cached += 1
+                    continue
+            except (OSError, ValueError):
+                pass
+        if time.time() >= deadline:
+            missing.append(s)
+            continue
+        try:
+            r = f.get(rel_aifs(cyc, s, "index"))
+            row = next((x for x in parse_index(r.text) if x.get("param") == "tp"), None) if r is not None else None
+            if row is None:
+                missing.append(s)
+                continue
+            g = f.get(rel_aifs(cyc, s, "grib2"), {"Range": f"bytes={row['_offset']}-{row['_offset'] + row['_length'] - 1}"})
+            if g is None:
+                missing.append(s)
+                continue
+            nbytes += len(g.content)
+            v = sam.sample(decode(g.content))                    # kg m-2 = mm (NOT metres: see the note above)
+        except (FetchError, ValueError, RuntimeError) as exc:
+            log.warning("ecmwf aifs: step %d: %s", s, exc)
+            missing.append(s)
+            continue
+        fields[s] = v
+        if cf is not None:
+            cf.parent.mkdir(parents=True, exist_ok=True)
+            np.save(cf, v)
+    health = {"enabled": True, "steps_planned": len(planned), "steps_missing": missing, "steps_cached": cached, "bytes_downloaded": nbytes,
+              "seconds": round(time.time() - t0, 1), "fetch": f.stats()}
+    need_early = [s for s in planned if s <= required_hours]
+    if len(planned) - len(missing) < math.ceil(min_frac * len(planned)) or any(s in missing for s in need_early):
+        health.update(ok=False, published=False, reason=f"only {len(planned) - len(missing)} of {len(planned)} steps (missing {missing[:8]})")
+        log.warning("ecmwf aifs: %s: not published this attempt", health["reason"])
+        return health
+    doc = aifs_doc(pts, cyc, steps, fields, missing, a["in_badge"])
+    (Path(out) / "ecmwf" / "aifs").mkdir(parents=True, exist_ok=True)
+    write_json(Path(out) / "ecmwf" / "aifs" / "precip.json", doc)
+    health.update(ok=True, published=True, areas=len(doc["areas"]), partial=bool(missing))
+    log.info("ecmwf aifs %s: %d areas, %d steps (%d missing, %d cached), %.1f MB in %.0f s", doc["cycle"], len(doc["areas"]), len(steps), len(missing), cached, nbytes / 1e6, health["seconds"])
+    return health
+
+
 class StepMissing(RuntimeError):
     """a step that cannot be completed (index not obtainable, too many member messages lost): dropped for ALL members and HRES, never interpolated"""
 
@@ -381,14 +588,23 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     from .models.multimodel import load_points
     pts = points or load_points()
     now = now or utcnow()
-    fetcher = make_fetcher(c, session)
+    croot = None if cache_dir is False else (REPO_ROOT / "data_cache" if cache_dir is None else Path(cache_dir)) / "ecmwf"
+    pref = load_pref(croot)
+    order, probe = order_mirrors(mirrors_for(c), pref, now, c["probe_after_h"])
+    if pref.get("mirror"):
+        log.info("ecmwf: preferred mirror %s (worked %s); %s", pref["mirror"], pref.get("at"), f"probing {order[0].name} first today" if probe else "trying it first")
+    fetcher = make_fetcher(c, session, order)
+
+    def pref_health(h: dict) -> dict:
+        p2 = save_pref(croot, pref, h, now, probe, order[0].name)
+        return {**h, "first_mirror": order[0].name, "probe": probe, "preferred_before": pref.get("mirror"), "preferred_after": p2.get("mirror")}
     cyc = cycle or newest_cycle(fetcher, c, now)
     if cyc is None:
         # nothing complete on the mirror (a new cycle not released yet, and no older one within 72 h, or the mirrors stay throttled): not an error of ours. new=false, exit 0;
         # the monitor judges how old the last PUBLISHED run is (monitoring.sources.ecmwf.max_age_hours), so a long outage still alerts
         log.warning("ecmwf: no complete cycle on the mirror yet; nothing to publish")
         emit(new="false")
-        return {"ok": True, "skipped": "not-released", "fetch": fetcher.stats()}
+        return {"ok": True, "skipped": "not-released", "fetch": pref_health(fetcher.stats())}
     from .version import stamp
     tag_full = stamp(cyc.strftime("%Y%m%d%H"), "ecmwf")
     if published == tag_full:
@@ -399,7 +615,7 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     planned = steps[1:]
     t0 = time.time()
     nbytes = {"n": 0}
-    cache = StepCache(REPO_ROOT / "data_cache" if cache_dir is None else (None if cache_dir is False else Path(cache_dir)), cyc, pts)
+    cache = StepCache(None if croot is None else croot.parent, cyc, pts, keep=int(c["keep_cycles"]), max_mb=float(c["cache_max_mb"]))
 
     def get_rows(stream, step):
         """the .index rows of one file; None when it is not on any mirror or stays unreachable (FetchError): the caller decides what that costs"""
@@ -433,7 +649,7 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     if not n_members:
         log.warning("ecmwf: no ensemble index could be read from any mirror; nothing to publish this attempt")
         emit(new="false")
-        return {"ok": True, "skipped": "unreachable", "fetch": fetcher.stats()}
+        return {"ok": True, "skipped": "unreachable", "fetch": pref_health(fetcher.stats())}
     sam = Sampler(pts, n_members)
     log.info("ecmwf %s: %d perturbed members in the ensemble index", cyc.strftime("%Y%m%d%H"), n_members)
     # HRES terrain (optional: without it the page just omits the terrain note)
@@ -492,7 +708,8 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
                 steps_missing.append(s)
                 continue
             cache.save(s, d, n_members)
-    health = {**fetcher.stats(), "steps_planned": len(planned), "steps_missing": steps_missing, "steps_cached": cached}
+    health = pref_health({**fetcher.stats(), "steps_planned": len(planned), "steps_missing": steps_missing, "steps_cached": cached})
+    health["cache"] = {**cache_sizes(croot), "pruned": getattr(cache, "pruned", [])}
     need_early = [s for s in planned if s <= int(c["required_hours"])]
     if len(planned) - len(steps_missing) < math.ceil(float(c["min_steps_frac"]) * len(planned)) or any(s in steps_missing for s in need_early):
         # too incomplete to publish (< 90 % of the steps, or a hole in the first 120 h): NOT an error. The sampled steps stay cached for the next attempt.
@@ -514,10 +731,22 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     hres_doc["steps_missing"] = steps_missing
     write_json(out / "ecmwf" / "precip.json", hres_doc)
     secs = round(time.time() - t0, 1)
+    # AIFS (dev20): AFTER the HRES/ENS files are on disk, isolated and time-boxed; a failure is recorded, never raised. An old AIFS file never outlives its cycle.
+    import shutil
+    shutil.rmtree(out / "ecmwf" / "aifs", ignore_errors=True)
+    ac = aifs_config(cfg)
+    if ac["enabled"]:
+        try:
+            aifs_health = run_aifs(cfg, session, out, cyc, pts, order, cache.dir, int(c["required_hours"]), float(c["min_steps_frac"]))
+        except Exception as exc:  # noqa: BLE001 - AIFS must never break the HRES/ENS output
+            log.warning("ecmwf aifs: failed (%s); HRES/ENS unaffected", exc)
+            aifs_health = {"enabled": True, "ok": False, "published": False, "reason": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    else:
+        aifs_health = {"enabled": False}
     index = {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "cycle": cyc.strftime("%Y%m%d%H"), "init": cyc.strftime("%Y-%m-%dT%H:00Z"),
              "hours": steps, "n_members": n_members, "areas": len(plume), "resolution": "0.25 degree", "control_member": False,
              "stale_hours": c["stale_hours"], "missing_member_messages": sum(sam.missing.values()), "bytes_downloaded": nbytes["n"], "seconds": secs,
-             "steps_missing": steps_missing, "partial": bool(steps_missing), "fetch": health,
+             "steps_missing": steps_missing, "partial": bool(steps_missing), "fetch": health, "aifs": aifs_health,
              "source": "ECMWF Open Data (IFS HRES and ENS), mirror: " + health["mirror"], "attribution": ATTRIBUTION, "license": LICENSE_URL, "terms": TERMS_URL}
     write_json(out / "ecmwf" / "index.json", index)
     tag = partial_tag(tag_full) if steps_missing else tag_full

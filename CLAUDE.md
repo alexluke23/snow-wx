@@ -177,7 +177,11 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 19 2026, dev19 branch; the uncommitted dev19_report.md has the briefing)**
+**Current state (Nov 19 2026, dev20 branch; the uncommitted dev20_report.md has the briefing; owner summary: docs/STATE_SNAPSHOT.md)**
+- **dev20 (branch, on top of merged dev19):** ECMWF remembers the mirror that worked (`data_cache/ecmwf/mirror_pref.json`, others re-probed once a day) and keeps only the newest 2 cycles
+  (<= 300 MB; ~1.1 MB per cycle). ECMWF tests must never write the real data_cache (autouse fixture patches `E.REPO_ROOT`). **AIFS** (`aifs.enabled: true`, `in_badge: false`): fetched inside
+  `pipeline ecmwf` after HRES/ENS are written, own fetcher + time budget, output `models/ecmwf/aifs/precip.json` (AIFS tp is in MM, IFS tp in METRES). Share cards `pipeline og` (OFF,
+  `og_images.enabled`; og:image only with pages too; DejaVu font in pipeline/assets/fonts). Browser suite reworked (see the gotcha below).
 - **dev19 (branch, on top of merged dev18):** ECMWF fetch resilience: `pipeline/fetch_resilient.py` (shared `Fetcher`, also used by `gefs.py`): full-jitter backoff, Retry-After, >= 8 attempts, adaptive workers (3), per-run mirror failover AWS regional
   (`ecmwf-forecasts.s3.eu-central-1.amazonaws.com`) -> Google (`storage.googleapis.com/ecmwf-open-data`) -> ECMWF portal; a step that cannot be fetched is a GAP for all members + HRES (`steps_missing`, never interpolated); a run needs >= 90 % of the steps
   and the first 120 h else exit 0 `new=false`; per-cycle resume cache `data_cache/ecmwf/<cycle>/` restored/saved by `ecmwf.yml` (`actions/cache`, `if: always()`); fetch health in index.json/meta.json/status page. `--published` takes the full tag `<cycle>-<hash>`.
@@ -190,7 +194,10 @@ Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-
   cookieless analytics (`analytics.enabled: false`; `web/js/analytics.js` is fetched only when enabled), `pipeline linkcheck`, `web/404.html`, `docs/cloudflare_headers.draft` (+ `browser_check --only csp`),
   verification UI behind `verification_ui.enabled: false` (`pipeline verify --publish`), W1 rehearsal (`tools/w1_rehearsal.py`, `pipeline stub`, `docs/w1_cutover_checklist.md`).
 - **Built but OFF (never enable from a dev session):** `wind_exposure.enabled` (W7), `alerts_backend.enabled` (W6), `analytics.enabled`, `verification_ui.enabled`, `pages.enabled`, `pwa.enabled` (W1 first).
-- Browser suite: `tools/browser_check.py` has 28 checks (adds models, webcams, privacy, analytics, csp, verifyui, failure); full run ~15-20 min: run it to a FILE (`> out.txt`), a pipe to `tail` hides the ok/FAIL lines.
+- Browser suite (dev20): `tools/browser_check.py` 29 checks (the full run splits `failure` into failure1-3), 4 parallel workers (`--jobs`), each check in its own Chrome profile + server port on a
+  private build copy with FROZEN inputs (`tools/browser_fixtures.py`: recorded alert snapshot shifted to "active now"; third-party hosts answered from `tests/fixtures/browser/`, anything
+  else refused). Full run ~5-6 min; `--quick` (8 checks) ~1.5 min for per-item runs. No fixed sleeps: `open()` waits for the page's READY signal then for quiet (`settle`); background
+  work with no page signal (service worker, analytics queue) must be POLLED, never slept on. Re-record fixtures only with `tools/browser_fixtures.py record` (network once).
 - Open: W3 meta description (W2) + Low-confidence rule; `HEALTHCHECK_URL` secret; W1 then enable pwa/pages; real-device PWA tests; M9 verification when the archive grows; owner: analytics provider, legal review, W6 decisions, W7 reviewer.
 
 **Reusable gotchas (earlier session log: docs/ARCHIVE.md)**

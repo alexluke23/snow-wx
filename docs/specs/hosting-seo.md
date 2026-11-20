@@ -84,3 +84,13 @@ Cloudflare Pages direct-upload build counting; image-heavy-site terms for model 
 | Plausible/Umami self-hosted | server cost | yes | Needs a server we do not run (no servers rule) |
 | GoatCounter | free for non-commercial; paid otherwise | yes | Tiny, events limited |
 **Recommendation:** Cloudflare Web Analytics now (free, same vendor as hosting, no consent banner), add Plausible only when W5 needs custom events (Feb 2027 paid-launch decisions). Do not add any script until W1 is live.
+
+### Share cards (Open Graph images, dev20; OFF)
+`pipeline/og.py` (`python -m pipeline og --out build [--force] [--only ids]`): one 1200x630 PNG per ski area (`og/<id>.png`) plus generic `og/snopark.png` (all Sno-Parks) and `og/site.png`.
+Content: area name + region/state, the W3 summary tag and sentence exactly as the rules engine wrote them (plain fallback without one), a 5-day bar chart of NBM's likely range (p25-p75 of ONE native
+24-h window per whole 12Z-12Z day, coloured by the median with the NWS table parsed from `web/js/colors.js`; a day without a native range is a hatched grey EXPECTED bar labelled "~X″"), the issue time,
+`site.name` / `site.tagline` (brand placeholders in config) and "Data: NOAA/NWS". Pillow only; DejaVu Sans bundled in `pipeline/assets/fonts/` with `LICENSE_DEJAVU`. Text is fitted (shrink, wrap,
+ellipsis as a last resort), every text box is checked inside the card with contrast >= 4.5:1 (`tests/test_og.py`), output deterministic, 64-colour palette PNG.
+Measured (Nov 19 2026 data, local PC): **162 cards in 10.9 s, 3.1 MB total, avg 18.8 KB, max 22.3 KB** (limits: 20,000 files per deploy, 25 MiB per file). `pages.py` writes `og:image`
+(+ `summary_large_image`) only when BOTH `pages.enabled` and `og_images.enabled` are on. Enable order at the domain move: W1 -> pages -> og_images (and add `python -m pipeline og --out build` to the
+update-site build step, owner workflow change).

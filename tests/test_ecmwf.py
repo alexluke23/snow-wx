@@ -13,6 +13,12 @@ CYC = datetime(2026, 11, 18, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture(autouse=True)
+def no_repo_cache(monkeypatch, tmp_path):
+    """dev20: a run without cache_dir must never write the REAL data_cache/ecmwf (mirror preference, pruning)"""
+    monkeypatch.setattr(E, "REPO_ROOT", tmp_path / "repo")
+
+
+@pytest.fixture(autouse=True)
 def fast_fetch(monkeypatch):
     """no pacing and tiny backoff in tests (real values are in DEFAULTS)"""
     monkeypatch.setitem(E.DEFAULTS, "min_interval_s", 0.0)

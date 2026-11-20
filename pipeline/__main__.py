@@ -76,6 +76,27 @@ def write_meta(cfg: dict, outdir: Path, updates: dict) -> None:
     })
 
 
+def aifs_status(outdir: Path, cfg: dict | None) -> dict:
+    """ECMWF AIFS line (dev20): `disabled` while aifs.enabled (or ecmwf.enabled) is false; `waiting` until a run carries it; otherwise its cycle and steps, or why
+    the last ECMWF run could not add it (from ecmwf/index.json `aifs`)."""
+    if not (bool(((cfg or {}).get("aifs") or {}).get("enabled")) and bool(((cfg or {}).get("ecmwf") or {}).get("enabled"))):
+        return {"ok": None, "disabled": True, "detail": "not enabled"}
+    try:
+        doc = json.loads((outdir / "models" / "ecmwf" / "aifs" / "precip.json").read_text(encoding="utf-8"))
+        miss = doc.get("steps_missing") or []
+        return {"ok": True, "detail": f"AIFS {doc['cycle'][8:10]}Z run (experimental), {len(doc.get('hours') or []) - 1 - len(miss)} steps" + (f", {len(miss)} missing" if miss else ""),
+                "at": doc.get("init"), "count": len(doc.get("areas") or {}), "unit": "ski areas"}
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    try:
+        h = (json.loads((outdir / "models" / "ecmwf" / "index.json").read_text(encoding="utf-8")).get("aifs") or {})
+        if h.get("enabled") and h.get("reason"):
+            return {"ok": None, "waiting": True, "detail": f"waiting: the last ECMWF run could not add AIFS ({h['reason'][:120]})"}
+    except (OSError, ValueError):
+        pass
+    return {"ok": None, "waiting": True, "detail": "waiting for the first run"}
+
+
 def ecmwf_status(outdir: Path, cfg: dict | None) -> dict:
     """ECMWF entry for meta.json. Flag off -> `disabled` (the status page says "not enabled", the monitor never alarms). Flag on and no run in the
     site folder yet -> `waiting` (first run not delivered: shown, not an alarm; once a run exists its age is judged against monitoring.sources.ecmwf)."""
@@ -90,7 +111,8 @@ def ecmwf_status(outdir: Path, cfg: dict | None) -> dict:
             health.append(f"{f.get('retries', 0)} retries")
         health.append(f"{len(missing)} of {f.get('steps_planned', len(js.get('hours') or []) - 1 or '?')} steps missing" + (f" ({', '.join(str(x) for x in missing[:6])}{' ...' if len(missing) > 6 else ''} h)" if missing else ""))
         return {"ok": True, "detail": f"ECMWF {js['cycle'][8:10]}Z run, {js.get('n_members', '?')} ensemble members + HRES · " + " · ".join(health),
-                "at": js.get("generated_at"), "fetch": {"mirror": f.get("mirror"), "retries": f.get("retries"), "steps_missing": missing, "partial": bool(missing)}}
+                "at": js.get("generated_at"), "fetch": {"mirror": f.get("mirror"), "retries": f.get("retries"), "steps_missing": missing, "partial": bool(missing),
+                          "preferred": f.get("preferred_after"), "probe": f.get("probe"), "cache_mb": (f.get("cache") or {}).get("total_mb")}}
     except (OSError, ValueError, KeyError, TypeError):
         return {"ok": None, "waiting": True, "detail": "waiting for the first run"}
 
@@ -138,6 +160,7 @@ def product_status(outdir: Path, cfg: dict | None = None) -> dict:
     except (OSError, ValueError):
         out["models"] = {"ok": False, "error": "no model runs yet"}
     out["ecmwf"] = ecmwf_status(outdir, cfg)
+    out["aifs"] = aifs_status(outdir, cfg)
     return out
 
 
@@ -321,6 +344,12 @@ def main(argv=None) -> int:
     p.add_argument("--report", default=None, help="write the per-link report here (JSON)")
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("og", help="share-card images 1200x630 (dev20; no-op unless config og_images.enabled)")
+    p.add_argument("--out", default="build", help="site folder (data/ already merged)")
+    p.add_argument("--force", action="store_true", help="write even when og_images.enabled is false (local preview)")
+    p.add_argument("--only", nargs="*", default=None, help="area ids")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("pages", help="prerendered area pages + sitemap + robots (W2; no-op unless config pages.enabled)")
     p.add_argument("--out", default="build", help="site folder (data/ already merged)")
     p.add_argument("--force", action="store_true", help="write even when pages.enabled is false (local preview)")
@@ -410,6 +439,9 @@ def main(argv=None) -> int:
             print("nothing to do: use --check")
             return 0
         return webcams.run_check(args.update, make_session(cfg), Path(args.report) if args.report else None)
+    if args.cmd == "og":
+        from . import og
+        return og.run(load_config(args.config), Path(args.out), force=args.force, only=args.only)
     if args.cmd == "pages":
         from . import pages
         return pages.run(load_config(args.config), Path(args.out), force=args.force)
