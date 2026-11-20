@@ -90,6 +90,7 @@ def serve(folder: Path, png_delay: float = 0.0, headers: dict | None = None, jso
     handler = functools.partial(Quiet, directory=str(folder))
     class Server(socketserver.ThreadingTCPServer):
         daemon_threads = True
+        request_queue_size = 128          # dev21: the default listen backlog (5) refused connections in page-load bursts under parallel workers (flaky script loads)
 
         def handle_error(self, request, client_address):          # a browser that closes a connection early is normal; no traceback noise
             pass
@@ -238,10 +239,20 @@ class Browser:
         # page-specific "first render done" signal (bounded by the same cap; a degraded page that never gets there just costs its cap), then quiet
         page = url.split("?")[0].split("#")[0].rsplit("/", 1)[-1] or "index.html"
         ready = READY.get(page)
-        while ready and time.time() < end:
+        extended = False
+        while ready:
             with contextlib.suppress(Exception):
                 if self.eval(f"(() => {{ try {{ return !!({ready}); }} catch (e) {{ return false; }} }})()"):
                     break
+            if time.time() >= end:
+                # dev21: a busy machine (4 workers) can need longer than the cap; extend ONCE while the document is still loading (a degraded page that has finished
+                # loading but never gets READY keeps costing only its cap)
+                still = False
+                with contextlib.suppress(Exception):
+                    still = self.eval("document.readyState") != "complete"
+                if extended or not still:
+                    break
+                extended, end = True, time.time() + 8
             time.sleep(0.05)
         self.settle(max(0.5, end - time.time()))
 
