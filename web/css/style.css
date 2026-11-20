@@ -53,7 +53,7 @@ main.viewer { display: block; overflow-y: auto; padding: 10px 14px; }
 .frame { margin: 0; min-height: 360px; }         /* before the catalog arrives the picture's box is reserved; the catalog's pixel size then sets the exact one */
 .frame figcaption { min-height: 2.6em; }
 .frame img {
-  display: block; max-width: 100%; max-height: calc(100vh - 190px); width: auto; height: auto;
+  display: block; max-width: 100%; max-height: calc(100vh - 190px); max-height: calc(100svh - 190px); width: auto;   /* svh: iOS Safari's 100vh includes the hidden toolbar */ height: auto;
   border: 1px solid var(--line); background: #fff;
 }
 .frame img.missing { min-height: 200px; min-width: 300px; }
@@ -270,7 +270,7 @@ main.finder { display: block; overflow-y: auto; padding: 10px 14px 24px; width: 
   .finder-body { flex-direction: row; align-items: flex-start; }
   .finder-list { flex: 1 1 60%; min-width: 0; }
   .finder-map { flex: 1 1 40%; position: sticky; top: 0; }
-  .finder-map #fmap { height: calc(100vh - 200px); }
+  .finder-map #fmap { height: calc(100vh - 200px); height: calc(100svh - 200px); }
 }
 /* reserve space before data arrives (Lighthouse CLS): controls and list don't grow later */
 .finder-controls .seg { min-height: 42px; }

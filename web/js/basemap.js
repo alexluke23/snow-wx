@@ -175,7 +175,7 @@ function snowBasemaps(map, { initial = "Shaded relief (USGS)", maxZoom = 17, onS
       if (fired) return;
       fired = true;
       const left = Math.max(0, REF_CAP_MS - (Date.now() - t0));
-      if ("requestIdleCallback" in window && left > 0) requestIdleCallback(loadReference, { timeout: left });
+      if (typeof window.requestIdleCallback === "function" && left > 0) window.requestIdleCallback(loadReference, { timeout: left });
       else loadReference();
     };
     const base = layers[current];
@@ -197,7 +197,7 @@ function snowBasemaps(map, { initial = "Shaded relief (USGS)", maxZoom = 17, onS
   syncRef();
   // re-measure when the map box changes size (layout shifts, sticky panels, browser zoom):
   // otherwise Leaflet keeps loading tiles for the old size and the rest stays grey
-  if ("ResizeObserver" in window) {
+  if (typeof window.ResizeObserver === "function") {
     let raf = 0;
     new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => map.invalidateSize({ pan: false })); })
       .observe(map.getContainer());

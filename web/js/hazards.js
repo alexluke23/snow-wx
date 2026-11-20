@@ -163,7 +163,7 @@ function SnowHazards(map, { dataBase = "data/", bbox = [-125, 31, -102, 49.5], o
       started = true;
       // after the LCP / main-thread-busy window: ~2 s later, at an idle moment (keeps the obs map's Lighthouse score)
       const go = () => { ready = true; if (map.hasLayer(group)) load(); };
-      setTimeout(() => ("requestIdleCallback" in window ? requestIdleCallback(go, { timeout: 4000 }) : go()), 2500);
+      setTimeout(() => (typeof window.requestIdleCallback === "function" ? window.requestIdleCallback(go, { timeout: 4000 }) : go()), 2500);
     },
     refresh: () => load(true),
     /** test hooks (tools/browser_check.py): the popup DOM for a feature, and alert files injected in place of the network */
