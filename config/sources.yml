@@ -115,6 +115,15 @@ sources:
     licence_url: https://creativecommons.org/licenses/by/4.0/
     credit: 'Adapted from "ECMWF IFS 15-day Forecast Data" by ECMWF, licensed under CC BY 4.0 (creativecommons.org/licenses/by/4.0). See the ECMWF Terms of Use (apps.ecmwf.int/datasets/licences/general/).'
     hosts: [ecmwf.int, ecmwf-forecasts.s3.amazonaws.com, ecmwf-forecasts.s3.eu-central-1.amazonaws.com, storage.googleapis.com]
+  - id: ecmwf-aifs
+    name: ECMWF open data (AIFS Single, the AI model)
+    kind: data
+    role: "An experimental extra line in 'Precipitation by model' (total precipitation at ski-area summits); built dev20, shown only when config aifs.enabled is on; never part of the agreement rating by default"
+    licence: "Creative Commons Attribution 4.0 (CC BY 4.0) and the ECMWF Terms of Use; the data are ADAPTED here (point values, converted to inches)"
+    licence_url: https://creativecommons.org/licenses/by/4.0/
+    credit: 'Adapted from ECMWF AIFS Single open data (Copyright ECMWF), licensed under CC BY 4.0 (creativecommons.org/licenses/by/4.0). See the ECMWF Terms of Use (apps.ecmwf.int/datasets/licences/general/).'
+    hosts: [ecmwf.int, ecmwf-forecasts.s3.eu-central-1.amazonaws.com, storage.googleapis.com]
+    notes: "Same open-data mirrors as IFS, fetched by our ECMWF job (pipeline/ecmwf.py), never by your browser. ECMWF publishes no fixed credit line for AIFS; the wording follows the IFS one."
   - id: usfs
     name: US Forest Service, state parks and land managers (Sno-Park information)
     kind: data

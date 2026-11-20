@@ -1345,6 +1345,39 @@ def check_multimodel(b: Browser, base: str, log):
         sc = b.eval("({w: document.documentElement.scrollWidth, vw: innerWidth, h: Math.round(document.getElementById('mm-chart').getBoundingClientRect().height)})")
         need(sc["w"] <= sc["vw"] + 2 and sc["h"] >= 200, f"model panel at 375 px: {sc}")
     need(not b.errors, f"JS errors: {b.errors}")
+    # dev20: the AIFS line (fixture: a copy of the newest non-NBM model's series, x1.8 of the longest model series, marked experimental and badge: false): drawn and labelled, credited in the
+    # note, never counted by the agreement badge; then with badge: true the badge counts one more model
+    mp = Path(base_dir_holder["path"]) / "data" / "multimodel.json"
+    orig = mp.read_text(encoding="utf-8")
+    try:
+        d = json.loads(orig)
+        src = max(d["models"], key=lambda m: (m["hours"][-1], m["init"]))          # the longest series (it reaches the badge window)
+        d["models"].append({**{k: src[k] for k in ("init", "cycle", "hours")}, "model": "aifs", "label": "AIFS (AI, experimental)", "experimental": True, "badge": False})
+        for aid, per in d["areas"].items():
+            if src["model"] in per:
+                per["aifs"] = {"q": [None if v is None else round(v * 1.8, 2) for v in per[src["model"]]["q"]], "z": None}
+        res = {}
+        for badge in (False, True):
+            d["models"][-1]["badge"] = badge
+            mp.write_text(json.dumps(d), encoding="utf-8")
+            for width in (1280, 375):
+                b.open(f"{base}/area.html#{area}", width=width, wait=7)
+                b.eval("document.getElementById('mm-sec').scrollIntoView(); 1")
+                wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20)
+                r = b.eval("""(() => { const el = document.getElementById('mm-chart'), t = (el.data || []).find(x => x.name === 'AIFS (AI, experimental)');
+                  return {drawn: !!t, dash: t && t.line.dash, color: t && t.line.color, tip: t ? String(t.customdata[0]) : '', note: document.getElementById('mm-note').textContent,
+                          badge: document.getElementById('mm-badge').textContent, labels: (el.layout.annotations || []).map(a => a.text).join('|'),
+                          hscroll: document.documentElement.scrollWidth > innerWidth + 2}; })()""")
+                res[(badge, width)] = r
+                need(r["drawn"] and r["dash"] == "dot" and "AIFS (AI)" in r["labels"].split("|") and "not elevation-adjusted" in r["tip"] and not r["hscroll"], f"AIFS line {width}px: {r}")
+                need("AIFS Single" in r["note"] and "CC BY 4.0" in r["note"] and ("not part of" if not badge else "included in") in r["note"], f"AIFS attribution / badge note: {r['note'][-260:]}")
+        n_off = int(re.search(r"of (\d+) models", res[(False, 1280)]["badge"]).group(1)) if re.search(r"of (\d+) models", res[(False, 1280)]["badge"]) else None
+        n_on = int(re.search(r"of (\d+) models", res[(True, 1280)]["badge"]).group(1)) if re.search(r"of (\d+) models", res[(True, 1280)]["badge"]) else None
+        log(f"  AIFS line: badge models excluded={n_off} included={n_on} | {res[(False, 1280)]['badge'][:90]}")
+        if n_off is not None and n_on is not None:
+            need(n_on == n_off + 1, f"badge must count AIFS only when configured in: {n_off} vs {n_on}")
+    finally:
+        mp.write_text(orig, encoding="utf-8")
 
 
 def check_models_layout(b: Browser, base: str, log):

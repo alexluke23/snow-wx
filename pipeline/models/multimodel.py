@@ -23,7 +23,7 @@ from ..common import REPO_ROOT, utcnow, write_json
 from .ridge import nearest_index
 
 log = logging.getLogger("snow-wx.models")
-ORDER = ("hrrr", "rrfs", "gfs", "ecmwf")        # ecmwf: pipeline/ecmwf.py writes <models>/ecmwf/precip.json (HRES), only when config ecmwf.enabled
+ORDER = ("hrrr", "rrfs", "gfs", "ecmwf", "aifs")        # ecmwf: pipeline/ecmwf.py writes <models>/ecmwf/precip.json (HRES), only when config ecmwf.enabled
 
 
 def load_points(repo: Path = REPO_ROOT) -> list[dict]:
@@ -99,7 +99,7 @@ def merge(models_dir: Path, out_path: Path, order=ORDER) -> dict | None:
     docs = []
     max_age_h = 24                                      # a model whose init is far older than the newest is stale (a failed run left its old file)
     for m in order:
-        p = Path(models_dir) / m / "precip.json"
+        p = Path(models_dir) / ("ecmwf/aifs" if m == "aifs" else m) / "precip.json"      # AIFS rides in the ECMWF folder (dev20)
         if p.exists():
             try:
                 docs.append(json.loads(p.read_text(encoding="utf-8")))
@@ -123,7 +123,8 @@ def merge(models_dir: Path, out_path: Path, order=ORDER) -> dict | None:
     doc = {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "plumes": plumes,
            "units": "inches of liquid precipitation, cumulative since each model's own init",
            "models": [{"model": d["model"], "label": d["label"], "cycle": d["cycle"], "init": d["init"], "hours": d["hours"],
-                      **({"plume": True} if d.get("plume") else {})} for d in docs],
+                      **({"plume": True} if d.get("plume") else {}),
+                      **({"experimental": True, "badge": bool(d.get("badge"))} if d.get("experimental") else {})} for d in docs],
            "areas": areas}
     write_json(Path(out_path), doc)
     log.info("multimodel: %s -> %d areas", "+".join(d["label"] for d in docs), len(areas))

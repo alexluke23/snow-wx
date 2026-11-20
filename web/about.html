@@ -204,6 +204,11 @@
         time, and none of NBM's percentile products are used. The plume is raw ECMWF guidance on a 0.25° grid (about 28 km): <b>not bias-corrected, not elevation-adjusted and not the same product as NBM</b>;
         the model's terrain height at the point is shown in the tooltip. Liquid is ECMWF's total precipitation (rain and melted snow); "Snow (in)" is ECMWF's snowfall water equivalent times NBM's median
         snow ratio ("inches assume NBM SLR"). The plume is greyed when the ECMWF run is more than 24 hours old, and "N of <i>n</i> members" counts members at or above an amount (<i>n</i> is the number of members in the file). If a forecast step could not be downloaded when the run was processed, that time is dropped for every member and the HRES line, drawn as a gap (never interpolated) and named under the chart; a run missing more than a tenth of its steps, or any of the first five days, is not published.</p>
+      <p id="aifs"><b>ECMWF AIFS (experimental, when shown).</b> The model comparison can also show ECMWF's machine-learning model, <b>AIFS Single</b> (0.25°, one deterministic run): its total precipitation at the summit
+        point, cumulative since the run start, converted from millimetres to inches. It is labelled "AIFS (AI, experimental)", it has no terrain height in the open files (so the tooltip says it is not
+        elevation-adjusted), a missing time is a gap, and it is <b>not part of the model-agreement rating</b>: an AI model that we have not verified here should not tilt a rating that is itself a heuristic.
+        Adapted from ECMWF AIFS Single open data (Copyright ECMWF), licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>; see the
+        <a href="https://apps.ecmwf.int/datasets/licences/general/">ECMWF Terms of Use</a>.</p>
     </section>
 
     <section id="verification">

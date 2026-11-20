@@ -76,6 +76,27 @@ def write_meta(cfg: dict, outdir: Path, updates: dict) -> None:
     })
 
 
+def aifs_status(outdir: Path, cfg: dict | None) -> dict:
+    """ECMWF AIFS line (dev20): `disabled` while aifs.enabled (or ecmwf.enabled) is false; `waiting` until a run carries it; otherwise its cycle and steps, or why
+    the last ECMWF run could not add it (from ecmwf/index.json `aifs`)."""
+    if not (bool(((cfg or {}).get("aifs") or {}).get("enabled")) and bool(((cfg or {}).get("ecmwf") or {}).get("enabled"))):
+        return {"ok": None, "disabled": True, "detail": "not enabled"}
+    try:
+        doc = json.loads((outdir / "models" / "ecmwf" / "aifs" / "precip.json").read_text(encoding="utf-8"))
+        miss = doc.get("steps_missing") or []
+        return {"ok": True, "detail": f"AIFS {doc['cycle'][8:10]}Z run (experimental), {len(doc.get('hours') or []) - 1 - len(miss)} steps" + (f", {len(miss)} missing" if miss else ""),
+                "at": doc.get("init"), "count": len(doc.get("areas") or {}), "unit": "ski areas"}
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    try:
+        h = (json.loads((outdir / "models" / "ecmwf" / "index.json").read_text(encoding="utf-8")).get("aifs") or {})
+        if h.get("enabled") and h.get("reason"):
+            return {"ok": None, "waiting": True, "detail": f"waiting: the last ECMWF run could not add AIFS ({h['reason'][:120]})"}
+    except (OSError, ValueError):
+        pass
+    return {"ok": None, "waiting": True, "detail": "waiting for the first run"}
+
+
 def ecmwf_status(outdir: Path, cfg: dict | None) -> dict:
     """ECMWF entry for meta.json. Flag off -> `disabled` (the status page says "not enabled", the monitor never alarms). Flag on and no run in the
     site folder yet -> `waiting` (first run not delivered: shown, not an alarm; once a run exists its age is judged against monitoring.sources.ecmwf)."""
@@ -139,6 +160,7 @@ def product_status(outdir: Path, cfg: dict | None = None) -> dict:
     except (OSError, ValueError):
         out["models"] = {"ok": False, "error": "no model runs yet"}
     out["ecmwf"] = ecmwf_status(outdir, cfg)
+    out["aifs"] = aifs_status(outdir, cfg)
     return out
 
 

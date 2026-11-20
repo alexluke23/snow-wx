@@ -132,3 +132,19 @@ Cause: the global S3 endpoint throttled the runner's shared IP range, and the sh
 - **Measured Nov 19 2026 (12Z cycle, local PC):** regional AWS tripped the breaker, the run switched to Google: 41 steps, 0 missing, 1,275 MB in 456 s, 18 retries; the immediate re-run read every step from the cache (0 MB, 3.9 s). `--published <tag>` of the newest cycle: exit 0, `new=false`, no output (the tag is `<cycle>-<hash>`, a bare cycle counts as new).
 - **Not testable offline:** real GitHub-runner throttling.
 - **Real-data degradation test (Nov 19 2026, local proxy in front of the real Google mirror that answers 503 for chosen steps, the real per-step cache minus those steps):** steps 150 + 156 h blocked -> run publishes a PARTIAL cycle (`new=true`, tag hash differs from the complete one, `steps_missing: [150, 156]` in index/precip/plume, all members and HRES null at those steps, `multimodel.merge` keeps the gaps); step 54 h blocked (inside the first 120 h) -> `skipped: incomplete`, `new=false`, nothing written, cache kept. Browser check `ensemble` draws a plume with two missing steps and asserts the caption names them (`+54 h, +60 h could not be fetched ... drawn as gaps, never interpolated`).
+
+### ECMWF AIFS line (dev20; built, OFF: `aifs.enabled: false`)
+**Found on the real mirror (Google, 12Z Nov 19 2026), not assumed:** `{date}/{HH}z/aifs-single/0p25/oper/{date}{HH}0000-{step}h-oper-fc.{index,grib2}`; steps every 6 h from 0 to 360 h (no
+3-hourly steps); `tp` at every step, `stepType accum` over 0-<step> h, grid 1440 x 721 scanning 0 (same cell as IFS: Alta -> 40.50 N, 111.75 W), **units kg m-2 = mm, NOT metres as in the IFS files**.
+**Code:** `pipeline/ecmwf.py` `run_aifs` / `aifs_doc`, called inside `pipeline ecmwf` AFTER the HRES/ENS files are written, with its own fetcher (its throttling never trips the main breaker),
+2 workers, 4 attempts, 60 s per request and a hard `max_seconds` budget (180); any failure is caught and recorded as `index.json` `aifs` (published / reason / steps / fetch), never raised.
+Output `models/ecmwf/aifs/precip.json` (inside the ECMWF folder, so the existing workflow tar carries it: no workflow change), merged by `multimodel.merge` as model `aifs` with `experimental: true`,
+`badge: <aifs.in_badge>`. Same publish rule as ENS: >= 90 % of the steps and the first 120 h, else not published this attempt. Per-step sampled values cached next to the ENS cache.
+**Page:** dotted dark-ochre line (#8a6100, 5.3:1 on white) labelled "AIFS (AI, experimental)" (end label "AIFS (AI)"), tooltip "0.25° grid, not elevation-adjusted" (the open files carry no
+orography for AIFS), attribution in the chart note, about.html#aifs and the Sources page. Status page row "ECMWF AIFS line" (not enabled / waiting / cycle + steps).
+**Not in the agreement badge by default (`aifs.in_badge: false`):** the badge is itself an unverified heuristic, and an unverified ML model added to its pool changes the label for a quarter of
+the wet areas (below) without evidence that it is better. **Distribution, 12Z Nov 19 2026, pool NBM + GFS + ECMWF (HRRR/RRFS not re-run), 160 areas:** without AIFS (= `in_badge: false`)
+High 20 (13 %), Medium 80 (50 %), Low 21 (13 %), dry 39 (24 %); with AIFS in the pool High 17 (11 %), Medium 59 (37 %), Low 47 (29 %), dry 37 (23 %).
+**Validation (independent `eccodes.codes_grib_find_nearest` on the downloaded messages):** Alta, Jackson Hole, Mt Bachelor at 24 / 120 / 240 h: **9 of 9 match** our inches to 0.006 in
+(e.g. Alta 240 h 39.75 mm = 1.565 in, ours 1.56); every series cumulative and non-decreasing, 0 at step 0.
+**Cost:** +17.3 MB download and +17 s for the ECMWF job (41 steps, 160 areas, Google mirror), output 1 file (~40 KB).
