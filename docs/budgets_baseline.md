@@ -12,6 +12,7 @@ dev14's production-size measurement (`docs/specs/hosting-seo.md`), local Lightho
 | Browser suite | full run 34 jobs (32 checks; `failure` in 3 shards): **377 s**, 34/34; `--quick` 98 s |
 | Cross-browser smoke (`tools/xbrowser_smoke.py`, optional) | WebKit + Firefox, 6 pages x 2 widths each: **56 s** |
 | pytest | 530 passed + 9 skipped, ~2.3 min |
+| Lighthouse (dev21, mobile, gzip server, frozen inputs) | accessibility 100 on all 11 pages; performance: obs map 90/86/81, Alta 87/88/86, area page WITH an active alert 91/90/77 (median 90) and **CLS 0.000** (was 0.084), Finder 97, Sno-Park Finder 90, SNOTEL page 90, about/mine/models/sources/status 100 |
 
 ## 0. dev20 additions (Nov 19-20 2026)
 | Item | Number |
