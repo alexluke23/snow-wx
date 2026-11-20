@@ -113,3 +113,34 @@ console.log(JSON.stringify({n: st[i].n, valid_members: b.members.length, stale: 
     assert got["stale"]["stale"] is True and got["fresh"]["stale"] is False
     assert got["head"].startswith("ECMWF ensemble (49 members): median ") and "by Thu" in got["head"] and "of 49 members above 1 in" in got["head"]
     assert got["rows0"][0].startswith("+24 h") and any(s.startswith("+24 h: at least 1 in|") and s.endswith("of 49 members") for s in got["shares"])
+
+
+def test_a_missing_step_is_a_gap_in_every_member_and_nothing_is_interpolated(tmp_path):
+    """dev19: a step the ECMWF job could not fetch is null for all members and HRES; the plume keeps its x, the series break there (the page draws gaps), and the
+    cross-member statistics at that x are empty (null), never filled from the neighbours"""
+    d = doc(n=10, hours=(0, 6, 12, 18, 24))
+    d["tp"][2] = [None] * 10
+    d["sf"][2] = [None] * 10
+    d["hres_tp"][2] = None
+    d["hres_sf"][2] = None
+    body = """
+const t0 = Date.parse('2026-11-18T00:00Z');
+const b = E.build(D, {mode: 'liquid', t0Ms: t0});
+const st = E.summarize(b);
+const i = b.x.indexOf(Date.parse('2026-11-18T12:00Z'));
+const snow = E.build(D, {mode: 'snow', t0Ms: t0, ratio: [10, 10, 10, 10, 10], ratioTimes: [0, 1, 2, 3, 4].map(k => t0 + k * 6 * 3.6e6)});
+console.log(JSON.stringify({n: b.x.length, i, gap: b.members.every(m => m[i] === null), others: b.members.every(m => m.filter(v => v === null).length === 1),
+  stat_n: st[i].n, stat_p50: st[i].p50, hres_gap: b.hres[i] === null, after: st[i + 1].p50 > st[i - 1].p50, snow_gap: snow.members.every(m => m[i] === null),
+  snow_after: snow.members[0][i + 1] > snow.members[0][i - 1]}));
+"""
+    got = run_js(tmp_path, body, d)
+    assert got["n"] == 5 and got["i"] == 2 and got["gap"] and got["others"] and got["stat_n"] == 0 and got["stat_p50"] is None and got["hres_gap"]
+    assert got["after"] and got["snow_gap"] and got["snow_after"]                                                         # the series continue after the gap with their own cumulative values
+
+
+def test_interpat_does_not_interpolate_across_a_missing_value(tmp_path):
+    body = """
+const M = ctx.MultiModel;
+console.log(JSON.stringify([M.interpAt([0, 1, 2, 3], [0, 1, null, 3], 1.5), M.interpAt([0, 1, 2, 3], [0, 1, 2, 3], 1.5), M.interpAt([0, 1, 2, 3], [0, 1, null, 3], 3), M.interpAt([0, 1, 2, 3], [0, 1, null, 3], 0.5)]));
+"""
+    assert run_js(tmp_path, body, {}) == [None, 1.5, 3, 0.5]

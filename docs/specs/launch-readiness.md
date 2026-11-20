@@ -13,10 +13,10 @@ Status: built and tested on branch dev18. Everything here is OFF or DRAFT where 
 - `web/disclaimer.html`, `web/privacy.html`, `web/terms.html`: DRAFT banner, `noindex`, "not legal advice", bracketed `[OWNER / LAWYER: …]` placeholders. The disclaimer says the site is not for avalanche or life-safety decisions and links avalanche.org, the NWS and 911.
 - Footer on every page: Data status · Sources · Disclaimer · Privacy · Terms.
 - **Privacy audit (measured with a real browser on 13 pages, `tools/browser_check.py --only privacy`):** no cookies are set anywhere; storage keys are exactly those listed on the privacy page; the only hosts contacted besides our own are
-  `basemap.nationalmap.gov` (USGS tiles), `tiles.openfreemap.org` (reference layer), `mapservices.weather.noaa.gov` (NWS winter-hazard overlay, **found by the audit and now disclosed**), `cdn.plot.ly` (Plotly) and, rarely, `api.weather.gov` (hazard popup text, last resort). No fonts, trackers or embeds.
-- **Requests that should be removed or self-hosted (recommendations, none done):**
-  1. **`cdn.plot.ly` → self-host Plotly** (MIT, vendored like Leaflet): removes a third-party request on every chart page, a CSP exception and a CDN dependency. ~1 MB, well inside limits.
-  2. **`api.weather.gov` live fetch → drop it** by widening `alerts/hazard_text.json` to the offices outside the 11 configured states (the 4–18 % of popups that still need the live call); then the privacy page has one fewer host.
+  `basemap.nationalmap.gov` (USGS tiles), `tiles.openfreemap.org` (reference layer) and `mapservices.weather.noaa.gov` (NWS winter-hazard overlay, found by the audit and disclosed). No fonts, trackers or embeds.
+- **Removed in dev19 (were recommendations in dev18):**
+  1. **`cdn.plot.ly`: Plotly is self-hosted** (`web/vendor/plotly-2.35.2/`, MIT, the exact basic build, SHA-256 pinned in its README and checked by `tests/test_plotly_vendor.py`, licence files shipped; the version is in the folder name so W1 can serve it `immutable`). The CSP draft is now `script-src 'self'`.
+  2. **`api.weather.gov` live fetch from the browser: gone** (`remoteAlert` deleted from `web/js/hazards.js`). The pipeline asks the same hazard layer the map draws which polygons are in view and fetches (server side, once per run, cap 40) the text of any alert `hazard_text.json` does not hold yet; the coverage (polygons / resolved / filled / unresolved) is written into `hazard_text.json`. A popup whose text is still missing says so and links "View on weather.gov".
   3. USGS tiles, OpenFreeMap and the NOAA overlay are inherent to the maps; the long-term answer is self-hosted PMTiles (PLAN §8.4), not before launch.
 - Owner/lawyer to-do: legal name, governing law, contact, region-specific rights, final dates; decide whether `noindex` comes off at launch.
 

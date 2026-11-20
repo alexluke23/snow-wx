@@ -10,6 +10,12 @@ from pipeline import ecmwf as E
 from pipeline import gefs as G
 
 CYC = datetime(2026, 11, 18, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def fast_fetch(monkeypatch):
+    monkeypatch.setitem(G.DEFAULTS, "min_interval_s", 0.0)
+    monkeypatch.setitem(G.DEFAULTS, "backoff_s", 0.001)
 PTS = [{"id": "alta", "lat": 40.57, "lon": -111.63, "elev_ft": 10556}]
 IDX_TEXT = """1:0:d=2026111800:VIS:surface:24 hour fcst:ENS=+1
 18:{a}:d=2026111800:APCP:surface:{w}-{e} hour acc fcst:ENS=+1

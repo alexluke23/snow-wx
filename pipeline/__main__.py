@@ -83,8 +83,14 @@ def ecmwf_status(outdir: Path, cfg: dict | None) -> dict:
         return {"ok": None, "disabled": True, "detail": "not enabled"}
     try:
         js = json.loads((outdir / "models" / "ecmwf" / "index.json").read_text(encoding="utf-8"))
-        return {"ok": True, "detail": f"ECMWF {js['cycle'][8:10]}Z run, {js.get('n_members', '?')} ensemble members + HRES",
-                "at": js.get("generated_at")}
+        f = js.get("fetch") or {}
+        missing = js.get("steps_missing") or []
+        health = [f"mirror {f['mirror']}"] if f.get("mirror") else []
+        if f:
+            health.append(f"{f.get('retries', 0)} retries")
+        health.append(f"{len(missing)} of {f.get('steps_planned', len(js.get('hours') or []) - 1 or '?')} steps missing" + (f" ({', '.join(str(x) for x in missing[:6])}{' ...' if len(missing) > 6 else ''} h)" if missing else ""))
+        return {"ok": True, "detail": f"ECMWF {js['cycle'][8:10]}Z run, {js.get('n_members', '?')} ensemble members + HRES · " + " · ".join(health),
+                "at": js.get("generated_at"), "fetch": {"mirror": f.get("mirror"), "retries": f.get("retries"), "steps_missing": missing, "partial": bool(missing)}}
     except (OSError, ValueError, KeyError, TypeError):
         return {"ok": None, "waiting": True, "detail": "waiting for the first run"}
 

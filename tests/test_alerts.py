@@ -94,3 +94,90 @@ def test_run_writes_hazard_text_next_to_the_index(tmp_path, monkeypatch):
     import json
     ht = json.loads((tmp_path / "alerts" / "hazard_text.json").read_text(encoding="utf-8"))
     assert list(ht["alerts"]) == [A.alert_key("urn:oid:hz1")] and res["count"] == 0
+
+
+# ---------------------------------------------------------------- dev19: the popup text comes only from our files; the pipeline fills what the 11 states miss
+def test_alert_id_from_the_map_services_url():
+    from pipeline.alerts import alert_id_from_url
+    assert alert_id_from_url("https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.abc.001") == "urn:oid:2.49.0.1.840.0.abc.001"
+    assert alert_id_from_url("https://api.weather.gov/alerts/urn%3Aoid%3A2.49.0.1.840.0.abc.001?x=1") == "urn:oid:2.49.0.1.840.0.abc.001"
+    assert alert_id_from_url("https://example.com/x") == "" and alert_id_from_url(None) == ""
+
+
+class _Resp:
+    def __init__(self, js, status=200):
+        self._js, self.status_code = js, status
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    def json(self):
+        return self._js
+
+
+class _Sess:
+    """the hazard layer query + single-alert fetches; `texts` = {alert id: feature properties}"""
+
+    def __init__(self, layer, alerts, layer_status=200):
+        self.layer, self.alerts, self.layer_status, self.calls = layer, alerts, layer_status, []
+
+    def get(self, url, params=None, headers=None, timeout=None):
+        self.calls.append(url)
+        if "/MapServer/" in url:
+            return _Resp({"features": self.layer}, self.layer_status)
+        aid = url.split("/alerts/")[1].replace("%3A", ":")
+        if aid in self.alerts:
+            return _Resp({"type": "Feature", "properties": {"id": aid, **self.alerts[aid]}})
+        return _Resp({}, 404)
+
+
+HC = {"service": "https://mapservices.example/rest/MapServer", "layer": 1, "include": ["winter storm", "wind advisory"], "exclude": ["marine"]}
+
+
+def _poly(aid, prod="Winter Storm Warning", wfo="KUNR"):
+    return {"attributes": {"prod_type": prod, "url": f"https://api.weather.gov/alerts/{aid}", "wfo": wfo}}
+
+
+def test_polygons_without_text_are_filled_server_side_and_counted():
+    from pipeline.alerts import alert_key, complete_hazard_texts
+    have = {alert_key("urn:A"): {"e": "Winter Storm Warning"}}
+    s = _Sess([_poly("urn:A"), _poly("urn:B"), _poly("urn:B"), _poly("urn:C", "Wind Advisory", "KABR"), _poly("urn:D"), _poly("urn:M", "Small Craft Advisory")],
+              {"urn:B": {"event": "Winter Storm Warning", "headline": "h", "description": "Heavy snow", "senderName": "NWS Rapid City"},
+               "urn:C": {"event": "Wind Advisory", "description": "Gusts"}})
+    extra, cov = complete_hazard_texts(s, HC, have, [-125, 31, -102, 49.5])
+    assert set(extra) == {alert_key("urn:B"), alert_key("urn:C")} and extra[alert_key("urn:B")]["d"] == "Heavy snow" and extra[alert_key("urn:B")]["o"] == "NWS Rapid City"
+    assert cov["polygons"] == 4 and cov["resolved"] == 1 and cov["filled"] == 2 and cov["unresolved"] == 1 and cov["unresolved_wfos"] == ["KUNR"]      # urn:D is not fetchable (404); the marine product is not a hazard
+
+
+def test_the_fill_is_capped_and_a_broken_layer_is_unknown_not_an_error():
+    from pipeline.alerts import complete_hazard_texts
+    layer = [_poly(f"urn:{i}") for i in range(10)]
+    s = _Sess(layer, {f"urn:{i}": {"event": "Winter Storm Warning", "description": "x"} for i in range(10)})
+    extra, cov = complete_hazard_texts(s, HC, {}, [-125, 31, -102, 49.5], cap=3)
+    assert len(extra) == 3 and cov["filled"] == 3 and cov["unresolved"] == 7 and len([c for c in s.calls if "/alerts/" in c]) == 3
+    extra, cov = complete_hazard_texts(_Sess([], {}, layer_status=500), HC, {}, [-125, 31, -102, 49.5])
+    assert extra == {} and cov["unknown"] is True
+
+
+def test_run_writes_the_coverage_next_to_the_texts(tmp_path, monkeypatch):
+    import json
+
+    from pipeline import alerts
+    from pipeline.alerts import alert_key
+    from pipeline.common import load_config
+    cfg = load_config()
+    cfg["region"]["states"] = ["CO"]
+    cfg["hazards"] = {**cfg["hazards"], "service": HC["service"]}
+    feat = {"type": "Feature", "geometry": None, "properties": {"id": "urn:A", "event": "Winter Storm Warning", "status": "Actual", "headline": "h", "description": "d", "geocode": {"UGC": ["COZ001"]}}}
+
+    class S(_Sess):
+        def get(self, url, params=None, headers=None, timeout=None):
+            if url == alerts.URL:
+                return _Resp({"features": [feat]})
+            return super().get(url, params=params, headers=headers, timeout=timeout)
+    monkeypatch.setattr(alerts, "load_sites", lambda: ([], []))
+    s = S([_poly("urn:A"), _poly("urn:Z")], {"urn:Z": {"event": "Winter Storm Warning", "description": "Dakota text"}})
+    alerts.run(cfg, s, tmp_path)
+    doc = json.loads((tmp_path / "alerts" / "hazard_text.json").read_text(encoding="utf-8"))
+    assert set(doc["alerts"]) == {alert_key("urn:A"), alert_key("urn:Z")} and doc["coverage"]["polygons"] == 2 and doc["coverage"]["filled"] == 1 and doc["coverage"]["unresolved"] == 0

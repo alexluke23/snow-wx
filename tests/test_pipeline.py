@@ -167,3 +167,11 @@ def test_search_index_includes_snoparks(tmp_path):
         {"id": "sp-dutchman-flat-or", "name": "Dutchman Flat", "type_label": "Sno-Park", "region": "Oregon Cascades", "state": "OR"}]}))
     assert build_index(tmp_path)["items"] == [{"k": "snopark", "id": "sp-dutchman-flat-or", "n": "Dutchman Flat",
                                                 "s": "Sno-Park · Oregon Cascades, OR"}]
+
+
+def test_make_session_retries_get_and_head_with_jitter_and_keeps_the_fast_variant():
+    from pipeline.common import make_session
+    s = make_session({"http": {"user_agent": "snow-wx-test"}})
+    r = s.get_adapter("https://x.example").max_retries
+    assert set(r.allowed_methods) == {"GET", "HEAD"} and r.total == 4 and r.backoff_jitter == 0.5 and 503 in r.status_forcelist
+    assert s.headers["User-Agent"] == "snow-wx-test" and s.fast.get_adapter("https://x.example").max_retries.total == 1          # SNOTEL's fail-fast session is unchanged

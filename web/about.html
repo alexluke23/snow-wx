@@ -203,7 +203,7 @@
         common start, and only then compute the 10, 25, 50, 75 and 90th percentiles and the mean <i>across members</i> at each time (linear interpolation between ordered members). Nothing is added across
         time, and none of NBM's percentile products are used. The plume is raw ECMWF guidance on a 0.25° grid (about 28 km): <b>not bias-corrected, not elevation-adjusted and not the same product as NBM</b>;
         the model's terrain height at the point is shown in the tooltip. Liquid is ECMWF's total precipitation (rain and melted snow); "Snow (in)" is ECMWF's snowfall water equivalent times NBM's median
-        snow ratio ("inches assume NBM SLR"). The plume is greyed when the ECMWF run is more than 24 hours old, and "N of <i>n</i> members" counts members at or above an amount (<i>n</i> is the number of members in the file).</p>
+        snow ratio ("inches assume NBM SLR"). The plume is greyed when the ECMWF run is more than 24 hours old, and "N of <i>n</i> members" counts members at or above an amount (<i>n</i> is the number of members in the file). If a forecast step could not be downloaded when the run was processed, that time is dropped for every member and the HRES line, drawn as a gap (never interpolated) and named under the chart; a run missing more than a tenth of its steps, or any of the first five days, is not published.</p>
     </section>
 
     <section id="verification">
@@ -246,7 +246,7 @@
         watches, warnings and advisories. The list of products comes from the service's current product names. Outlines are
         heavy for warnings, dashed for watches and thin for advisories; tap an area to read the warning itself in the page: product, headline, issuing office, issued and expiry times (in your time zone), the area
         and the full description and instructions as NWS wrote them. "View on weather.gov" opens the issuing office's page. The text comes from the same alert
-        feed as the alert banners (or, for alerts that touch none of our places, is requested from api.weather.gov when you tap). If the service does not respond (or answers with nothing while our own alert list has winter alerts) the map
+        feed as the alert banners; our update job also fetches the text of every alert the map draws, so your browser never contacts api.weather.gov (an alert whose text we could not get says so and links "View on weather.gov"). If the service does not respond (or answers with nothing while our own alert list has winter alerts) the map
         says so and lists the active winter alerts from our alert index instead of showing a blank. Always check weather.gov and
         your local avalanche center for the full, current information. Source: NOAA/NWS.</p>
     </section>

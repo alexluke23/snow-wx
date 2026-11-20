@@ -10,6 +10,12 @@
 #             status 1 when the new asset was the last item, which skipped the redeploy). tests/test_ecmwf_workflow.py runs the step under `bash -e` with a fake `gh`.
 #   action versions are copied from models.yml (actions/checkout@v7, mamba-org/setup-micromamba@v3); a test keeps them identical.
 #
+# dev19: resilience (owner-authorized edit of this one workflow file)
+#   - `actions/cache/restore` before and `actions/cache/save` (`if: always()`) after the fetch step keep `data_cache/ecmwf/<cycle>/` (sampled values per step, a few MB) between the four daily attempts.
+#   - the CLI retries with backoff + jitter, fails over AWS regional -> Google -> ECMWF portal, drops a step it cannot fetch (a gap in the plume, `steps_missing`) and exits 0 with new=false when
+#     it has < 90 % of the steps or lacks the first 120 h. A green run with new=false therefore means "nothing publishable yet", not "all fine": the status page row shows the age of the data and
+#     the one-line fetch health (mirror, retries, steps missing). Decision list when it keeps failing: docs/specs/multi-model.md "Fetch resilience".
+#
 # How the output reaches the site
 #   ecmwf.yml -> release asset on `model-maps` -> update-site.yml (already unpacks every `<product>-<cycle>-<version>.tar`; ecmwf goes to build/models/ecmwf/)
 #   -> `python -m pipeline build` runs multimodel.merge (HRES line + `plume: true`) -> the area page offers Models / Ensemble. The plume file

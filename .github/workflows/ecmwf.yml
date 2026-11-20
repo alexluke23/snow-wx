@@ -59,12 +59,30 @@ jobs:
           echo "published: ${cyc:-none}"
           echo "cycle=$cyc" >> "$GITHUB_OUTPUT"
 
+      - name: Restore the resume cache
+        # The four daily attempts continue where the last one stopped: pipeline/ecmwf.py keeps the SAMPLED values of every step it finished under data_cache/ecmwf/<cycle>
+        # (a few MB) and skips those steps next time. restore-keys picks the newest cache of any earlier run; the code ignores a cache of another cycle.
+        uses: actions/cache/restore@v6
+        with:
+          path: data_cache/ecmwf
+          key: ecmwf-${{ github.run_id }}
+          restore-keys: |
+            ecmwf-
+
       - name: Fetch, sample, write
         id: render
         shell: bash -el {0}
         # Writes new=true|false and cycle=... to $GITHUB_OUTPUT. Exit 0 with new=false when the newest complete cycle is already published
         # or the next one is not released upstream yet.
         run: python -m pipeline ecmwf --out out/models --published "${{ steps.pub.outputs.cycle }}" --github-output "$GITHUB_OUTPUT"
+
+      - name: Save the resume cache
+        # always: a failed or incomplete attempt is exactly the one whose finished steps the next attempt should reuse
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: data_cache/ecmwf
+          key: ecmwf-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload to the model-maps release
         if: steps.render.outputs.new == 'true'

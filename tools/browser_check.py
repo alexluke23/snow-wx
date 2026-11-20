@@ -393,7 +393,8 @@ def check_charts(b: Browser, base: str, log):
         sm = b.eval("(() => ({tag: (document.querySelector('.summary-tag') || {}).textContent || '', text: (document.querySelector('.summary-line') || {}).textContent || '',"
                     " note: (document.querySelector('.summary-note') || {}).textContent || ''}))()")
         log(f"  charts {area}: summary {sm['tag']!r}")
-        need(sm["tag"] and "rules, not a person" in sm["note"], f"{area}: daily summary card missing: {sm}")
+        # a live NWS alert for the area replaces the summary line by design ("Active NWS alerts always come first"): both states are the summary card
+        need(sm["tag"] and ("rules, not a person" in sm["note"] or (sm["tag"] == "Alert active" and "alerts always come first" in sm["note"])), f"{area}: daily summary card missing: {sm}")
         # dev13 item 4: ONE snow-ratio + powder-quality panel (>= 260 px), no strip, powder bands + labels, p50 line only when snowing
         pq = b.eval("""(() => { const el = document.getElementById('slr-chart'); const L = el.layout || {};
           const anns = (L.annotations || []).map(a => a.text || '');
@@ -977,7 +978,7 @@ def check_hazard_popup(b: Browser, base: str, log):
         need("<script>" in k["text"] and "&lt;script&gt;" in k["html"] and k["scripts"] == 0 and not res["pwned"], f"alert text was not escaped: {k['html'][:300]}")
         need(k["links"] == ["https://www.weather.gov/slc/"] and k["pre"] == "pre-wrap" and k["maxH"] != "none", f"links/layout: {k['links']} {k['pre']} {k['maxH']}")
         need(all("api.weather.gov" not in l and not l.endswith(".json") for l in k["links"] + u["links"]), "a popup link points at an API/JSON endpoint")
-        need("could not be loaded" in u["text"] and u["links"] == ["https://www.weather.gov/slc/"], f"lookup miss needs a clear message and the office link: {u}")
+        need("not in our files" in u["text"] and u["links"] == ["https://www.weather.gov/slc/"], f"lookup miss needs a clear message and the office link: {u}")
         need(k["w"] <= k["vw"], f"popup wider than the viewport: {k['w']} > {k['vw']}")
         if width == 375:
             b.shot(Path(tempfile.gettempdir()) / "hz_popup_375.png")
@@ -1171,6 +1172,26 @@ def check_ensemble(b: Browser, base: str, log):
                   ann: ((document.getElementById('mm-chart').layout || {}).annotations || []).map(x => x.text).join('|')}; })()""")
         log(f"  stale ensemble: {stale}")
         need("out of date" in stale["badge"] and stale["line"] == "#7a8594" and "Out of date" in stale["ann"], f"stale run must be greyed and labelled: {stale}")
+        # dev19: a partial run (two steps could not be fetched): the steps are null for ALL members and HRES, the chart breaks the lines there (never interpolates) and names the gap
+        d = json.loads(orig)
+        hrs = d["hours"]
+        miss = [h for h in (54, 60) if h in hrs]
+        d["steps_missing"] = miss
+        for key in ("tp", "sf", "hres_tp", "hres_sf"):
+            for h in miss:
+                i = hrs.index(h)
+                d[key][i] = [None] * len(d[key][i]) if isinstance(d[key][i], list) else None
+        plume.write_text(json.dumps(d), encoding="utf-8")
+        b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=8)
+        wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(4)
+        b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1"); time.sleep(3.5)
+        gp = b.eval("""(() => { const el = document.getElementById('mm-chart'), d = el.data || [], med = d.find(t => t.name === 'Median');
+          return {note: document.getElementById('mm-note').textContent, medNulls: med ? med.y.filter(v => v === null).length : -1, medN: med ? med.y.length : 0}; })()""")
+        log(f"  partial ensemble (steps {miss} missing): median nulls {gp['medNulls']} of {gp['medN']}; note: {gp['note'][-170:]}")
+        b.shot(Path(tempfile.gettempdir()) / "ens_gap_1280.png")
+        need(miss and "could not be fetched" in gp["note"] and all(f"+{h} h" in gp["note"] for h in miss), f"a partial run must name its missing steps: {gp['note'][-200:]}")
+        need(gp["medNulls"] >= len(miss), f"the median must have gaps at the missing steps (never interpolated): {gp}")
+        need(not b.errors, f"JS errors on a partial plume: {b.errors}")
     finally:
         plume.write_text(orig, encoding="utf-8")
     need(not b.errors, f"JS errors: {b.errors}")
@@ -1536,7 +1557,8 @@ def check_failure_modes(b: Browser, base: str, log):
     patterns = {"snotel": "*data/snotel.geojson*", "asos": "*data/asos.geojson*", "avalanche map": "*data/avalanche.geojson*", "avalanche ratings": "*data/avalanche_ratings.json*",
                 "hazards": "*data/hazards.json*", "alerts": "*data/alerts/*", "afd": "*data/afd/*", "ndfd": "*data/ndfd/*", "points (NBM)": "*data/points/*", "multimodel": "*data/multimodel.json*",
                 "ridge": "*data/ridge.json*", "nohrsc": "*data/nohrsc/*", "model catalog": "*models/index.json*", "meta": "*data/meta.json*", "search index": "*data/search.json*",
-                "map points": "*data/map_points.json*", "webcams": "*data/webcams.json*"}
+                "map points": "*data/map_points.json*", "webcams": "*data/webcams.json*", "chart library (self-hosted Plotly)": "*vendor/plotly*",
+                "hazard text": "*alerts/hazard_text.json*"}
     pages = [("index.html", "obs map"), ("area.html#alta-ski-area", "area page"), ("finder.html", "Finder"), ("mine.html", "My mountains"), ("models.html", "models"), ("status.html", "status")]
     bad = []
     seen = {}
@@ -1564,6 +1586,10 @@ def check_failure_modes(b: Browser, base: str, log):
     need("avalanche" in b.eval("document.body.innerText").lower() and not b.errors, "area page without avalanche ratings must still link to the avalanche center")
     b.open(f"{base}/status.html", width=1280, wait=3, block=["*data/meta.json*"])
     need("could not be read" in b.eval("document.body.innerText"), "status page without meta.json must say so")
+    b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=5, block=["*vendor/plotly*"])
+    tp = b.eval("document.body.innerText")
+    need("Charts unavailable" in tp, "area page without the chart library must say charts are unavailable and still show the numbers")
+    need(not b.errors, f"JS errors without the chart library: {b.errors}")
     log(f"  failure modes: {len(patterns)} sources x {len(pages)} pages, no broken page")
 
 

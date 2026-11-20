@@ -1,6 +1,9 @@
 """ECMWF open data at every ski area's summit: IFS HRES (operational) and the IFS ENS ensemble plume (M8-lite, docs/specs/multi-model.md; dev17).
 
-Source: ECMWF Open Data (CC BY 4.0), AWS mirror `ecmwf-forecasts` (no portal, no key). One byte-range request per GRIB message using the
+Source: ECMWF Open Data (CC BY 4.0), no key. Mirrors (dev19, `mirrors_for`): AWS `ecmwf-forecasts` (regional eu-central-1 endpoint) -> Google Cloud -> ECMWF portal, with
+per-run failover after repeated 503s; every request goes through the shared `fetch_resilient.Fetcher` (backoff + jitter, Retry-After, adaptive concurrency). A step that cannot be
+fetched is dropped for ALL members and HRES (a gap, never interpolated; `steps_missing`); a run needs >= 90 % of the steps AND the first 120 h, else it exits 0 with new=false.
+Sampled steps are cached per cycle (`data_cache/ecmwf/<cycle>/`, restored/saved by the workflow) so a retry resumes. One byte-range request per GRIB message using the
 `.index` files (JSON lines: param, type, number, step, _offset, _length): only `tp` (total precipitation, m, accumulated since the run start)
 and `sf` (snowfall water equivalent, m of water) are fetched; HRES also supplies `z` (surface geopotential, the model terrain).
 Measured Nov 18 2026 (00Z run): 0.25 degree ENS = 16.2 MB (tp) + 7.1 MB (sf) per step for the 50 perturbed members, about 5 s per step
@@ -16,7 +19,7 @@ Outputs under <out> (the models folder, like every other product: `--out out/mod
   ecmwf/precip.json          HRES in the M7 sampler format -> merged into data/multimodel.json as a fifth source (multimodel.merge)
   ecmwf/index.json           cycle, steps, member count, sizes, attribution
   ecmwf/plume/<area>.json    LAZY plume file (fetched only when the Ensemble view is selected): members x steps in 0.1 mm integers
-Everything is gated by config `ecmwf.enabled` (false until the owner wires the workflow, docs/workflow_snippets/ecmwf.yml).
+Everything is gated by config `ecmwf.enabled` (live since dev18 via .github/workflows/ecmwf.yml).
 """
 
 from __future__ import annotations
@@ -34,7 +37,7 @@ import numpy as np
 from .common import REPO_ROOT, utcnow, write_json
 
 log = logging.getLogger("snow-wx.ecmwf")
-MIRROR = "https://ecmwf-forecasts.s3.amazonaws.com"
+MIRROR = "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com"      # the documented REGIONAL AWS endpoint (ecmwf-opendata `URLS["aws"]`); the global s3.amazonaws.com host throttled the first live run
 DEFAULTS = {
     "enabled": False,
     "mirror": MIRROR,
@@ -43,7 +46,15 @@ DEFAULTS = {
     "max_step_h": 240,
     "members": 50,                          # perturbed members on the mirror (no control)
     "max_missing_frac": 0.2,                # more than 20 % of a step's member messages missing = the run fails (like the NBM rule)
-    "workers": 6,
+    "workers": 3,                           # modest on purpose: the mirrors answer HTTP 503 SlowDown to fast runners (dev19); the fetcher halves it further when throttled
+    "attempts": 8,                          # per request, exponential backoff with jitter, Retry-After honoured (pipeline/fetch_resilient.py)
+    "max_request_s": 300,                   # total time cap per request across its retries
+    "trip_after": 6,                        # consecutive failures on a mirror before the run switches to the next one (aws -> google -> ecmwf portal)
+    "backoff_s": 1.0,
+    "min_interval_s": 0.05,                 # global pacing between request starts
+    "required_hours": 120,                  # every step up to this hour must be present, else the attempt publishes nothing (exit 0, new=false)
+    "min_steps_frac": 0.9,                  # and at least this share of the planned steps
+    "mirrors": None,                        # override list of {name, base[, max_conc]} (tests)
     "stale_hours": 24,
     "release_lag_h": 8,                     # ENS lands ~7-9 h after the nominal time
 }
@@ -201,7 +212,7 @@ def area_docs(sampler: Sampler, cycle: datetime, steps: list[int], model: str = 
         h_tp = sampler.hres_series("tp", a, steps)
         h_sf = sampler.hres_series("sf", a, steps)
         z_ft = None if sampler.z is None or not np.isfinite(sampler.z[a]) else int(round(float(sampler.z[a]) * 3.28084))
-        if not np.isfinite(tp[-1]).any() and not np.isfinite(h_tp).any():
+        if not np.isfinite(tp).any() and not np.isfinite(h_tp).any():
             continue
         plume[p["id"]] = {"id": p["id"], "model": model, "init": init, "cycle": cycle.strftime("%Y%m%d%H"), "generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "hours": steps,
                           "n_members": sampler.n, "control_member": bool(getattr(sampler, "control_member", False)), "unit": f"{Q_STEP_MM} mm", "z_ft": z_ft,
@@ -212,32 +223,48 @@ def area_docs(sampler: Sampler, cycle: datetime, steps: list[int], model: str = 
     return plume, hres_doc
 
 
-# ---------------------------------------------------------------- network (thin)
-def _get(session, u: str, headers=None, tries: int = 6):
-    """GET with backoff: the S3 mirror answers 503 SlowDown under bursts."""
-    last = None
-    for i in range(tries):
-        r = session.get(u, headers=headers or {}, timeout=90)
-        if r.status_code in (200, 206):
-            return r
-        last = r.status_code
-        if r.status_code == 404:
-            return None
-        time.sleep(min(30, 2 * (i + 1)))
-    raise RuntimeError(f"{u}: HTTP {last}")
+# ---------------------------------------------------------------- mirrors, cache, network (dev19: resilient fetching, resume, graceful degradation)
+GOOGLE_MIRROR = "https://storage.googleapis.com/ecmwf-open-data"          # same file layout as the AWS mirror (ecmwf-opendata `URLS`: aws / google / ecmwf)
+PORTAL_MIRROR = "https://data.ecmwf.int/forecasts"                          # ECMWF's own portal: ~500 simultaneous connections for everybody, so only 2 of ours
+
+
+def mirrors_for(c: dict) -> list:
+    """AWS regional endpoint -> Google Cloud -> ECMWF portal (Azure needs a short-lived SAS token: skipped). `c["mirrors"]` (list of {name, base[, max_conc]}) overrides."""
+    from .fetch_resilient import Mirror
+    if c.get("mirrors"):
+        return [Mirror(m["name"], m["base"], m.get("max_conc")) for m in c["mirrors"]]
+    return [Mirror("aws", c["mirror"]), Mirror("google", GOOGLE_MIRROR), Mirror("ecmwf", PORTAL_MIRROR, max_conc=2)]
+
+
+def rel(cycle: datetime, stream: str, step: int, ext: str) -> str:
+    kind = "enfo-ef" if stream == "enfo" else "oper-fc"
+    return f"{cycle:%Y%m%d}/{cycle:%H}z/ifs/0p25/{stream}/{cycle:%Y%m%d%H}0000-{step}h-{kind}.{ext}"
+
+
+def make_fetcher(c: dict, session):
+    from .fetch_resilient import Fetcher
+    return Fetcher(mirrors_for(c), session=session, workers=int(c["workers"]), attempts=int(c["attempts"]), max_total_s=float(c["max_request_s"]), trip_after=int(c["trip_after"]),
+                   backoff=float(c["backoff_s"]), min_interval=float(c["min_interval_s"]))
 
 
 def newest_cycle(session, c: dict, now: datetime) -> datetime | None:
-    """Newest 00/12Z cycle whose LAST step (HRES and ENS index files) is already published (HEAD, no body)."""
+    """Newest 00/12Z cycle whose LAST step (HRES and ENS index files) is already published (HEAD, no body). `session` may be a Fetcher (retries/failover) or a plain session.
+    A mirror that stays throttled through every retry means "cannot tell": None (new=false, exit 0), never an error."""
+    from .fetch_resilient import Fetcher, FetchError
+    f = session if isinstance(session, Fetcher) else make_fetcher(c, session)
     t = now.replace(minute=0, second=0, microsecond=0)
     for back in range(0, 72):
         cyc = t - timedelta(hours=back)
         if cyc.hour not in c["cycles"] or (now - cyc) < timedelta(hours=c["release_lag_h"] - 1):
             continue
         ok = True
-        for stream in ("oper", "enfo"):
-            r = session.head(url(c, cyc, stream, c["max_step_h"], "index"), timeout=30)
-            ok = ok and r.status_code == 200
+        try:
+            for stream in ("oper", "enfo"):
+                r = f.head(rel(cyc, stream, c["max_step_h"], "index"))
+                ok = ok and r is not None and r.status_code == 200
+        except FetchError as exc:
+            log.warning("ecmwf: cannot tell whether %s is complete (%s)", cyc.strftime("%Y%m%d%H"), exc)
+            return None
         if ok:
             return cyc
     return None
@@ -256,10 +283,90 @@ def decode(blob: bytes) -> np.ndarray:
         eccodes.codes_release(h)
 
 
+def partial_tag(tag: str) -> str:
+    """the release tag of a PARTIAL run (steps missing): same cycle, a different 8-hex version, so a later attempt that completes the cycle is NOT skipped as "already published"
+    and replaces it (the workflow keeps only the newest ecmwf asset)"""
+    import hashlib
+    cyc, _, ver = tag.partition("-")
+    return f"{cyc}-{hashlib.sha1((ver + 'partial').encode()).hexdigest()[:8]}"
+
+
+class StepCache:
+    """Per-cycle resume store: data_cache/ecmwf/<cycle>/step_<hhh>.npz (the SAMPLED values of one step: members x areas for tp and sf, HRES per area), z.npy and meta.json.
+    Valid only for the same cycle, area points and member count; anything else is discarded. Other cycles' folders are removed. The Actions cache restores this folder between the
+    four daily attempts, so a retry continues where the last one stopped."""
+
+    def __init__(self, root: Path | None, cycle: datetime, points: list[dict]):
+        import hashlib
+        self.dir = None if root is None else Path(root) / "ecmwf" / cycle.strftime("%Y%m%d%H")
+        self.key = hashlib.sha1(json.dumps([(p["id"], round(p["lat"], 4), round(p["lon"], 4)) for p in points]).encode()).hexdigest()[:12]
+        self.n_members: int | None = None
+        if self.dir is None:
+            return
+        for sib in self.dir.parent.glob("*"):
+            if sib.is_dir() and sib != self.dir:
+                import shutil
+                shutil.rmtree(sib, ignore_errors=True)
+        meta = self.dir / "meta.json"
+        try:
+            m = json.loads(meta.read_text(encoding="utf-8"))
+            if m.get("key") == self.key:
+                self.n_members = m.get("n_members")
+            else:
+                raise ValueError("points changed")
+        except (OSError, ValueError):
+            import shutil
+            shutil.rmtree(self.dir, ignore_errors=True)
+
+    def _meta(self, n_members: int) -> None:
+        if self.dir is None:
+            return
+        self.dir.mkdir(parents=True, exist_ok=True)
+        (self.dir / "meta.json").write_text(json.dumps({"key": self.key, "n_members": n_members}), encoding="utf-8")
+        self.n_members = n_members
+
+    def load(self, step: int) -> dict | None:
+        if self.dir is None:
+            return None
+        try:
+            with np.load(self.dir / f"step_{step:03d}.npz") as z:
+                return {k: z[k] for k in z.files}
+        except (OSError, ValueError, KeyError):
+            return None
+
+    def save(self, step: int, data: dict, n_members: int) -> None:
+        if self.dir is None:
+            return
+        self._meta(n_members)
+        tmp = self.dir / f"step_{step:03d}.tmp.npz"
+        np.savez_compressed(tmp, **data)
+        tmp.replace(self.dir / f"step_{step:03d}.npz")
+
+    def load_z(self):
+        try:
+            return np.load(self.dir / "z.npy") if self.dir else None
+        except (OSError, ValueError):
+            return None
+
+    def save_z(self, z: np.ndarray, n_members: int) -> None:
+        if self.dir is not None:
+            self._meta(n_members)
+            np.save(self.dir / "z.npy", z)
+
+
+class StepMissing(RuntimeError):
+    """a step that cannot be completed (index not obtainable, too many member messages lost): dropped for ALL members and HRES, never interpolated"""
+
+
 def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: bool = False, points: list[dict] | None = None, now: datetime | None = None,
-        published: str | None = None, github_output: str | None = None) -> dict:
+        published: str | None = None, github_output: str | None = None, cache_dir: Path | None = None) -> dict:
     """Fetch, sample, write. `out` is the MODELS folder (writes <out>/ecmwf/...). Needs `force=True` while config ecmwf.enabled is false (a manual test run).
-    `published` (the newest ecmwf asset tag on the release) and `github_output` follow the other products: new=false when nothing newer is complete."""
+    `published` (the newest ecmwf asset tag on the release) and `github_output` follow the other products: new=false when nothing newer is complete.
+    dev19: every request goes through pipeline.fetch_resilient (backoff + jitter, Retry-After, mirror failover, adaptive concurrency); a step that still fails is DROPPED for
+    all members and HRES (listed in `steps_missing`, drawn as a gap, never interpolated); fewer than 90 % of the steps or a hole in the first 120 h = exit 0 with new=false
+    (a warning, not a failure); sampled steps are cached under data_cache/ecmwf/<cycle> and reused by the next attempt."""
+    from .fetch_resilient import FetchError
+
     def emit(**kv):
         if github_output:
             with open(github_output, "a", encoding="utf-8") as f:
@@ -274,70 +381,124 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     from .models.multimodel import load_points
     pts = points or load_points()
     now = now or utcnow()
-    cyc = cycle or newest_cycle(session, c, now)
+    fetcher = make_fetcher(c, session)
+    cyc = cycle or newest_cycle(fetcher, c, now)
     if cyc is None:
-        # nothing complete on the mirror (a new cycle not released yet, and no older one within 72 h): not an error of ours. new=false, exit 0;
+        # nothing complete on the mirror (a new cycle not released yet, and no older one within 72 h, or the mirrors stay throttled): not an error of ours. new=false, exit 0;
         # the monitor judges how old the last PUBLISHED run is (monitoring.sources.ecmwf.max_age_hours), so a long outage still alerts
         log.warning("ecmwf: no complete cycle on the mirror yet; nothing to publish")
         emit(new="false")
-        return {"ok": True, "skipped": "not-released"}
+        return {"ok": True, "skipped": "not-released", "fetch": fetcher.stats()}
     from .version import stamp
-    tag = stamp(cyc.strftime("%Y%m%d%H"), "ecmwf")
-    if published == tag:
-        log.info("ecmwf %s already published; nothing new", tag)
-        emit(new="false", cycle=tag)
-        return {"ok": True, "skipped": "published", "cycle": tag}
+    tag_full = stamp(cyc.strftime("%Y%m%d%H"), "ecmwf")
+    if published == tag_full:
+        log.info("ecmwf %s already published; nothing new", tag_full)
+        emit(new="false", cycle=tag_full)
+        return {"ok": True, "skipped": "published", "cycle": tag_full}
     steps = steps_for(c)
+    planned = steps[1:]
     t0 = time.time()
     nbytes = {"n": 0}
-    session.headers["User-Agent"] = session.headers.get("User-Agent", "snow-wx")
+    cache = StepCache(REPO_ROOT / "data_cache" if cache_dir is None else (None if cache_dir is False else Path(cache_dir)), cyc, pts)
 
-    def fetch(u, row):
-        r = _get(session, u, {"Range": f"bytes={row['_offset']}-{row['_offset'] + row['_length'] - 1}"})
-        if r is None:
-            raise RuntimeError(f"{u}: not found")
-        nbytes["n"] += len(r.content)
-        return decode(r.content)
-
-    def maybe(u, row):
-        """one message, or None when it cannot be fetched/decoded: a failed member is a MISSING member (counted against max_missing_frac), not a dead run"""
+    def get_rows(stream, step):
+        """the .index rows of one file; None when it is not on any mirror or stays unreachable (FetchError): the caller decides what that costs"""
         try:
-            return fetch(u, row)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("ecmwf: %s: %s", u.rsplit("/", 1)[-1], exc)
+            r = fetcher.get(rel(cyc, stream, step, "index"))
+        except FetchError as exc:
+            log.warning("ecmwf: %s index f%03d: %s", stream, step, exc)
+            return None
+        return None if r is None else parse_index(r.text)
+
+    def fetch_field(stream, step, row):
+        try:
+            r = fetcher.get(rel(cyc, stream, step, "grib2"), {"Range": f"bytes={row['_offset']}-{row['_offset'] + row['_length'] - 1}"})
+            if r is None:
+                return None
+            nbytes["n"] += len(r.content)
+            return decode(r.content)
+        except Exception as exc:  # noqa: BLE001 - FetchError, a corrupt message ...: a MISSING message, counted
+            log.warning("ecmwf: %s f%03d %s: %s", stream, step, row.get("param"), exc)
             return None
 
-    def index(stream, step, required):
-        r = _get(session, url(c, cyc, stream, step, "index"))
-        if r is None:
-            if required:
-                raise RuntimeError(f"ECMWF {stream} index for step {step} not on the mirror")
-            return []
-        return parse_index(r.text)
-
-    # the member count comes from the DATA (the perturbed members listed in the first ensemble step), never from a constant: config `members` is only the fallback
-    n_members = len(select(index("enfo", steps[1], True), "tp", "pf")) or c["members"]
+    # the member count comes from the DATA (the perturbed members listed in an ensemble index), never from a constant: config `members` is only the last-resort fallback.
+    # A cache from an earlier attempt of this cycle knows it already; otherwise the first step whose ensemble index can be read tells.
+    n_members = cache.n_members
+    if not n_members:
+        for s in planned:
+            rows = get_rows("enfo", s)
+            if rows is not None:
+                n_members = len(select(rows, "tp", "pf")) or c["members"]
+                break
+    if not n_members:
+        log.warning("ecmwf: no ensemble index could be read from any mirror; nothing to publish this attempt")
+        emit(new="false")
+        return {"ok": True, "skipped": "unreachable", "fetch": fetcher.stats()}
     sam = Sampler(pts, n_members)
     log.info("ecmwf %s: %d perturbed members in the ensemble index", cyc.strftime("%Y%m%d%H"), n_members)
-    # HRES: terrain once, then tp / sf per step (HRES is optional per step: a gap in the line, the ensemble still publishes)
-    z = select(index("oper", 0, False), "z").get(0)
-    if z:
-        zf = maybe(url(c, cyc, "oper", 0, "grib2"), z)
+    # HRES terrain (optional: without it the page just omits the terrain note)
+    zc = cache.load_z()
+    if zc is not None and len(zc) == len(pts):
+        sam.z = zc
+    else:
+        zrows = get_rows("oper", 0)
+        z = select(zrows or [], "z").get(0)
+        zf = fetch_field("oper", 0, z) if z else None
         if zf is not None:
             sam.z = sam.sample(zf) / 9.80665               # geopotential (m2/s2) -> metres
-    with ThreadPoolExecutor(c["workers"]) as ex:
-        for s in steps[1:]:
-            hrows = index("oper", s, False)
-            for param in ("tp", "sf"):
-                row = select(hrows, param).get(0)
-                sam.add_hres(param, s, maybe(url(c, cyc, "oper", s, "grib2"), row) if row else None)
-            erows = index("enfo", s, True)
-            for param in ("tp", "sf"):
-                sel = select(erows, param, "pf")
-                fetched = dict(zip(sel, ex.map(lambda k: maybe(url(c, cyc, "enfo", s, "grib2"), sel[k]), sel)))
-                sam.add_ens(param, s, {k: v for k, v in fetched.items() if v is not None})
-            if sam.missing.get(s, 0) > c["max_missing_frac"] * n_members:
-                raise RuntimeError(f"ECMWF ENS step {s}: {sam.missing[s]} of {n_members} member messages missing")
+            cache.save_z(sam.z, n_members)
+
+    def apply(s, d):
+        for p in ("tp", "sf"):
+            sam.ens[p][s] = d[f"ens_{p}"]
+            sam.hres[p][s] = d[f"hres_{p}"]
+        sam.missing[s] = int(d["missing"])
+
+    def build_step(s, ex):
+        erows = get_rows("enfo", s)
+        if erows is None:
+            raise StepMissing(f"step {s}: ensemble index unavailable")
+        ens, miss = {}, 0
+        for param in ("tp", "sf"):
+            sel = select(erows, param, "pf")
+            got = dict(zip(sel, ex.map(lambda k: fetch_field("enfo", s, sel[k]), sel)))
+            ens[param] = {k: v for k, v in got.items() if v is not None}
+            if param == "tp":
+                miss = n_members - len(ens[param])
+        if miss > c["max_missing_frac"] * n_members:
+            raise StepMissing(f"step {s}: {miss} of {n_members} member messages missing")
+        hrows = get_rows("oper", s) or []                   # HRES is optional per step: a gap in the line, the ensemble still publishes
+        out_d = {"missing": np.array(miss)}
+        for param in ("tp", "sf"):
+            sam.add_ens(param, s, ens[param])
+            row = select(hrows, param).get(0)
+            sam.add_hres(param, s, fetch_field("oper", s, row) if row else None)
+            out_d[f"ens_{param}"], out_d[f"hres_{param}"] = sam.ens[param][s], sam.hres[param][s]
+        return out_d
+
+    steps_missing, cached = [], 0
+    with ThreadPoolExecutor(int(c["workers"])) as ex:
+        for s in planned:
+            d = cache.load(s)
+            if d is not None and d["ens_tp"].shape == (n_members, len(pts)):
+                apply(s, d)
+                cached += 1
+                continue
+            try:
+                d = build_step(s, ex)
+            except StepMissing as exc:
+                log.warning("ecmwf: %s: step dropped for all members and HRES", exc)
+                sam.ens["tp"].pop(s, None), sam.ens["sf"].pop(s, None), sam.hres["tp"].pop(s, None), sam.hres["sf"].pop(s, None)
+                steps_missing.append(s)
+                continue
+            cache.save(s, d, n_members)
+    health = {**fetcher.stats(), "steps_planned": len(planned), "steps_missing": steps_missing, "steps_cached": cached}
+    need_early = [s for s in planned if s <= int(c["required_hours"])]
+    if len(planned) - len(steps_missing) < math.ceil(float(c["min_steps_frac"]) * len(planned)) or any(s in steps_missing for s in need_early):
+        # too incomplete to publish (< 90 % of the steps, or a hole in the first 120 h): NOT an error. The sampled steps stay cached for the next attempt.
+        log.warning("ecmwf: only %d of %d steps usable (missing %s): not publishing this attempt (cache kept: %s)", len(planned) - len(steps_missing), len(planned), steps_missing, cache.dir)
+        emit(new="false", cycle=tag_full)
+        return {"ok": True, "skipped": "incomplete", "cycle": tag_full, "fetch": health}
     plume, hres_doc = area_docs(sam, cyc, steps)
     if not plume:                                      # nothing usable: fail BEFORE touching the last good files
         raise RuntimeError("ECMWF: no area has data")
@@ -347,16 +508,20 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
         old.unlink()
     sizes = []
     for aid, d in plume.items():
+        d["steps_missing"] = steps_missing
         write_json(out / "ecmwf" / "plume" / f"{aid}.json", d)
         sizes.append((out / "ecmwf" / "plume" / f"{aid}.json").stat().st_size)
+    hres_doc["steps_missing"] = steps_missing
     write_json(out / "ecmwf" / "precip.json", hres_doc)
     secs = round(time.time() - t0, 1)
     index = {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "cycle": cyc.strftime("%Y%m%d%H"), "init": cyc.strftime("%Y-%m-%dT%H:00Z"),
              "hours": steps, "n_members": n_members, "areas": len(plume), "resolution": "0.25 degree", "control_member": False,
              "stale_hours": c["stale_hours"], "missing_member_messages": sum(sam.missing.values()), "bytes_downloaded": nbytes["n"], "seconds": secs,
-             "source": "ECMWF Open Data (IFS HRES and ENS), AWS mirror", "attribution": ATTRIBUTION, "license": LICENSE_URL, "terms": TERMS_URL}
+             "steps_missing": steps_missing, "partial": bool(steps_missing), "fetch": health,
+             "source": "ECMWF Open Data (IFS HRES and ENS), mirror: " + health["mirror"], "attribution": ATTRIBUTION, "license": LICENSE_URL, "terms": TERMS_URL}
     write_json(out / "ecmwf" / "index.json", index)
+    tag = partial_tag(tag_full) if steps_missing else tag_full
     emit(new="true", cycle=tag)
-    log.info("ecmwf %s: %d areas, %d steps, %.0f MB downloaded in %.0f s; per-area file avg %.1f KB",
-             index["cycle"], len(plume), len(steps), nbytes["n"] / 1e6, secs, (sum(sizes) / max(1, len(sizes))) / 1024)
+    log.info("ecmwf %s: %d areas, %d steps (%d missing, %d from cache), %.0f MB downloaded in %.0f s, mirror %s, %d retries; per-area file avg %.1f KB",
+             index["cycle"], len(plume), len(steps), len(steps_missing), cached, nbytes["n"] / 1e6, secs, health["mirror"], health["retries"], (sum(sizes) / max(1, len(sizes))) / 1024)
     return {"ok": True, **index, "avg_area_bytes": int(sum(sizes) / max(1, len(sizes))), "max_area_bytes": max(sizes) if sizes else 0}
