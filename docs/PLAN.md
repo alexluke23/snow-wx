@@ -61,7 +61,7 @@ centers). Full text: `docs/ARCHIVE.md`.
 
 ---
 
-## 2. Status (Nov 19 2026, through dev20)
+## 2. Status (Nov 20 2026, through dev21)
 
 - **Live:** https://alexluke23.github.io/snow-wx/ — repo `alexluke23/snow-wx` (custom domain: W1).
 - **Done:** M0–M5, M3.5, M3.6, M4.5 Sno-Parks, M9-prep archive (running), "My mountains", NBM forecast overlays, dev10 basemap, **dev11–dev14** ("likely" p25–p75 wording, one powder-quality definition, W3, status page),
@@ -72,6 +72,8 @@ centers). Full text: `docs/ARCHIVE.md`.
   **Plotly self-hosted** (`web/vendor/plotly-2.35.2/`; no third-party script host left in the browser), hazard popups served only from our own files (the browser-side api.weather.gov fetch is gone; the pipeline fills missing alert texts).
   **dev20** (branch): ECMWF mirror preference + 2-cycle cache bound; browser suite ~32 -> ~5 min (parallel isolated workers, frozen inputs, `--quick`); share cards (`pipeline og`, OFF);
   **ECMWF AIFS line** (on, experimental, out of the badge); `docs/STATE_SNAPSHOT.md` (owner notes).
+  **dev21** (branch): **verification scores in CI** (`verify.yml`, daily; panel still behind its flag; minima projected ~Nov 30), **NOAA GEFS plume live** (`gefs.yml`), Safari/iPhone guards,
+  model chips, alert-banner CLS fix, WebKit/Firefox smoke suite (`tools/xbrowser_smoke.py`), `pipeline archive-check`.
 - **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas, Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
 - **Known issues:** the NRCS AWDB (SNOTEL) outage of Nov 16–18 is over (first confirmed live 00:45Z Nov 18); **M9 excludes SNOTEL obs from 2026-11-16 12Z through 2026-11-18 00:45Z** (`config/settings.yml`
   `verification.snotel_outage`). Obs map Lighthouse mobile 71–91 (bimodal; compare with interleaved runs, median of ≥ 3 ≥ 85); site ≈ 220 MB / 5.7 k files.
@@ -112,6 +114,7 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
 | Nov 19 | **dev18 (owner-authorized):** ECMWF goes live via its own workflow `.github/workflows/ecmwf.yml` (`ecmwf.enabled: true`); badge shows "Little precipitation expected" when every model is < 0.20 in (never "High"); webcams are links only; legal pages are DRAFTS (`noindex`); analytics and the verification UI are built but OFF (owner picks the provider / flips the flag). |
 | Nov 19 | **dev19 (owner brief):** ECMWF goes through a resilient fetcher with mirror failover; a step that cannot be fetched is a GAP (all members + HRES, never interpolated), a run needs >= 90 % of the steps and the first 120 h, else it exits 0 with `new=false`. Plotly is self-hosted (privacy: no CDN request). Hazard popups never call api.weather.gov from the browser. Webcam links that cannot be verified are removed, not guessed. |
 | Nov 19 | **dev20 (owner brief):** brand is config-driven (`site.name`/`site.tagline` placeholders); share cards only with `pages` AND `og_images` on; AIFS shown as an experimental line, kept OUT of the agreement badge unless `aifs.in_badge`; the browser suite never depends on live data (frozen fixtures). |
+| Nov 20 | **dev21 (owner brief):** two more owner-authorized workflows, `verify.yml` and `gefs.yml` (model on `ecmwf.yml`, publish product tars that update-site already unpacks; no edit to existing workflows); GEFS on; model chips change the drawing only (badge and table use every model); the verification panel stays OFF until the owner flips it. |
 | Nov 16 | **Composite ranges are never shown:** where a 24/48/72 h total would add several 6 h percentile windows (fallback cycles), show the expected total only; points JSON marks totals `native: true/false`. Archive columns unchanged (they never carry composite ranges). Lighthouse target: median of ≥ 3 interleaved runs ≥ 85. |
 | Nov 16 | Model-map snowfall colors stay as is for now (backlog §8.4). **Guard:** points JSON and the forecast archive keep their existing fields (p10/p50/p90, P(≥4/8/12″), 24/48/72 h). |
 
@@ -207,8 +210,8 @@ Key: ✅ built and live · ⏸ built, behind a flag or waiting on the owner · �
 | W5 analytics | ◐ | status page, feedback links, monitor issues ✅; cookieless analytics: dev18 Part 2c (provider chosen by the owner) |
 | W6 alerts backend | ⏸ | offline skeleton + tests (`alerts_backend.enabled=false`); 10 owner decisions in the spec |
 | W7 wind-exposure flag | ⏸ | built, `wind_exposure.enabled=false`; needs the reviewer checklist |
-| M7/M8 multi-model + ECMWF | ✅ | HRES line + ENS plume; **live since dev18** (`ecmwf.yml`); NOAA GEFS plume ⏸ built dev18 (`gefs.enabled=false`, owner-added workflow text in `docs/workflow_snippets/gefs.yml`) |
-| M9 verification | ◐ | archive running, scorer built (`pipeline verify`), UI behind `verification_ui.enabled=false` (dev18 Part 3) |
+| M7/M8 multi-model + ECMWF | ✅ | HRES line + ENS plume; **live since dev18** (`ecmwf.yml`); NOAA GEFS plume ✅ live from dev21 (`gefs.yml`, `gefs.enabled=true`) |
+| M9 verification | ◐ | archive running, scorer built (`pipeline verify`), **daily CI scores from dev21** (`verify.yml` -> `models/verify/`), UI behind `verification_ui.enabled=false`; minima ~Nov 30 |
 | M6 interactive model layers + HRRR pressure levels | ○ | last |
 
 ---

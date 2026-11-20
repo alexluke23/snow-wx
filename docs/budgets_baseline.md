@@ -1,7 +1,18 @@
-# Budgets baseline (Nov 19 2026, dev20 update of the dev18/dev19 baseline; for the W1 Cloudflare move)
+# Budgets baseline (Nov 20 2026, dev21 update of the dev18-dev20 baseline; for the W1 Cloudflare move)
 
 Numbers measured on the current GitHub Pages setup, so the Cloudflare Pages + R2 move has something to compare against. Sources: the local build (`build/`, one full `pipeline build` of Nov 18 plus the dev18 pages), the public GitHub Actions API (40 most recent completed runs per workflow, read Nov 19 2026 01:55 UTC),
 dev14's production-size measurement (`docs/specs/hosting-seo.md`), local Lighthouse runs (below). Re-measure with the commands in the last section.
+
+## 0a. dev21 additions (Nov 20 2026)
+| Item | Number |
+|---|---|
+| GEFS plume (LIVE after merge, `gefs.yml`, 2 attempts per 00Z/12Z cycle) | real run 00Z Nov 20: **376 MB, 275 s**, 3,723 requests, 1 retry, 0 missing; +161 site files (160 plumes avg 8.4 KB + index.json), 1.8 MB raw; resume cache ~280 KB per cycle (2 kept); a re-run of a finished cycle: 0 MB, 2.4 s |
+| Verification job (`verify.yml`, daily) | archive download today ~16 MB (NBM 14.8, NDFD 1.3, SNOTEL 0.1; closed months from the Actions cache later), scoring 7.6 s locally; output today 3 files / 28 KB; at most ~840 files (one per SNOTEL site that meets the minima, ~2-3 KB each) once the minima are met |
+| Site file count after both | ~5.7 k + 161 (GEFS) + up to ~840 (verification) = ~6.7 k of 20,000 |
+| Browser suite | full run 34 jobs (32 checks; `failure` in 3 shards): **377 s**, 34/34; `--quick` 98 s |
+| Cross-browser smoke (`tools/xbrowser_smoke.py`, optional) | WebKit + Firefox, 6 pages x 2 widths each: **56 s** |
+| pytest | 530 passed + 9 skipped, ~2.3 min |
+| Lighthouse (dev21, mobile, gzip server, frozen inputs) | accessibility 100 on all 11 pages; performance: obs map 90/86/81, Alta 87/88/86, area page WITH an active alert 91/90/77 (median 90) and **CLS 0.000** (was 0.084), Finder 97, Sno-Park Finder 90, SNOTEL page 90, about/mine/models/sources/status 100 |
 
 ## 0. dev20 additions (Nov 19-20 2026)
 | Item | Number |
@@ -11,7 +22,7 @@ dev14's production-size measurement (`docs/specs/hosting-seo.md`), local Lightho
 | ECMWF on a real runner (dev19 code, Nov 20 04:00Z) | fetch step 510 s, AWS regional mirror, 26 retries, no failover, 1,275 MB; release asset 2.5 MB |
 | ECMWF full uncached local run, dev20 code (12Z Nov 19) | 669 s incl. AIFS 22 s; AWS regional, 34 retries, 1,275 MB; ecCodes decodes now serialized (thread safety): <= ~58 s of the total (14 ms per message x ~4,100) |
 | ECMWF resume cache | ~1.1 MB per cycle, newest 2 cycles kept, hard cap 300 MB; one Actions cache entry per run (~2 MB), evicted by GitHub after 7 days unused |
-| GEFS end to end (still OFF) | 376 MB, 249 s, 31 members, 0 retries (00Z Nov 20) |
+| GEFS end to end (OFF in dev20; live from dev21) | 376 MB, 249 s, 31 members, 0 retries (00Z Nov 20) |
 | Browser suite | full 29 checks: ~32 min serial (dev19) -> 4.8-6.0 min (4 workers; 6 min with Lighthouse running alongside); `--quick` (8 checks) 97 s |
 | pytest | 494 passed + 9 skipped, ~2 min |
 | Lighthouse accessibility | 100 on all 15 page states (incl. the area page with an AIFS line) |
@@ -19,7 +30,7 @@ dev14's production-size measurement (`docs/specs/hosting-seo.md`), local Lightho
 ## 1. Platform limits that matter
 | Limit | Value | Where we are |
 |---|---|---|
-| Files per deployment (Pages / Cloudflare Pages) | 20,000 | ~5.7 k (production build); +162 for ECMWF plumes, +~610 if the W2 pages go live |
+| Files per deployment (Pages / Cloudflare Pages) | 20,000 | ~5.7 k (production build); +161 GEFS plumes (dev21), up to +~840 verification site files, +~610 if the W2 pages go live |
 | Largest single file | 25 MiB | 1.45 MB (`data/points/exceed_summary.json`) |
 | Total site size | none stated | ~220 MB (points 66, models 123, NDFD 21, SNOTEL 7) |
 | GitHub Actions minutes | free on a public repo | see §4 |

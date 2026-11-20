@@ -90,6 +90,7 @@ def serve(folder: Path, png_delay: float = 0.0, headers: dict | None = None, jso
     handler = functools.partial(Quiet, directory=str(folder))
     class Server(socketserver.ThreadingTCPServer):
         daemon_threads = True
+        request_queue_size = 128          # dev21: the default listen backlog (5) refused connections in page-load bursts under parallel workers (flaky script loads)
 
         def handle_error(self, request, client_address):          # a browser that closes a connection early is normal; no traceback noise
             pass
@@ -238,10 +239,20 @@ class Browser:
         # page-specific "first render done" signal (bounded by the same cap; a degraded page that never gets there just costs its cap), then quiet
         page = url.split("?")[0].split("#")[0].rsplit("/", 1)[-1] or "index.html"
         ready = READY.get(page)
-        while ready and time.time() < end:
+        extended = False
+        while ready:
             with contextlib.suppress(Exception):
                 if self.eval(f"(() => {{ try {{ return !!({ready}); }} catch (e) {{ return false; }} }})()"):
                     break
+            if time.time() >= end:
+                # dev21: a busy machine (4 workers) can need longer than the cap; extend ONCE while the document is still loading (a degraded page that has finished
+                # loading but never gets READY keeps costing only its cap)
+                still = False
+                with contextlib.suppress(Exception):
+                    still = self.eval("document.readyState") != "complete"
+                if extended or not still:
+                    break
+                extended, end = True, time.time() + 8
             time.sleep(0.05)
         self.settle(max(0.5, end - time.time()))
 
@@ -1244,21 +1255,22 @@ def check_ensemble(b: Browser, base: str, log):
         # GEFS (dev18 stretch, built OFF): when its plume is in the build, an ECMWF | GEFS switch appears in the Ensemble view only, and GEFS draws 31 members with no HRES line
         gplume = Path(base_dir_holder["path"]) / "models" / "gefs" / "plume" / "alta-ski-area.json"
         if gplume.exists() and "gefs" in (json.loads((Path(base_dir_holder["path"]) / "data" / "multimodel.json").read_text(encoding="utf-8")).get("plumes") or []):
+            gn = json.loads(gplume.read_text(encoding="utf-8"))["n_members"]           # member count from the data, never hard-coded
             for width in (1280, 375):
                 b.open(f"{base}/area.html#alta-ski-area", width=width, wait=8)
                 wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20); b.settle(3)
                 hid = b.eval("document.getElementById('ens-src').hidden")
                 b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1"); b.settle(3.5)
                 shown = b.eval("(() => { const s = document.getElementById('ens-src'); return {hidden: s.hidden, btns: [...s.querySelectorAll('button')].map(x => [x.textContent.trim(), x.getAttribute('aria-pressed'), Math.round(x.getBoundingClientRect().height)])}; })()")
-                need(hid is True and shown["hidden"] is False and [x[0] for x in shown["btns"]] == ["ECMWF", "GEFS"] and all(x[2] >= 40 for x in shown["btns"]), f"source switch only in the Ensemble view: {hid} {shown}")
+                need(hid is True and shown["hidden"] is False and [x[0] for x in shown["btns"]] == ["ECMWF ENS", "NOAA GEFS"] and all(x[2] >= 40 for x in shown["btns"]), f"source switch only in the Ensemble view: {hid} {shown}")
                 b.eval("[...document.querySelectorAll('#ens-src button')].find(x => x.dataset.s === 'gefs').click(); 1"); b.settle(3.5)
                 g = b.eval("""(() => { const el = document.getElementById('mm-chart'), d = el.data || [];
                   return {names: d.map(t => t.name), nulls: d[0] ? d[0].x.filter(v => v === null).length : 0, aria: el.getAttribute('aria-label'), badge: document.getElementById('mm-badge').textContent,
                           note: document.getElementById('mm-note').textContent, announce: document.getElementById('mm-announce').textContent,
                           pressed: [...document.querySelectorAll('#ens-src button')].map(x => x.getAttribute('aria-pressed')), hscroll: document.documentElement.scrollWidth > innerWidth + 2}; })()""")
                 log(f"  gefs {width}px: {g['names']}, segments {g['nulls']}, aria: {g['aria']}")
-                need(g["nulls"] == 31 and "HRES" not in g["names"] and {"Median", "Mean"} <= set(g["names"]), f"GEFS plume traces: {g['names']} segments {g['nulls']}")
-                need((g["aria"] or "").startswith("GEFS ensemble (31 members): median ") and "NOAA GEFS" in g["badge"] and "control run plus the perturbed members" in g["badge"], f"GEFS headline / badge: {g['aria']} / {g['badge']}")
+                need(g["nulls"] == gn and "HRES" not in g["names"] and {"Median", "Mean"} <= set(g["names"]), f"GEFS plume traces: {g['names']} segments {g['nulls']}")
+                need((g["aria"] or "").startswith(f"GEFS ensemble ({gn} members): median ") and "NOAA GEFS" in g["badge"] and "control run plus the perturbed members" in g["badge"], f"GEFS headline / badge: {g['aria']} / {g['badge']}")
                 need("public domain" in g["note"] and "not bias-corrected" in g["note"] and "ECMWF" not in g["note"], f"GEFS note: {g['note'][:200]}")
                 need(g["announce"].startswith("Showing the GEFS ensemble") and g["pressed"] == ["false", "true"] and not g["hscroll"], f"GEFS announce / state: {g}")
                 b.eval("[...document.querySelectorAll('#mm-mode button')].find(x => x.dataset.m === 'snow').click(); 1"); b.settle(2.5)
@@ -1357,6 +1369,7 @@ def check_multimodel(b: Browser, base: str, log):
             if src["model"] in per:
                 per["aifs"] = {"q": [None if v is None else round(v * 1.8, 2) for v in per[src["model"]]["q"]], "z": None}
         res = {}
+        b.eval("sessionStorage.setItem('snowwx.mmHidden', '[]'); 1")          # dev21: phones hide AIFS by default (chips); this part checks the drawn line
         for badge in (False, True):
             d["models"][-1]["badge"] = badge
             mp.write_text(json.dumps(d), encoding="utf-8")
@@ -1378,6 +1391,94 @@ def check_multimodel(b: Browser, base: str, log):
             need(n_on == n_off + 1, f"badge must count AIFS only when configured in: {n_off} vs {n_on}")
     finally:
         mp.write_text(orig, encoding="utf-8")
+
+
+MM_LABEL_BOXES = """(() => { const el = document.getElementById('mm-chart'), er = el.getBoundingClientRect();
+  const boxes = [...el.querySelectorAll('g.annotation')].map(g => { const r = g.getBoundingClientRect(); return {t: g.textContent, l: r.left, r: r.right, t0: r.top, b: r.bottom}; })
+    .filter(x => x.r > x.l);
+  const hit = [];
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) { const p = boxes[i], q = boxes[j];
+    const ox = Math.min(p.r, q.r) - Math.max(p.l, q.l), oy = Math.min(p.b, q.b) - Math.max(p.t0, q.t0);
+    if (ox > 1 && oy > 1) hit.push([p.t, q.t, Math.round(ox), Math.round(oy)]); }
+  const clipped = boxes.filter(x => x.r > er.right + 1 || x.l < er.left - 1).map(x => x.t);
+  return {n: boxes.length, hit, clipped, names: (el.data || []).map(t => t.name)}; })()"""
+
+
+def check_mm_chips(b: Browser, base: str, log):
+    """dev21 Part 0b: "Precipitation by model" with up to six lines: model chips (>= 40 px, aria-pressed) show/hide lines; default at 375 px = NBM, HRRR, GFS, ECMWF
+    (RRFS / AIFS off), all on at 1280 px; direct labels never overlap (bounding boxes); the table always lists every model; the badge never changes with the chips;
+    the choice is kept for the visit (sessionStorage) and a blocked storage still works. Uses the real multimodel.json plus an AIFS fixture line (6 models)."""
+    area = "alta-ski-area"
+    mp = Path(base_dir_holder["path"]) / "data" / "multimodel.json"
+    orig = mp.read_text(encoding="utf-8")
+    res = {}
+    try:
+        d = json.loads(orig)
+        if not any(m["model"] == "aifs" for m in d["models"]):           # make sure all six lines exist
+            src = max(d["models"], key=lambda m: len(m["hours"]))
+            d["models"].append({**{k: src[k] for k in ("init", "cycle", "hours")}, "model": "aifs", "label": "AIFS (AI, experimental)", "experimental": True, "badge": False})
+            for per in d["areas"].values():
+                if src["model"] in per:
+                    per["aifs"] = {"q": [None if v is None else round(v * 1.3, 2) for v in per[src["model"]]["q"]], "z": None}
+            mp.write_text(json.dumps(d), encoding="utf-8")
+        for width in (375, 1280):
+            b.open(f"{base}/area.html#{area}", width=width, wait=7)
+            b.eval("sessionStorage.removeItem('snowwx.mmHidden'); 1")
+            b.open(f"{base}/area.html#{area}", width=width, wait=7)
+            b.eval("document.getElementById('mm-sec').scrollIntoView(); 1")
+            wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20)
+            chips = b.eval("""[...document.querySelectorAll('#mm-chips .mm-chip')].map(c => ({k: c.dataset.k, on: c.getAttribute('aria-pressed') === 'true',
+                h: Math.round(c.getBoundingClientRect().height), w: Math.round(c.getBoundingClientRect().width)}))""")
+            st = b.eval(MM_LABEL_BOXES)
+            badge0 = b.eval("document.getElementById('mm-badge').textContent")
+            res[f"{width}-default"] = {"chips": [(c["k"], c["on"]) for c in chips], **st}
+            need(len(chips) >= 5 and all(c["h"] >= 40 and c["w"] >= 40 for c in chips), f"chips missing or too small at {width}px: {chips}")
+            on = {c["k"] for c in chips if c["on"]}
+            if width == 375:
+                need("rrfs" not in on and "aifs" not in on and {"nbm", "hrrr", "gfs"} <= on, f"phone default set: {on}")
+            else:
+                need(on == {c["k"] for c in chips}, f"desktop default = all models: {on}")
+            need(not st["hit"] and not st["clipped"], f"direct labels overlap / clipped at {width}px (default): {st}")
+            # every chip on, then every label still clear; table lists every model whatever is hidden
+            b.eval("""(async () => { for (const c of [...document.querySelectorAll('#mm-chips .mm-chip[aria-pressed=false]')].map(c => c.dataset.k)) {
+                document.querySelector(`#mm-chips [data-k=${c}]`).click(); await new Promise(r => setTimeout(r, 400)); } return 1; })()""")
+            st = b.eval(MM_LABEL_BOXES)
+            res[f"{width}-all"] = st
+            need(len(st["names"]) == len(chips) and not st["hit"] and not st["clipped"], f"all lines on at {width}px: {st}")
+            # hide two, check table + badge, then reload: kept for the visit
+            b.eval("(async () => { for (const k of ['gfs', 'hrrr']) { document.querySelector(`#mm-chips [data-k=${k}]`).click(); await new Promise(r => setTimeout(r, 400)); } return 1; })()")
+            t = b.eval("""(() => { const d = document.querySelector('#mm-chart + .chart-table'); d.open = true; d._build && d._build();
+                return {cols: [...d.querySelectorAll('th[scope=col]')].map(t => t.textContent), names: document.getElementById('mm-chart').data.map(t => t.name),
+                        badge: document.getElementById('mm-badge').textContent}; })()""")
+            need(len(t["cols"]) == len(chips) + 1 and not any(n in ("GFS", "HRRR") for n in t["names"]), f"table must list every model, chart hides two: {t}")
+            need(t["badge"] == badge0, f"the badge must not change with the chips: {badge0} -> {t['badge']}")
+            b.open(f"{base}/area.html#{area}", width=width, wait=7)
+            b.eval("document.getElementById('mm-sec').scrollIntoView(); 1")
+            wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20)
+            kept = b.eval("[...document.querySelectorAll('#mm-chips .mm-chip')].filter(c => c.getAttribute('aria-pressed') === 'false').map(c => c.dataset.k).sort()")
+            need(kept == ["gfs", "hrrr"], f"selection not kept for the visit: {kept}")
+            # the last line can never be switched off
+            b.eval("""(async () => { for (const k of [...document.querySelectorAll('#mm-chips .mm-chip[aria-pressed=true]')].map(c => c.dataset.k)) {
+                document.querySelector(`#mm-chips [data-k=${k}]`).click(); await new Promise(r => setTimeout(r, 250)); } return 1; })()""")
+            n_on = b.eval("document.querySelectorAll('#mm-chips .mm-chip[aria-pressed=true]').length")
+            need(n_on == 1 and len(b.eval("document.getElementById('mm-chart').data.map(t => t.name)")) == 1, f"at least one line must stay: {n_on}")
+            b.eval("sessionStorage.removeItem('snowwx.mmHidden'); 1")
+        # storage blocked (private mode): default set, chips still work
+        sid = b.cmd("Page.addScriptToEvaluateOnNewDocument", source="Object.defineProperty(window, 'sessionStorage', {get() { throw new Error('blocked'); }});")["identifier"]
+        try:
+            b.open(f"{base}/area.html#{area}", width=1280, wait=7)
+            b.eval("document.getElementById('mm-sec').scrollIntoView(); 1")
+            wait_for(b, "(document.getElementById('mm-chart').data || []).length > 0", 20)
+            n0 = b.eval("document.getElementById('mm-chart').data.length")
+            b.eval("document.querySelector('#mm-chips [data-k=gfs]').click(); 1")
+            wait_for(b, f"document.getElementById('mm-chart').data.length === {n0 - 1}", 5)
+            need(not b.errors, f"JS errors with storage blocked: {b.errors}")
+        finally:
+            b.cmd("Page.removeScriptToEvaluateOnNewDocument", identifier=sid)
+    finally:
+        mp.write_text(orig, encoding="utf-8")
+    log(f"  mm chips: {json.dumps(res)[:900]}")
+    need(not b.errors, f"JS errors: {b.errors}")
 
 
 def check_models_layout(b: Browser, base: str, log):
@@ -1422,6 +1523,71 @@ def check_models_layout(b: Browser, base: str, log):
     finally:
         pass
     log(f"  models CLS: {json.dumps(res)[:700]}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_no_idle(b: Browser, base: str, log):
+    """dev21 Part 0a (Safari/iPhone): a browser WITHOUT requestIdleCallback (Safari) and, second pass, also without IntersectionObserver (old WebKit):
+    the area page still loads Plotly and draws its charts, site-config still runs (mailto wiring + analytics queue), the Finder map starts and the
+    obs map loads its reference layer."""
+    strip = """(() => { for (const k of ['requestIdleCallback', 'cancelIdleCallback']) { try { delete window[k]; } catch (e) {} try { delete Window.prototype[k]; } catch (e) {}
+      try { Object.defineProperty(window, k, {value: undefined, configurable: true, writable: true}); } catch (e) {} }
+      if (window.__noIO) { try { delete window.IntersectionObserver; } catch (e) {} try { Object.defineProperty(window, 'IntersectionObserver', {value: undefined, configurable: true}); } catch (e) {} } })()"""
+    res = {}
+    for variant, no_io in (("no-rIC", False), ("no-rIC-no-IO", True)):
+        sid = b.cmd("Page.addScriptToEvaluateOnNewDocument", source=("window.__noIO = true;" if no_io else "") + strip)["identifier"]
+        try:
+            b.open(f"{base}/area.html#alta-ski-area", wait=8)
+            need(b.eval("typeof window.requestIdleCallback") == "undefined", "requestIdleCallback was not removed")
+            if no_io:
+                need(b.eval("typeof window.IntersectionObserver") == "undefined", "IntersectionObserver was not removed")
+            _draw_all(b)
+            wait_for(b, "window.Plotly && document.getElementById('period-chart').data", 20)
+            st = b.eval("""(() => ({charts: [...document.querySelectorAll('.chart')].filter(el => el.data).length,
+                mail: [...document.querySelectorAll('a[data-mailto]')].map(a => a.dataset.wired === '1'), track: typeof window.snowwxTrack}))()""")
+            # site-config's idle fallback (setTimeout 1.5 s) must have wired every mailto link
+            wait_for(b, "[...document.querySelectorAll('a[data-mailto]')].every(a => a.dataset.wired === '1')", 10)
+            need(st["charts"] >= 4 and st["track"] == "function", f"area page without idle callback ({variant}): {st}")
+            b.open(f"{base}/finder.html", wait=8)
+            wait_for(b, "window.L && document.querySelector('#fmap .leaflet-container, #fmap.leaflet-container')", 15)
+            b.open(f"{base}/index.html#v=depth_24h&map=6/40.6/-111.6", wait=9)
+            wait_for(b, "window.maplibregl || document.querySelector('.maplibregl-canvas, .ref-layer canvas')", 15)
+            res[variant] = st
+            need(not b.errors, f"JS errors without requestIdleCallback ({variant}): {b.errors}")
+        finally:
+            b.cmd("Page.removeScriptToEvaluateOnNewDocument", identifier=sid)
+    log(f"  no idle callback: {res}")
+
+
+def check_alert_cls(b: Browser, base: str, log):
+    """dev21 Part 0c: an ACTIVE NWS alert (the recorded fixture, frozen 'active now' in every worker's site copy) must not shift the area page: CLS <= 0.02 at
+    375 and 1280 px with a 4x CPU slowdown, the banner and the alert summary shown; an area without an alert as the control. Was 0.074: the summary's
+    'report' link (revealed later by site-config) added a line once the alert summary outgrew its reserved height."""
+    idx = json.loads((Path(base_dir_holder["path"]) / "data" / "alerts" / "index.json").read_text(encoding="utf-8"))
+    pts = Path(base_dir_holder["path"]) / "data" / "points"
+    with_alert = next((k for k, refs in idx.get("areas", {}).items() if any(r.get("relevant") is not False for r in refs) and (pts / f"{k}.json").exists()), None)
+    need(with_alert, "the frozen alert fixture names no area with a points file")
+    without = next(k for k in ("alta-ski-area", "mt-bachelor", "brighton-resort") if k not in idx.get("areas", {}) and (pts / f"{k}.json").exists())
+    obs = """(() => { window.__cls = 0; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; }).observe({type: 'layout-shift', buffered: true}); } catch (e) { window.__cls = -1; } })()"""
+    sid = b.cmd("Page.addScriptToEvaluateOnNewDocument", source=obs)["identifier"]
+    b.cmd("Emulation.setCPUThrottlingRate", rate=4)
+    res = {}
+    try:
+        for area in (with_alert, without):
+            for width in (375, 1280):
+                b.open(f"{base}/area.html#{area}", width=width, height=800, wait=10)
+                with contextlib.suppress(Fail):          # site-config reveals the report link when the browser is idle (<= 4 s)
+                    wait_for(b, "[...document.querySelectorAll('a[data-mailto]')].every(a => a.dataset.wired === '1')", 6)
+                b.settle(1.0)
+                r = b.eval("({cls: +window.__cls.toFixed(4), banner: document.querySelectorAll('.alert-banner').length, tag: (document.querySelector('.summary-tag') || {}).textContent || ''})")
+                res[f"{area}-{width}"] = r
+                need(r["cls"] >= 0 and r["cls"] <= 0.02, f"area page layout shift {r['cls']} > 0.02 ({area}, {width}px): {r}")
+                if area == with_alert:
+                    need(r["banner"] >= 1 and "Alert" in r["tag"], f"alert banner / alert summary missing on {area}: {r}")
+    finally:
+        b.cmd("Emulation.setCPUThrottlingRate", rate=1)
+        b.cmd("Page.removeScriptToEvaluateOnNewDocument", identifier=sid)
+    log(f"  alert CLS: {res}")
     need(not b.errors, f"JS errors: {b.errors}")
 
 
@@ -1613,9 +1779,11 @@ def check_verify_ui(b: Browser, base: str, log):
     doc = {"triplet": trip, "d": 20, "n": 40, "span": [dates[0], dates[-1]], "common_n": 20,
            "metrics": {"NBM expected": {"n": 20, "bias_in": 0.12, "mae_in": 0.4, "events_1": 8, "hit_1": 0.75}, "NWS (NDFD)": {"n": 20, "bias_in": -0.2, "mae_in": 0.3, "events_1": 8, "hit_1": 0.5}},
            "daily": {"dates": dates, "obs": [0, 2.5, 0, 1.2] * 5, "nbm": [0.1, 2.0, 0.4, 1.5] * 5, "ndfd": [0, 1.5, 0, 0.8] * 5}}
-    vdir = dd / "verification"
+    vd = src / "models" / "verify"                                  # dev21: the verify product tar lands in build/models/verify/
+    vd.mkdir(parents=True, exist_ok=True)
+    vdir = vd / "verification"
     had_vdir = vdir.exists()
-    backup = {f.name: f.read_bytes() for f in (dd / "verification.json",) if f.exists()}
+    backup = {f.name: f.read_bytes() for f in (vd / "verification.json",) if f.exists()}
 
     def setup(enabled, station=None, scorecard_ready=True):
         meta_path.write_text(json.dumps({**meta, "verification_ui": {"enabled": enabled, "min_days": 14, "min_pairs": 30}}), encoding="utf-8")
@@ -1624,7 +1792,7 @@ def check_verify_ui(b: Browser, base: str, log):
                              "rows": [{"source": "NBM expected", "n": 300, "bias_in": 0.12, "mae_in": 0.4, "events_1": 50, "hit_1": 0.62}] if scorecard_ready else []}}
         if station:
             idx["stations"][trip] = station
-        (dd / "verification.json").write_text(json.dumps(idx), encoding="utf-8")
+        (vd / "verification.json").write_text(json.dumps(idx), encoding="utf-8")
         shutil.rmtree(vdir, ignore_errors=True)
         if station and station.get("ready"):
             vdir.mkdir(parents=True, exist_ok=True)
@@ -1681,9 +1849,9 @@ def check_verify_ui(b: Browser, base: str, log):
         if had_vdir:
             vdir.mkdir(parents=True, exist_ok=True)
         for n, data in backup.items():
-            (dd / n).write_bytes(data)
+            (vd / n).write_bytes(data)
         if not backup:
-            (dd / "verification.json").unlink(missing_ok=True)
+            (vd / "verification.json").unlink(missing_ok=True)
         if original is None:
             meta_path.unlink(missing_ok=True)
         else:
@@ -1809,7 +1977,7 @@ def check_mobile_sweep(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard,
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips, "alertcls": check_alert_cls,
           **{f"failure{k}": functools.partial(check_failure_modes, shard=(k, 3)) for k in (1, 2, 3)}}
 FULL_RUN = [n for n in CHECKS if n != "failure"]          # the full run uses the three failure shards (same coverage, parallel)
 

@@ -69,7 +69,7 @@ def write_meta(cfg: dict, outdir: Path, updates: dict) -> None:
                               "stale_hours": float((cfg.get("forecast_overlays") or {}).get("stale_hours", 14))},
         # cookieless analytics (config analytics): the page script reads ONLY this; disabled (default) = {"enabled": false}, so nothing about a provider is exposed
         "analytics": analytics_public(cfg),
-        # verification UI (config verification_ui): enabled=false (default) means the pages show nothing and never fetch data/verification*.json
+        # verification UI (config verification_ui): enabled=false (default) means the pages show nothing and never fetch models/verify/verification*.json
         "verification_ui": {"enabled": bool((cfg.get("verification_ui") or {}).get("enabled", False)),
                             "min_days": int((cfg.get("verification_ui") or {}).get("min_days", 14)), "min_pairs": int((cfg.get("verification_ui") or {}).get("min_pairs", 30))},
         "site": {"feedback_email": os.environ.get("SNOWWX_FEEDBACK_EMAIL") or (cfg.get("site") or {}).get("feedback_email") or ""},
@@ -95,6 +95,37 @@ def aifs_status(outdir: Path, cfg: dict | None) -> dict:
     except (OSError, ValueError):
         pass
     return {"ok": None, "waiting": True, "detail": "waiting for the first run"}
+
+
+def gefs_status(outdir: Path, cfg: dict | None) -> dict:
+    """NOAA GEFS plume (dev21, .github/workflows/gefs.yml): `disabled` while gefs.enabled is false; `waiting` until the first run is in the build; else cycle, members, fetch health."""
+    if not bool(((cfg or {}).get("gefs") or {}).get("enabled")):
+        return {"ok": None, "disabled": True, "detail": "not enabled"}
+    try:
+        js = json.loads((outdir / "models" / "gefs" / "index.json").read_text(encoding="utf-8"))
+        miss = js.get("steps_missing") or []
+        f = js.get("fetch") or {}
+        return {"ok": True, "detail": f"GEFS {js['cycle'][8:10]}Z run, {js.get('n_members', '?')} members (control + perturbed)" + (f" · {f.get('retries', 0)} retries" if f else "")
+                + (f" · {len(miss)} steps missing" if miss else ""), "at": js.get("generated_at"), "count": js.get("areas"), "unit": "ski areas"}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"ok": None, "waiting": True, "detail": "waiting for the first run"}
+
+
+def verify_status(outdir: Path, cfg: dict | None) -> dict:
+    """M9 verification job (dev21, .github/workflows/verify.yml): `disabled` while verification.ci_enabled is false; `waiting` until its first result is in the build
+    (models/verify/run.json); else days / pairs / sites with results. The PANEL stays behind verification_ui.enabled (said in the detail)."""
+    if not bool(((cfg or {}).get("verification") or {}).get("ci_enabled", True)):
+        return {"ok": None, "disabled": True, "detail": "not enabled"}
+    try:
+        js = json.loads((outdir / "models" / "verify" / "run.json").read_text(encoding="utf-8"))
+        ui = bool(((cfg or {}).get("verification_ui") or {}).get("enabled"))
+        when = js.get("scorecard_ready")
+        return {"ok": True, "at": js.get("generated_at"), "count": js.get("stations_ready", 0), "unit": "SNOTEL sites with results",
+                "detail": f"{js.get('days', 0)} observation days, {js.get('pairs', 0):,} forecast/observation pairs (minimum {js.get('min_days')} days and {js.get('min_pairs')} pairs)"
+                          + (f" · enough data about {when}" if when and not js.get("stations_ready") else "") + ("" if ui else " · panel switched off")
+                          + (f" · {js['warning']}" if js.get("warning") else "")}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"ok": None, "waiting": True, "detail": "waiting for the first run"}
 
 
 def ecmwf_status(outdir: Path, cfg: dict | None) -> dict:
@@ -161,6 +192,8 @@ def product_status(outdir: Path, cfg: dict | None = None) -> dict:
         out["models"] = {"ok": False, "error": "no model runs yet"}
     out["ecmwf"] = ecmwf_status(outdir, cfg)
     out["aifs"] = aifs_status(outdir, cfg)
+    out["gefs"] = gefs_status(outdir, cfg)
+    out["verify"] = verify_status(outdir, cfg)
     return out
 
 
@@ -362,6 +395,19 @@ def main(argv=None) -> int:
     p.add_argument("--publish", default=None, help="also write the public verification JSON (data/verification.json + data/verification/<site>.json) into this data folder")
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("archive-check", help="forecast-archive integrity: columns never change, rows only grow, no month missing (exit 1 on a problem)")
+    p.add_argument("--dir", default=None, help="folder with the monthly CSVs")
+    p.add_argument("--release", default=None, help="download from this release instead (needs gh), e.g. verification")
+    p.add_argument("--state", default=None, help="JSON of the previous check (read, then rewritten): header and row count per file")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("verify-ci", help="CI (verify.yml): score the downloaded archive into <out>/verify/ (verification.json + per-site files + run.json); exit 0 when nothing new")
+    p.add_argument("--dir", required=True, help="folder with the archive CSVs (gh release download verification)")
+    p.add_argument("--out", default="out/models", help="models folder of the product tar (the result lands in <out>/verify/)")
+    p.add_argument("--published", default="", help="the published key <YYYYMMDDHH>-<version> (newest verify-*.tar)")
+    p.add_argument("--github-output", default=None)
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("pwa", help="PWA build step: manifest, icons, sw.js (no-op unless config pwa.enabled; pwa.kill writes the kill-switch worker)")
     p.add_argument("--out", default="build", help="site folder")
     p.add_argument("--force", action="store_true", help="write even when pwa.enabled is false (local test builds only)")
@@ -449,6 +495,17 @@ def main(argv=None) -> int:
         from . import verify
         print(json.dumps(verify.run(Path(args.dir), Path(args.out), load_config(args.config), args.min_hours, Path(args.publish) if args.publish else None), indent=1, default=str))
         return 0
+    if args.cmd == "archive-check":
+        from . import archive_check
+        if not args.dir and not args.release:
+            print("archive-check: give --dir or --release")
+            return 2
+        return archive_check.run(Path(args.dir) if args.dir else None, Path(args.state) if args.state else None, args.release)
+    if args.cmd == "verify-ci":
+        from . import verify
+        res = verify.ci_run(Path(args.dir), Path(args.out), load_config(args.config), args.published, args.github_output)
+        print(json.dumps(res, indent=1, default=str))
+        return 0                                   # nothing new / stale input is not an error: the last good result stays
     if args.cmd == "pwa":
         from . import pwa
         return pwa.run(load_config(args.config), Path(args.out), force=args.force)

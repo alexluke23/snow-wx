@@ -17,6 +17,7 @@ Outputs: <out>/gefs/index.json and <out>/gefs/plume/<area>.json (same document f
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -27,7 +28,7 @@ from pathlib import Path
 import numpy as np
 
 from . import ecmwf as E
-from .common import utcnow, write_json
+from .common import REPO_ROOT, utcnow, write_json
 
 log = logging.getLogger("snow-wx.gefs")
 MIRROR = "https://noaa-gefs-pds.s3.amazonaws.com"
@@ -122,8 +123,46 @@ def newest_cycle(session, c: dict, now: datetime) -> datetime | None:
     return None
 
 
+class StepCache:
+    """dev21 resume store: data_cache/gefs/<cycle>/step_<hhh>.npz = the SAMPLED buckets of one step (members x areas: APCP in mm, CSNOW fraction; NaN = member missing)
+    + meta.json (area-point key). The workflow restores/saves the folder (actions/cache), so the retry attempt of a cycle continues where the first one stopped.
+    Only the newest 2 cycles are kept (ecmwf.prune_cycles); a different point list discards the folder."""
+
+    def __init__(self, root: Path | None, cycle: datetime, points: list[dict]):
+        import hashlib
+        from .ecmwf import prune_cycles
+        self.dir = None if root is None else Path(root) / "gefs" / cycle.strftime("%Y%m%d%H")
+        self.hits = 0
+        if self.dir is None:
+            return
+        self.key = hashlib.sha1(json.dumps([(p["id"], round(p["lat"], 4), round(p["lon"], 4)) for p in points]).encode()).hexdigest()[:12]
+        self.pruned = prune_cycles(self.dir.parent, self.dir.name, keep=2, max_mb=300)
+        try:
+            if json.loads((self.dir / "meta.json").read_text(encoding="utf-8")).get("key") != self.key:
+                raise ValueError("points changed")
+        except (OSError, ValueError):
+            import shutil
+            shutil.rmtree(self.dir, ignore_errors=True)
+            self.dir.mkdir(parents=True, exist_ok=True)
+            (self.dir / "meta.json").write_text(json.dumps({"key": self.key}), encoding="utf-8")
+
+    def load(self, step: int):
+        if self.dir is None:
+            return None
+        try:
+            with np.load(self.dir / f"step_{step:03d}.npz") as z:
+                self.hits += 1
+                return z["ap"], z["cs"]
+        except (OSError, ValueError, KeyError):
+            return None
+
+    def save(self, step: int, ap, cs) -> None:
+        if self.dir is not None:
+            np.savez_compressed(self.dir / f"step_{step:03d}.npz", ap=ap, cs=cs)
+
+
 def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: bool = False, points: list[dict] | None = None, now: datetime | None = None,
-        published: str | None = None, github_output: str | None = None) -> dict:
+        published: str | None = None, github_output: str | None = None, cache_dir: Path | bool | None = None) -> dict:
     """fetch, sample, write. `out` is the MODELS folder (writes <out>/gefs/...). Needs force=True while config gefs.enabled is false (manual test run)."""
     def emit(**kv):
         if github_output:
@@ -186,23 +225,38 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
             return None
 
     missing = {}
+    cache = StepCache(None if cache_dir is False else (REPO_ROOT / "data_cache" if cache_dir is None else Path(cache_dir)), cyc, pts)
     with ThreadPoolExecutor(c["workers"]) as ex:
         for s in steps[1:]:
-            res = list(ex.map(lambda m: member_buckets(m, s), MEMBERS))
-            miss = sum(1 for r in res if r is None)
+            got = cache.load(s)
+            if got is None:
+                # downloads in parallel; every GRIB decode is serialized inside ecmwf.decode (ecCodes is not thread-safe, dev20)
+                res = list(ex.map(lambda m: member_buckets(m, s), MEMBERS))
+                ap_s = np.full((len(MEMBERS), len(pts)), np.nan)
+                cs_s = np.zeros((len(MEMBERS), len(pts)))
+                for k, r in enumerate(res):
+                    if r is not None:
+                        ap_s[k] = sam.sample(r[0])
+                        cs_s[k] = np.clip(sam.sample(r[1]), 0.0, 1.0) if r[1] is not None else 0.0
+                miss = sum(1 for r in res if r is None)
+                if miss > c["max_missing_frac"] * len(MEMBERS):
+                    # not an error: the steps done so far stay in the resume cache and the retry attempt continues (exit 0, new=false)
+                    log.warning("gefs %s step %d: %d of %d members missing; stopping, the next attempt resumes", cyc, s, miss, len(MEMBERS))
+                    emit(new="false")
+                    return {"ok": False, "skipped": "incomplete", "cycle": cyc.strftime("%Y%m%d%H"), "step": s, "missing": miss, "cache_hits": cache.hits}
+                cache.save(s, ap_s, cs_s)
+            else:
+                ap_s, cs_s = got
+            miss = int(np.isnan(ap_s).all(axis=1).sum())
             missing[s] = miss
-            if miss > c["max_missing_frac"] * len(MEMBERS):
-                raise RuntimeError(f"GEFS step {s}: {miss} of {len(MEMBERS)} members missing")
-            for k, r in enumerate(res):
-                if r is None:
+            for k in range(len(MEMBERS)):
+                if np.isnan(ap_s[k]).all():
                     cum["tp"][k] = np.nan                                           # a member that skipped a bucket has no valid running total from here on
                     cum["sf"][k] = np.nan
                     continue
-                ap, cs = r
-                v = sam.sample(ap) / 1000.0                                         # kg m-2 == mm of water -> metres
+                v = ap_s[k] / 1000.0                                                # kg m-2 == mm of water -> metres
                 cum["tp"][k] += v
-                frac = np.clip(sam.sample(cs), 0.0, 1.0) if cs is not None else np.zeros(len(pts))
-                cum["sf"][k] += v * frac                                            # frozen share of this bucket's water
+                cum["sf"][k] += v * cs_s[k]                                         # frozen share of this bucket's water
             for p in ("tp", "sf"):
                 sam.ens[p][s] = cum[p].copy()
             sam.missing[s] = miss
@@ -222,7 +276,7 @@ def run(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: 
     secs = round(time.time() - t0, 1)
     index = {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "cycle": cyc.strftime("%Y%m%d%H"), "init": cyc.strftime("%Y-%m-%dT%H:00Z"), "hours": steps,
              "n_members": len(MEMBERS), "control_member": True, "areas": len(plume), "resolution": "0.25 degree", "stale_hours": c["stale_hours"],
-             "missing_member_messages": sum(missing.values()), "bytes_downloaded": nbytes["n"], "seconds": secs, "source": "NOAA GEFS (NODD on AWS)", "attribution": ATTRIBUTION, "fetch": fetcher.stats(),
+             "missing_member_messages": sum(missing.values()), "bytes_downloaded": nbytes["n"], "seconds": secs, "source": "NOAA GEFS (NODD on AWS)", "attribution": ATTRIBUTION, "fetch": {**fetcher.stats(), "cache_hits": cache.hits},
              "snow": "estimate: APCP x CSNOW (categorical snow fraction) per 6-h bucket"}
     write_json(out / "gefs" / "index.json", index)
     emit(new="true", cycle=tag)
