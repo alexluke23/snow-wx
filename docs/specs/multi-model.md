@@ -133,7 +133,7 @@ Cause: the global S3 endpoint throttled the runner's shared IP range, and the sh
 - **Not testable offline:** real GitHub-runner throttling.
 - **Real-data degradation test (Nov 19 2026, local proxy in front of the real Google mirror that answers 503 for chosen steps, the real per-step cache minus those steps):** steps 150 + 156 h blocked -> run publishes a PARTIAL cycle (`new=true`, tag hash differs from the complete one, `steps_missing: [150, 156]` in index/precip/plume, all members and HRES null at those steps, `multimodel.merge` keeps the gaps); step 54 h blocked (inside the first 120 h) -> `skipped: incomplete`, `new=false`, nothing written, cache kept. Browser check `ensemble` draws a plume with two missing steps and asserts the caption names them (`+54 h, +60 h could not be fetched ... drawn as gaps, never interpolated`).
 
-### ECMWF AIFS line (dev20; built, OFF: `aifs.enabled: false`)
+### ECMWF AIFS line (dev20; `aifs.enabled: true` after the live validation below, so it goes live with the next ECMWF run once dev20 is merged; `in_badge: false`)
 **Found on the real mirror (Google, 12Z Nov 19 2026), not assumed:** `{date}/{HH}z/aifs-single/0p25/oper/{date}{HH}0000-{step}h-oper-fc.{index,grib2}`; steps every 6 h from 0 to 360 h (no
 3-hourly steps); `tp` at every step, `stepType accum` over 0-<step> h, grid 1440 x 721 scanning 0 (same cell as IFS: Alta -> 40.50 N, 111.75 W), **units kg m-2 = mm, NOT metres as in the IFS files**.
 **Code:** `pipeline/ecmwf.py` `run_aifs` / `aifs_doc`, called inside `pipeline ecmwf` AFTER the HRES/ENS files are written, with its own fetcher (its throttling never trips the main breaker),
