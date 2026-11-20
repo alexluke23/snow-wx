@@ -19,6 +19,8 @@ header {
 header h1 { margin: 0; font-size: 18px; letter-spacing: .3px; }
 header h1 span { font-weight: 400; color: #9fb3c8; margin-left: 6px; }
 #updated { font-size: 13px; color: #c9d6e3; }
+.models-page header h1 { flex: none; white-space: nowrap; }
+.models-page #updated { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; min-height: 1.35em; }   /* the run list grows with the catalog: one line, never a wrapped (taller) header */
 
 /* Site navigation */
 .site-nav { display: flex; gap: 4px; margin: 0 auto 0 18px; }
@@ -35,6 +37,8 @@ main.viewer { display: block; overflow-y: auto; padding: 10px 14px; }
 }
 .controls select, .player select { width: auto; min-width: 120px; max-width: 100%; color: var(--ink); }
 .controls #field { min-width: 260px; }
+.controls #model { min-width: 150px; }
+.controls #domain { min-width: 190px; }       /* reserved: the option lists are filled from the catalog after load */
 .player { align-items: center; }
 .player button {
   font-size: 14px; padding: 5px 10px; border: 1px solid #b8c2cc; background: #fff;
@@ -45,8 +49,9 @@ main.viewer { display: block; overflow-y: auto; padding: 10px 14px; }
 #hour { flex: 1 1 240px; min-width: 160px; }
 .hour-label { font-variant-numeric: tabular-nums; min-width: 250px; font-size: 14px; }
 .hour-label .local { color: var(--muted); }
-.loading { color: var(--muted); font-size: 12px; min-width: 80px; }
-.frame { margin: 0; }
+.loading { color: var(--muted); font-size: 12px; min-width: 100px; min-height: 1.3em; }
+.frame { margin: 0; min-height: 360px; }         /* before the catalog arrives the picture's box is reserved; the catalog's pixel size then sets the exact one */
+.frame figcaption { min-height: 2.6em; }
 .frame img {
   display: block; max-width: 100%; max-height: calc(100vh - 190px); width: auto; height: auto;
   border: 1px solid var(--line); background: #fff;
@@ -130,7 +135,7 @@ footer a, #panel a { color: var(--accent); }
 @media (max-width: 800px) {
   header { flex-wrap: wrap; row-gap: 4px; }
   .site-nav { margin-left: 8px; }
-  .hour-label { min-width: 0; }
+  .hour-label { min-width: 0; flex: 1 1 100%; min-height: 2.9em; }       /* own row from the first paint, two lines reserved: the label text arrives after the catalog and must not re-wrap the row (CLS) */
   .frame img { max-height: none; }
   main { flex-direction: column; }
   #map { flex: none; height: 60vh; }
@@ -499,7 +504,7 @@ body.mine-page > main { min-height: 100vh; min-height: 100dvh; }
 .status .st-tbl thead th { font-size: 12px; color: var(--muted); }
 .status .st-badge { white-space: nowrap; }
 .status .st-ok .st-badge { color: #0a5f37; } .status .st-late .st-badge { color: #8a1c10; } .status .st-late { background: #fff4f1; }
-.status .st-none .st-badge, .status .st-nolimit .st-badge { color: #4a5666; }
+.status .st-none .st-badge, .status .st-nolimit .st-badge, .status .st-off .st-badge, .status .st-wait .st-badge { color: #4a5666; }
 main.status { max-width: 980px; width: 100%; box-sizing: border-box; } .status .tbl-wrap { overflow-x: auto; }
 @media (max-width: 640px) {            /* stacked cards instead of a wide table */
   .status .tbl-wrap { border: 0; max-height: none; }
@@ -536,7 +541,7 @@ main.status { max-width: 980px; width: 100%; box-sizing: border-box; } .status .
 /* precipitation by model (M7, dev16) */
 .mm-badge { margin: 4px 0 8px; font-size: 14px; }
 .mm-badge b { padding: 1px 8px; border-radius: 10px; border: 1px solid currentColor; }
-.mm-badge .mm-high { color: #0a5f37; } .mm-badge .mm-medium { color: #7a5600; } .mm-badge .mm-low { color: #8a1c10; }
+.mm-badge .mm-dry { color: #4a5666; } .mm-badge .mm-high { color: #0a5f37; } .mm-badge .mm-medium { color: #7a5600; } .mm-badge .mm-low { color: #8a1c10; }
 #mm-mode { margin-bottom: 6px; }
 #rows-more { padding: 10px 0 18px; text-align: center; }
 #rows-more button { min-height: 44px; padding: 8px 16px; border: 1px solid #5b7a99; border-radius: 6px; background: #fff; font: inherit; cursor: pointer; }
@@ -569,3 +574,18 @@ main.status { max-width: 980px; width: 100%; box-sizing: border-box; } .status .
 .area-page #fresh { min-height: 16px; }
 .area-page #bust { min-height: 42px; }
 @media (min-width: 640px) { .area-page #summary-card { min-height: 89px; } .area-page #headline { min-height: 25px; } .area-page #bust { min-height: 21px; } }
+
+/* webcam links row (area page "More"): plain outbound links, each on its own line at phone width */
+.webcams { margin: 6px 0; line-height: 1.7; }
+.webcams a { display: inline-block; padding: 4px 0; }
+@media (max-width: 600px) { .webcams a { display: block; padding: 8px 0; min-height: 40px; } .webcams .hint { display: block; margin: -6px 0 4px; } }
+
+/* sources / privacy / terms / disclaimer pages (dev18 Part 2) */
+.draft-banner { background: #fff4d6; border: 1px solid #c79a1b; color: #3f2f00; padding: 10px 12px; border-radius: 6px; margin: 10px 0; }
+.about .src { border-top: 1px solid var(--line); padding: 4px 0 8px; } .about .src h4 { margin: 8px 0 2px; font-size: 15px; } .about .src p { margin: 2px 0; }
+.about .credit { color: #26333f; }
+.about .tbl-wrap { overflow-x: auto; } .about .st-tbl th[scope="row"] { text-align: left; font-weight: 600; }
+
+/* verification panel / scorecard (dev18 Part 3, behind verification_ui.enabled) */
+#verif-sec .caveats { font-size: 13px; color: #36424f; padding-left: 18px; margin: 8px 0; } #verif-sec .collecting { background: #eef3f8; border: 1px solid var(--line); padding: 10px 12px; border-radius: 6px; }
+#verif-sec .tbl-wrap { overflow-x: auto; }

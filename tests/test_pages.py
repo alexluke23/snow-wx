@@ -28,7 +28,7 @@ def test_page_without_points_uses_a_generic_description():
 def test_sitemap_robots_redirect_and_flag(tmp_path):
     assert "https://example.test/snow-wx/ski/ut/alta-ski-area/" in pages.sitemap(CFG, [A])
     assert "Sitemap: https://example.test/snow-wx/sitemap.xml" in pages.robots(CFG)
-    assert '"alta-ski-area":"/snow-wx/ski/ut/alta-ski-area/"' in pages.redirect_snippet([A], "/snow-wx")
+    assert '"alta-ski-area":"/snow-wx/ski/ut/alta-ski-area/"' in pages.redirect_js([A], "/snow-wx")
     (tmp_path / "data" / "points").mkdir(parents=True)
     (tmp_path / "data" / "ski_areas.json").write_text(json.dumps({"areas": [A]}), encoding="utf-8")
     (tmp_path / "area.html").write_text("<html><head></head></html>", encoding="utf-8")
@@ -38,5 +38,8 @@ def test_sitemap_robots_redirect_and_flag(tmp_path):
     on = {**CFG, "pages": {"enabled": True}}
     assert pages.run(on, tmp_path) == 0
     assert (tmp_path / "ski" / "ut" / "alta-ski-area" / "index.html").exists() and (tmp_path / "robots.txt").exists()
-    assert "pages.enabled: old #id" in (tmp_path / "area.html").read_text(encoding="utf-8")
+    area = (tmp_path / "area.html").read_text(encoding="utf-8")
+    assert '<script src="js/id-redirect.js"></script>' in area and "<script>" not in area and area.count("id-redirect.js") == 1      # a file, never an inline script (CSP)
+    assert "old #id links go to the indexable path" in (tmp_path / "js" / "id-redirect.js").read_text(encoding="utf-8")
+    assert pages.run(on, tmp_path) == 0 and (tmp_path / "area.html").read_text(encoding="utf-8").count("id-redirect.js") == 1      # idempotent
     assert pages.run({"site": {}, "pages": {"enabled": True}}, tmp_path) == 1           # canonical needs site.origin

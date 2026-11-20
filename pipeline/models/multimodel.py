@@ -119,7 +119,8 @@ def merge(models_dir: Path, out_path: Path, order=ORDER) -> dict | None:
     for d in docs:
         for aid, a in d["areas"].items():
             areas.setdefault(aid, {})[d["model"]] = {"q": a["q"], "z": a.get("z")}
-    doc = {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    plumes = [n for n in ("ecmwf", "gefs") if (Path(models_dir) / n / "index.json").exists()]      # ensemble plumes the page may offer (each loads lazily from models/<n>/plume/<area>.json)
+    doc = {"generated_at": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "plumes": plumes,
            "units": "inches of liquid precipitation, cumulative since each model's own init",
            "models": [{"model": d["model"], "label": d["label"], "cycle": d["cycle"], "init": d["init"], "hours": d["hours"],
                       **({"plume": True} if d.get("plume") else {})} for d in docs],

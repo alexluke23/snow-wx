@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snow-Wx · Disclaimer</title>
+  <meta name="description" content="Snow-Wx is not for avalanche or life-safety decisions: what the site is, what it is not, and where to find your avalanche center and the National Weather Service.">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="about-page doc-page">
+  <header>
+    <h1>Snow-Wx <span>Western US</span></h1>
+    <nav class="site-nav">
+      <a href="mine.html"><span class="nav-long">★ My mountains</span><span class="nav-short">★ Mine</span></a>
+      <a href="index.html"><span class="nav-long">Obs map</span><span class="nav-short">Map</span></a>
+      <a href="finder.html"><span class="nav-long">Powder Finder</span><span class="nav-short">Finder</span></a>
+      <a href="models.html"><span class="nav-long">Model maps</span><span class="nav-short">Models</span></a>
+      <a href="about.html">About</a>
+    </nav>
+    <form class="site-search" role="search" autocomplete="off">
+      <button type="button" class="ss-toggle" aria-label="Search ski areas and SNOTEL sites" aria-expanded="false" aria-controls="ss-input">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </button>
+      <div class="ss-box">
+        <label class="sr" for="ss-input">Search ski areas and SNOTEL sites</label>
+        <input id="ss-input" type="search" placeholder="Search ski areas, SNOTEL…" role="combobox" aria-autocomplete="list"
+          aria-expanded="false" aria-controls="ss-list" spellcheck="false" enterkeyhint="go">
+        <ul id="ss-list" class="search-results" role="listbox" aria-label="Search results" hidden></ul>
+      </div>
+    </form>
+  </header>
+
+  <main class="about">
+    <p class="draft-banner" role="note"><b>DRAFT</b> for the owner and a lawyer to review. It is written in plain language, it is not legal advice, and it is not final: nothing here is binding until the owner publishes a final version.</p>
+    <h2 id="disclaimer">Disclaimer</h2>
+    <p class="lead"><strong>Snow-Wx is not for avalanche, travel or life-safety decisions.</strong> It shows weather-model guidance and observations. Mountain weather and snow
+      conditions can change quickly and models are often wrong at a single point on a mountain.</p>
+    <section><h3>Avalanche safety</h3>
+      <ul>
+        <li>Avalanche danger shown here is the rating published by your local avalanche center, copied unaltered and greyed out when it has expired. We never make our own rating.
+          Read the center's <b>full forecast</b> every time, and go to <a href="https://avalanche.org/" target="_blank" rel="noopener">avalanche.org</a> to find your center.</li>
+        <li>Backcountry travel needs training, the right equipment and a partner who knows how to use it. A forecast on this site does not replace any of that.</li>
+        <li>Labels such as "wind-affected snow likely", "powder quality" and "model agreement" are <b>heuristics</b> we wrote. They are not accuracy claims and not avalanche ratings.</li>
+      </ul></section>
+    <section><h3>Weather</h3>
+      <ul>
+        <li>This is not an official forecast. For warnings and official forecasts use the <a href="https://www.weather.gov/" target="_blank" rel="noopener">National Weather Service</a>.</li>
+        <li>Point forecasts come from coarse model grids (about 2.5 km for NBM, 28 km for ECMWF). We adjust for height in a simple way; a ridge, a bowl or a road can differ a lot.</li>
+        <li>Snow depth, temperature and wind observations are automatic and provisional. They can be wrong, missing or out of date; the page says when they are.</li>
+        <li>Data can arrive late or stop. The <a href="status.html">Data status</a> page shows what is current.</li>
+      </ul></section>
+    <section><h3>Roads, parking and permits</h3>
+      <p>Road, parking, Sno-Park permit and webcam information is linked from the agencies and resorts that publish it. Check their sites before you travel. Links to other sites are
+        outside our control.</p></section>
+    <section><h3>No warranty</h3>
+      <p>The site is provided "as is", without any promise that it is accurate, complete or available. Use it at your own risk. In an emergency call 911.</p></section>
+    <p class="hint">See also: <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="about.html">About and methods</a>.</p>
+  </main>
+  <footer>Forecasts: NOAA/NWS. Snowpack: USDA NRCS, NOAA/NWS NOHRSC. Ski areas © OpenStreetMap contributors,
+    OpenSkiMap (ODbL). Not a substitute for the NWS forecast or your local avalanche center. · <a href="status.html">Data status</a> · <a href="sources.html">Sources</a> · <a href="disclaimer.html">Disclaimer</a> · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a> <span data-mailto-wrap hidden>· <a class="site-feedback" data-mailto data-subject="Snow-Wx feedback" hidden>Send feedback</a></span>
+  </footer>
+  <script src="js/site-config.js"></script>
+  <script src="js/search.js" defer></script>
+</body>
+</html>

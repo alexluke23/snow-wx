@@ -1,5 +1,6 @@
 // Agreement-badge distribution across all areas (dev17 Part 0e, docs/specs/multi-model.md). Runs the page's own web/js/multimodel.js over build/data/multimodel.json
-// (or env CALIB_FILE) and build/data/points/*.json. Usage: SCRATCH=outdir node tools/agreement_calibration.js <label> [path-to-multimodel.js]
+// (or env CALIB_FILE) and build/data/points/*.json (or env CALIB_POINTS = a points folder). dev18: all-dry windows are their own class ("Dry", "Little precipitation
+// expected"), never counted as High. Usage: SCRATCH=outdir node tools/agreement_calibration.js <label> [path-to-multimodel.js]
 const fs = require("fs"), vm = require("vm"), path = require("path");
 const ROOT = path.resolve(__dirname, "..");
 const variant = process.argv[2] || "current";
@@ -11,16 +12,17 @@ const ski = JSON.parse(fs.readFileSync(path.join(ROOT, "build/data/ski_areas.jso
 const summit = Object.fromEntries(ski.map((a) => [a.id, a.summit.elev_ft]));
 console.log("models:", doc.models.map((m) => `${m.label} ${m.init} f${m.hours[m.hours.length - 1]}`).join(" | "), "areas:", Object.keys(doc.areas).length);
 const out = { High: 0, Medium: 0, Low: 0, none: 0, dry: 0 };
+const POINTS = process.env.CALIB_POINTS || path.join(ROOT, "build/data/points");
 const rows = [];
 for (const id of Object.keys(doc.areas)) {
-  const f = path.join(ROOT, "build/data/points", id + ".json");
+  const f = path.join(POINTS, id + ".json");
   if (!fs.existsSync(f)) { out.none++; continue; }
   const d = JSON.parse(fs.readFileSync(f, "utf8")), P = d.points.summit;
   const nbm = { initMs: Date.parse(d.issued), precip: P.precip, times: d.times, ratio: P.series.slr_p50 || P.series.slr, psnow: P.series.p_snow };
   const r = MM.build({ doc, areaId: id, nbm, mode: "liquid" });
   const ag = r.agreement;
   if (!ag) { out.none++; continue; }
-  out[ag.label]++; if (ag.dry) out.dry++;
+  if (ag.dry) out.dry++; else out[ag.label]++;
   const gaps = {};
   for (const m of doc.models) { const a = doc.areas[id][m.model]; if (a && a.z != null) gaps[m.label] = Math.round(a.z - summit[id]); }
   const maxGap = Math.max(0, ...Object.values(gaps).map(Math.abs));
@@ -28,7 +30,8 @@ for (const id of Object.keys(doc.areas)) {
 }
 const n = rows.length;
 console.log(`[${variant}] areas scored ${n}, no badge ${out.none}`);
-console.log(`High ${out.High} (${(100 * out.High / n).toFixed(0)}%)  Medium ${out.Medium} (${(100 * out.Medium / n).toFixed(0)}%)  Low ${out.Low} (${(100 * out.Low / n).toFixed(0)}%)   all-dry ${out.dry}`);
+const pc = (k) => `${(100 * out[k] / n).toFixed(0)}%`;
+console.log(`High ${out.High} (${pc("High")})  Medium ${out.Medium} (${pc("Medium")})  Low ${out.Low} (${pc("Low")})  Dry/little precipitation ${out.dry} (${pc("dry")})`);
 const wet = rows.filter((r) => !r.dry);
 console.log(`wet areas ${wet.length}: High ${wet.filter((r) => r.label === "High").length} Medium ${wet.filter((r) => r.label === "Medium").length} Low ${wet.filter((r) => r.label === "Low").length}`);
 const byH = {}; rows.forEach((r) => { byH[r.H] = (byH[r.H] || 0) + 1; }); console.log("window H used:", JSON.stringify(byH));

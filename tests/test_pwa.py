@@ -40,7 +40,9 @@ def test_enabled_writes_manifest_worker_icons_and_injects_pages(tmp_path):
     assert "example.test" not in sw and "alexluke23" not in sw               # no hard-coded origin
     assert '"data/' not in sw.split("const SHELL = ")[1].split(";")[0]        # the shell list holds no data files
     h = (tmp_path / "mine.html").read_text(encoding="utf-8")
-    assert 'rel="manifest" href="/snow-wx/manifest.json"' in h and "SNOWWX_PWA" in h and 'src="js/pwa.js"' in h
+    assert 'rel="manifest" href="/snow-wx/manifest.json"' in h and 'src="js/pwa-config.js"' in h and 'src="js/pwa.js"' in h and "<script>" not in h      # config is a file: no inline script (CSP)
+    cfgjs = (tmp_path / "js" / "pwa-config.js").read_text(encoding="utf-8")
+    assert cfgjs.startswith("window.SNOWWX_PWA=") and '"base": "/snow-wx"' in cfgjs and '"js/pwa-config.js"' in sw        # the worker precaches it
     assert pwa.run({**CFG, "pwa": {"enabled": True}}, tmp_path) == 0           # idempotent: injected once
     assert (tmp_path / "mine.html").read_text(encoding="utf-8").count("snowwx-pwa") == 1
 

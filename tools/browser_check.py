@@ -56,13 +56,31 @@ def free_port() -> int:
 
 
 @contextlib.contextmanager
-def serve(folder: Path):
+def serve(folder: Path, png_delay: float = 0.0, headers: dict | None = None, json_delay: float = 0.0):
+    """static server for `folder`; png_delay seconds before every .png answer imitates a slow network (layout-shift checks)"""
     port = free_port()
     class Quiet(http.server.SimpleHTTPRequestHandler):
         def log_message(self, *a, **k):
             pass
+
+        def end_headers(self):
+            for k, v in (headers or {}).items():
+                self.send_header(k, v)
+            super().end_headers()
+
+        def do_GET(self):
+            if png_delay and self.path.split("?")[0].endswith(".png"):
+                time.sleep(png_delay)
+            if json_delay and self.path.split("?")[0].endswith("/index.json"):
+                time.sleep(json_delay)                      # a catalog that arrives after the first paint (slow network)
+            super().do_GET()
     handler = functools.partial(Quiet, directory=str(folder))
-    httpd = socketserver.ThreadingTCPServer(("127.0.0.1", port), handler)
+    class Server(socketserver.ThreadingTCPServer):
+        daemon_threads = True
+
+        def handle_error(self, request, client_address):          # a browser that closes a connection early is normal; no traceback noise
+            pass
+    httpd = Server(("127.0.0.1", port), handler)
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
     t.start()
     try:
@@ -91,9 +109,12 @@ class Browser:
         self.ws = websocket.create_connection(page["webSocketDebuggerUrl"], timeout=120)
         self.n = 0
         self.errors: list[str] = []
+        self.console: list[str] = []           # browser-reported problems (Log.entryAdded: CSP violations, blocked resources)
+        self.requests: list[str] = []          # every URL the page requested (Network.requestWillBeSent), for the privacy / analytics checks
         self.cmd("Runtime.enable")
         self.cmd("Page.enable")
         self.cmd("Network.enable")
+        self.cmd("Log.enable")
 
     def cmd(self, method, **params):
         self.n += 1
@@ -103,6 +124,11 @@ class Browser:
             if msg.get("method") == "Runtime.exceptionThrown":
                 d = msg["params"]["exceptionDetails"]
                 self.errors.append((d.get("exception") or {}).get("description", d.get("text", ""))[:200])
+            if msg.get("method") == "Log.entryAdded":
+                e = msg["params"]["entry"]
+                self.console.append(f"{e.get('level')}: {e.get('text', '')[:200]} {e.get('url', '')[:80]}")
+            if msg.get("method") == "Network.requestWillBeSent":
+                self.requests.append(msg["params"]["request"]["url"])
             if msg.get("id") == self.n:
                 return msg.get("result", {})
 
@@ -121,6 +147,8 @@ class Browser:
         self.cmd("Page.navigate", url="about:blank")      # a hash-only change would not reload the page
         time.sleep(0.3)
         self.errors.clear()
+        self.requests.clear()
+        self.console.clear()
         self.cmd("Page.navigate", url=url)
         time.sleep(wait)
 
@@ -137,6 +165,17 @@ class Browser:
 
 class Fail(AssertionError):
     pass
+
+
+def wait_for(b, expr: str, timeout: float = 30.0):
+    """poll a JS expression until it is truthy (pages render later on a busy machine); returns its value or fails after `timeout` seconds"""
+    end = time.time() + timeout
+    while time.time() < end:
+        v = b.eval(f"(() => {{ try {{ return !!({expr}); }} catch (e) {{ return false; }} }})()")
+        if v:
+            return True
+        time.sleep(0.4)
+    raise Fail(f"timed out waiting for {expr}")
 
 
 def need(cond, msg):
@@ -759,6 +798,8 @@ def check_status(b: Browser, base: str, log):
                  "monitoring": {"sources": lims}, "site": {"feedback_email": "feedback@example.test"}},
         "late": {"generated_at": iso(0.2), "sources": {"snotel": {"ok": False, "unavailable": True, "last_observed": iso(60), "last_success_at": iso(60), "consecutive_failures": 7, "outage_since": iso(59)},
                  "points": {"ok": True, "at": iso(3)}}, "monitoring": {"sources": lims}},
+        "ecmwf": {"generated_at": iso(0.2), "sources": {"points": {"ok": True, "at": iso(3)}, "ecmwf": {"ok": None, "disabled": True, "detail": "not enabled"}},
+                  "monitoring": {"sources": {**lims, "ecmwf": {"max_age_hours": 30}}}},
         "old": {"generated_at": iso(30), "sources": {"alerts": {"ok": True, "last_success_at": iso(30), "consecutive_failures": 0}}, "monitoring": {"sources": lims}},
     }
     with tempfile.TemporaryDirectory() as tmp:
@@ -768,7 +809,7 @@ def check_status(b: Browser, base: str, log):
         (t / "data").mkdir()
         results = {}
         with serve(t) as tbase:
-            for name in ("good", "late", "old", "missing"):
+            for name in ("good", "late", "old", "ecmwf", "missing"):
                 if name != "missing":
                     (t / "data" / "meta.json").write_text(json.dumps(fixtures[name]), encoding="utf-8")
                 else:
@@ -781,6 +822,8 @@ def check_status(b: Browser, base: str, log):
                     hscroll: document.documentElement.scrollWidth > innerWidth + 2, h1: document.querySelectorAll('h1,h2').length}))()""")
     log(f"  status: {json.dumps(results)[:600]}")
     need(all(r.startswith("st-ok") for r in results["good"]["rows"]) and len(results["good"]["rows"]) == 3 and not results["good"]["banner"], f"healthy fixture: {results['good']}")
+    need(any(r.startswith("st-off:ECMWF") for r in results["ecmwf"]["rows"]) and not any(r.startswith("st-late") for r in results["ecmwf"]["rows"]) and not results["ecmwf"]["banner"],
+         f"a disabled ECMWF must read 'not enabled', never late: {results['ecmwf']}")
     need(any(r.startswith("st-late:SNOTEL") for r in results["late"]["rows"]) and "unavailable" in results["late"]["detail"] and "since" in results["late"]["detail"], f"late fixture: {results['late']}")
     need("old" in results["old"]["banner"] and any(r.startswith("st-late") for r in results["old"]["rows"]), f"old fixture: {results['old']}")
     need("could not be read" in results["missing"]["msg"], f"missing meta.json must say so: {results['missing']}")
@@ -1053,7 +1096,7 @@ def check_ensemble(b: Browser, base: str, log):
     try:
         for width in (1280, 375):
             b.open(f"{base}/area.html#alta-ski-area", width=width, wait=8)
-            b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(4)
+            wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(4)
             pre = b.eval("""(() => { const v = document.getElementById('mm-view');
               return {shown: !!v && !v.hidden, btns: v ? [...v.querySelectorAll('button')].map(x => [x.textContent.trim(), x.getAttribute('aria-pressed'), Math.round(x.getBoundingClientRect().height)]) : [],
                       role: v && v.getAttribute('role'), plumeReq: performance.getEntriesByType('resource').filter(r => r.name.includes('ecmwf/plume')).length,
@@ -1093,12 +1136,35 @@ def check_ensemble(b: Browser, base: str, log):
             b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'models').click(); 1"); time.sleep(2.5)
             back = b.eval("(() => ({names: (document.getElementById('mm-chart').data || []).map(t => t.name), announce: document.getElementById('mm-announce').textContent}))()")
             need("NBM" in back["names"] and "ECMWF" in back["names"] and back["announce"].startswith("Showing the model comparison"), f"back to Models: {back}")
+        # GEFS (dev18 stretch, built OFF): when its plume is in the build, an ECMWF | GEFS switch appears in the Ensemble view only, and GEFS draws 31 members with no HRES line
+        gplume = Path(__file__).resolve().parents[1] / "build" / "models" / "gefs" / "plume" / "alta-ski-area.json"
+        if gplume.exists() and "gefs" in (json.loads((Path(__file__).resolve().parents[1] / "build" / "data" / "multimodel.json").read_text(encoding="utf-8")).get("plumes") or []):
+            for width in (1280, 375):
+                b.open(f"{base}/area.html#alta-ski-area", width=width, wait=8)
+                wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(3)
+                hid = b.eval("document.getElementById('ens-src').hidden")
+                b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1"); time.sleep(3.5)
+                shown = b.eval("(() => { const s = document.getElementById('ens-src'); return {hidden: s.hidden, btns: [...s.querySelectorAll('button')].map(x => [x.textContent.trim(), x.getAttribute('aria-pressed'), Math.round(x.getBoundingClientRect().height)])}; })()")
+                need(hid is True and shown["hidden"] is False and [x[0] for x in shown["btns"]] == ["ECMWF", "GEFS"] and all(x[2] >= 40 for x in shown["btns"]), f"source switch only in the Ensemble view: {hid} {shown}")
+                b.eval("[...document.querySelectorAll('#ens-src button')].find(x => x.dataset.s === 'gefs').click(); 1"); time.sleep(3.5)
+                g = b.eval("""(() => { const el = document.getElementById('mm-chart'), d = el.data || [];
+                  return {names: d.map(t => t.name), nulls: d[0] ? d[0].x.filter(v => v === null).length : 0, aria: el.getAttribute('aria-label'), badge: document.getElementById('mm-badge').textContent,
+                          note: document.getElementById('mm-note').textContent, announce: document.getElementById('mm-announce').textContent,
+                          pressed: [...document.querySelectorAll('#ens-src button')].map(x => x.getAttribute('aria-pressed')), hscroll: document.documentElement.scrollWidth > innerWidth + 2}; })()""")
+                log(f"  gefs {width}px: {g['names']}, segments {g['nulls']}, aria: {g['aria']}")
+                need(g["nulls"] == 31 and "HRES" not in g["names"] and {"Median", "Mean"} <= set(g["names"]), f"GEFS plume traces: {g['names']} segments {g['nulls']}")
+                need((g["aria"] or "").startswith("GEFS ensemble (31 members): median ") and "NOAA GEFS" in g["badge"] and "control run plus the perturbed members" in g["badge"], f"GEFS headline / badge: {g['aria']} / {g['badge']}")
+                need("public domain" in g["note"] and "not bias-corrected" in g["note"] and "ECMWF" not in g["note"], f"GEFS note: {g['note'][:200]}")
+                need(g["announce"].startswith("Showing the GEFS ensemble") and g["pressed"] == ["false", "true"] and not g["hscroll"], f"GEFS announce / state: {g}")
+                b.eval("[...document.querySelectorAll('#mm-mode button')].find(x => x.dataset.m === 'snow').click(); 1"); time.sleep(2.5)
+                sn = b.eval("document.getElementById('mm-note').textContent")
+                need("ESTIMATE" in sn and "categorical-snow share" in sn, f"GEFS snow mode must say it is an estimate: {sn[:160]}")
         # stale: a run started 30 h ago is greyed and says so
         d = json.loads(orig)
         d["init"] = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=30)).strftime("%Y-%m-%dT%H:00Z")
         plume.write_text(json.dumps(d), encoding="utf-8")
         b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=8)
-        b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(4)
+        wait_for(b, "document.getElementById('mm-sec')"); b.eval("document.getElementById('mm-sec').scrollIntoView(); 1"); time.sleep(4)
         b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'ens').click(); 1"); time.sleep(3.5)
         stale = b.eval("""(() => { const d = document.getElementById('mm-chart').data || [];
           return {badge: document.getElementById('mm-badge').textContent, line: d.find(t => t.name === 'Median') ? d.find(t => t.name === 'Median').line.color : null,
@@ -1156,9 +1222,403 @@ def check_multimodel(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
+def check_models_layout(b: Browser, base: str, log):
+    """dev18 Part 0a: the model viewer from a FIXTURE catalog + frames (tools/model_fixture.py): cumulative layout shift < 0.1 at 1280 and 375 px
+    (new catalog with per-field pixel sizes, and an old-style catalog without them), the picture's box is reserved from the catalog size, switching
+    model/field/region keeps CLS low and never leaves a missing frame."""
+    import shutil
+    sys.path.insert(0, str(REPO / "tools"))
+    from model_fixture import write_fixture
+    src = Path(base_dir_holder["path"])
+    obs = """(() => { window.__cls = 0; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; }).observe({type: 'layout-shift', buffered: true}); } catch (e) { window.__cls = -1; } })()"""
+    b.cmd("Page.addScriptToEvaluateOnNewDocument", source=obs)
+    res = {}
+    try:
+        for variant, sizes in (("sized", True), ("old", False)):
+            with tempfile.TemporaryDirectory() as tmp:
+                t = Path(tmp)
+                for f in ("models.html", "css", "js"):
+                    (shutil.copytree if (src / f).is_dir() else shutil.copy)(src / f, t / f)
+                write_fixture(t / "models", with_sizes=sizes)
+                with serve(t, png_delay=0.7, json_delay=0.6) as tbase:             # slow catalog + frames: the layout must already be final when they arrive
+                    for width in (1280, 412, 375):
+                        b.open(f"{tbase}/models.html", width=width, wait=4.0)
+                        r = b.eval("""(() => { const i = document.getElementById('frame'), r = i.getBoundingClientRect();
+                          return {cls: window.__cls, nat: [i.naturalWidth, i.naturalHeight], box: [Math.round(r.width), Math.round(r.height)], attrs: [i.getAttribute('width'), i.getAttribute('height')],
+                                  missing: i.classList.contains('missing'), caption: document.getElementById('caption').textContent.length, hscroll: document.documentElement.scrollWidth > innerWidth + 2}; })()""")
+                        res[f"{variant}-{width}"] = r
+                        need(r["cls"] >= 0 and r["cls"] < 0.1, f"models page CLS {r['cls']} ({variant}, {width}px): {r}")
+                        need(r["nat"][0] == 900 and not r["missing"] and r["caption"] > 10, f"frame did not load ({variant}, {width}px): {r}")
+                        need(not r["hscroll"], f"sideways scroll ({variant}, {width}px)")
+                        if sizes:
+                            need(r["attrs"] == ["900", "700"], f"catalog size not applied before load: {r['attrs']}")
+                    # switching: a new field and region (different heights) must not shift the page much
+                    b.open(f"{tbase}/models.html", width=1280, wait=2.0)
+                    b.eval("(() => { const s = document.getElementById('domain'); s.value = 'wasatch'; s.dispatchEvent(new Event('change')); })()")
+                    time.sleep(1.2)
+                    b.eval("(() => { const s = document.getElementById('model'); s.value = 'gfs'; s.dispatchEvent(new Event('change')); })()")
+                    time.sleep(1.2)
+                    r = b.eval("({cls: window.__cls, missing: document.getElementById('frame').classList.contains('missing'), d: document.getElementById('domain').value})")
+                    res[f"{variant}-switch"] = r
+                    need(not r["missing"] and r["cls"] < 0.1, f"switching model/region: {r}")
+    finally:
+        pass
+    log(f"  models CLS: {json.dumps(res)[:700]}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_webcams(b: Browser, base: str, log):
+    """dev18 Part 1: the area page's Webcams row: <= 3 plain outbound links (https, target=_blank, rel noopener noreferrer), each tappable at 375 px, no iframe,
+    no image or other resource loaded from a webcam host, no sideways scroll; SNOTEL pages and areas without an entry show no row."""
+    sys.path.insert(0, str(REPO))
+    import pipeline  # noqa: F401
+    from pipeline import webcams as W
+    src = Path(base_dir_holder["path"])
+    W.write_public(src / "data" / "webcams.json")
+    hosts = sorted({W.host_of(e["url"]) for items in W.load()["areas"].values() for e in items})
+    res = {}
+    for width in (375, 1280):
+        b.open(f"{base}/area.html#alta-ski-area", width=width, wait=6)
+        _draw_all(b)
+        res[width] = b.eval("""(() => { const row = document.querySelector('.webcams'); if (!row) return {row: false};
+          const links = [...row.querySelectorAll('a')];
+          const hosts = %s;
+          const res = performance.getEntriesByType('resource').map(r => r.name).filter(n => hosts.some(h => new URL(n).hostname.replace(/^www[.]/, '') === h));
+          return {row: true, n: links.length, ok: links.every(a => a.target === '_blank' && /noopener/.test(a.rel) && /noreferrer/.test(a.rel) && a.href.startsWith('https://')),
+                  tall: Math.min(...links.map(a => Math.round(a.getBoundingClientRect().height))), text: row.textContent.slice(0, 160),
+                  iframes: document.querySelectorAll('iframe, embed, object, video').length, imgs: [...document.images].filter(i => hosts.some(h => i.src.includes(h))).length,
+                  fetched: res, hscroll: document.documentElement.scrollWidth > innerWidth + 2}; })()""" % json.dumps(hosts))
+        r = res[width]
+        need(r["row"], f"no Webcams row on the area page at {width}px")
+        need(1 <= r["n"] <= 3 and r["ok"], f"webcam links must be 1-3 https links with target=_blank rel=noopener noreferrer: {r}")
+        need(r["iframes"] == 0 and r["imgs"] == 0 and not r["fetched"], f"nothing may be embedded or loaded from a webcam host: {r}")
+        need(not r["hscroll"], f"sideways scroll at {width}px")
+        if width == 375:
+            need(r["tall"] >= 36, f"webcam links are too small to tap at 375px ({r['tall']} px)")
+    b.open(f"{base}/area.html#snotel-1000-OR-SNTL", width=375, wait=5)
+    need(not b.eval("!!document.querySelector('.webcams')"), "a SNOTEL page must not show a Webcams row")
+    log(f"  webcams: {json.dumps(res)[:500]}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def _hosts(urls):
+    from urllib.parse import urlparse
+    return sorted({(urlparse(u).hostname or "") for u in urls if u.startswith("http")})
+
+
+def check_privacy(b: Browser, base: str, log):
+    """dev18 Part 2b: what the privacy page promises, measured in a real browser on every page: NO cookies; the only hosts the browser contacts besides this
+    site are the `browser:` hosts of config/sources.yml; localStorage keys are the ones the privacy page lists; no request to an analytics provider."""
+    import yaml
+    sys.path.insert(0, str(REPO / "tools"))
+    import gen_site_pages as G
+    reg = yaml.safe_load((REPO / "config" / "sources.yml").read_text(encoding="utf-8"))
+    allowed = {h for s in reg["sources"] for h in (s.get("browser") or [])} | {"127.0.0.1"}
+    listed = {k for k, *_ in G.STORAGE}
+    pages = ["index.html", "area.html#alta-ski-area", "area.html#sp-wing-mountain", "finder.html", "mine.html", "models.html", "about.html", "status.html",
+             "sources.html", "privacy.html", "terms.html", "disclaimer.html", "404.html"]
+    seen_hosts = {}
+    for pg in pages:
+        b.open(f"{base}/{pg}", width=1280, wait=5)
+        if pg.startswith(("area", "index")):
+            _draw_all(b)
+        hosts = _hosts(b.requests)
+        for h in hosts:
+            seen_hosts.setdefault(h, []).append(pg)
+        bad = [h for h in hosts if h not in allowed]
+        need(not bad, f"{pg}: the browser contacted hosts the privacy page does not list: {bad} (all: {hosts})")
+        cookies = b.cmd("Network.getAllCookies").get("cookies", [])
+        need(not cookies, f"{pg}: cookies were set: {[c['name'] for c in cookies]}")
+        keys = b.eval("Object.keys(localStorage).concat(Object.keys(sessionStorage))")
+        need(set(keys) <= listed, f"{pg}: storage keys not on the privacy page: {sorted(set(keys) - listed)}")
+    need(not any("plausible" in h or "goatcounter" in h or "zgo.at" in h or "cloudflareinsights" in h for h in seen_hosts), f"an analytics host was contacted: {sorted(seen_hosts)}")
+    log(f"  privacy: hosts seen {sorted(seen_hosts)}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_analytics(b: Browser, base: str, log):
+    """dev18 Part 2c: analytics is OFF by default (zero analytics requests, snowwxTrack is a harmless no-op, analytics.js is never fetched); when enabled the provider script is
+    injected and events from real clicks reach the provider queue; Do Not Track and Global Privacy Control stop everything. Edits build/data/meta.json and restores it."""
+    src = Path(base_dir_holder["path"])
+    meta_path = src / "data" / "meta.json"
+    original = meta_path.read_text(encoding="utf-8") if meta_path.exists() else None
+    meta = json.loads(original) if original else {}
+    block = ["*plausible.io*", "*gc.zgo.at*", "*cloudflareinsights*", "*analytics.test*"]
+
+    def setmeta(a):
+        meta_path.write_text(json.dumps({**meta, "analytics": a}), encoding="utf-8")
+
+    def state():
+        return b.eval("""(() => ({track: typeof window.snowwxTrack, mod: typeof SnowWxAnalytics, active: (typeof SnowWxAnalytics !== 'undefined' && SnowWxAnalytics.active()) ? SnowWxAnalytics.active().provider : null,
+          script: !!document.querySelector('script[data-domain]'), q: (window.plausible && window.plausible.q || []).map(a => a[0]), cookies: document.cookie}))()""")
+    try:
+        b.open(f"{base}/about.html", width=1280, wait=2)
+        b.eval("localStorage.clear(); sessionStorage.clear(); 1")                          # earlier checks leave favorites / a saved Finder filter behind: start from a clean browser
+        # 1. OFF (the shipped default)
+        setmeta({"enabled": False})
+        b.open(f"{base}/finder.html", width=1280, wait=4, block=block)
+        st = state()
+        need(st["track"] == "function" and st["mod"] == "undefined" and st["active"] is None and not st["script"], f"disabled: {st}")
+        need(not any("analytics" in u or any(h in u for h in ("plausible", "zgo.at", "cloudflareinsights")) for u in b.requests), f"disabled analytics made requests: {[u for u in b.requests if 'analytics' in u]}")
+        b.eval("window.snowwxTrack('install'); window.snowwxTrack('favorite_added', {where: 'finder'}); 1")
+        # 2. ON (plausible): script injected, events reach the provider queue
+        setmeta({"enabled": True, "provider": "plausible", "site_id": "snow.example"})
+        b.open(f"{base}/finder.html", width=1280, wait=4, block=block)
+        st = state()
+        need(st["mod"] == "object" and st["active"] == "plausible" and st["script"], f"enabled but not started: {st}")
+        need(b.eval("document.querySelector('script[data-domain]').getAttribute('data-domain')") == "snow.example", "data-domain not set")
+        clicked = False
+        for _ in range(30):                                    # the Finder table renders after its data files arrive (slower on a busy machine): wait for a star
+            clicked = b.eval("(() => { const t = document.querySelector('button.star:not(.on)'); if (t) t.click(); return !!t; })()")
+            if clicked:
+                break
+            time.sleep(0.5)
+        time.sleep(0.5)
+        st = state()
+        need(clicked and "favorite_added" in st["q"], f"a favorite click did not reach the provider queue (clicked={clicked}): {st}")
+        need(st["cookies"] == "", "analytics set a cookie")
+        b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=6, block=block)
+        _draw_all(b)
+        b.eval("(() => { const d = document.querySelector('details.chart-table summary'); if (d) d.click(); const a = document.querySelector('a[data-track=avalanche_click]'); if (a) { a.addEventListener('click', e => e.preventDefault()); a.click(); } return 1; })()")
+        time.sleep(0.5)
+        st = state()
+        need("table_view" in st["q"] and "avalanche_click" in st["q"], f"table_view / avalanche_click not tracked: {st}")
+        # 3. ON but the visitor opted out: DNT, then GPC: nothing is injected, nothing queued
+        for name, js in (("DNT", "Object.defineProperty(navigator, 'doNotTrack', {get: () => '1'});"), ("GPC", "Object.defineProperty(navigator, 'globalPrivacyControl', {get: () => true});")):
+            res = b.cmd("Page.addScriptToEvaluateOnNewDocument", source=js)
+            b.open(f"{base}/finder.html", width=1280, wait=4, block=block)
+            st = state()
+            need(st["active"] is None and not st["script"] and st["q"] == [], f"{name}: analytics ran for an opted-out visitor: {st}")
+            b.cmd("Page.removeScriptToEvaluateOnNewDocument", identifier=res["identifier"])
+        # 4. ON with no provider chosen: nothing
+        setmeta({"enabled": True, "provider": "none", "site_id": "x"})
+        b.open(f"{base}/finder.html", width=1280, wait=3, block=block)
+        st = state()
+        need(st["mod"] == "undefined" and not st["script"], f"provider none: {st}")
+    finally:
+        if original is None:
+            meta_path.unlink(missing_ok=True)
+        else:
+            meta_path.write_text(original, encoding="utf-8")
+    log("  analytics: off by default, plausible injection + events, DNT/GPC respected")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_csp(b: Browser, base: str, log):
+    """dev18 Part 2d: the DRAFT Content-Security-Policy of docs/cloudflare_headers.draft, enforced by serving build/ with exactly that header: Chrome must report NO violation on any page
+    (inline scripts, Plotly's CDN, MapLibre workers, tiles, the NWS overlay) and the maps and charts still draw. Fails when the draft would break the site."""
+    import re
+    draft = Path(os.environ.get("CSP_DRAFT") or REPO / "docs" / "cloudflare_headers.draft").read_text(encoding="utf-8")      # CSP_DRAFT: a variant, to prove the check can fail
+    m = re.search(r"^\s*Content-Security-Policy:\s*(.+)$", draft, re.M)
+    need(m, "no Content-Security-Policy line in docs/cloudflare_headers.draft")
+    csp = m.group(1).strip()
+    src = Path(base_dir_holder["path"])
+    pages = ["index.html", "area.html#alta-ski-area", "area.html#sp-wing-mountain", "area.html#snotel-1000-OR-SNTL", "finder.html", "mine.html", "models.html", "about.html", "status.html",
+             "sources.html", "privacy.html", "terms.html", "disclaimer.html", "404.html"]
+    bad = {}
+    with serve(src, headers={"Content-Security-Policy": csp}) as cbase:
+        for pg in pages:
+            b.open(f"{cbase}/{pg}", width=1280, wait=6)
+            if pg.startswith(("area", "index")):
+                _draw_all(b)
+            v = [c for c in b.console if "Content Security Policy" in c or "Refused to" in c]
+            if v:
+                bad[pg] = v[:3]
+        st = None
+        b.open(f"{cbase}/index.html", width=1280, wait=7)
+        st = b.eval("({tiles: document.querySelectorAll('img.leaflet-tile-loaded').length, markers: !!document.querySelector('canvas'), ref: document.querySelectorAll('.maplibregl-canvas').length})")
+        b.open(f"{cbase}/area.html#alta-ski-area", width=1280, wait=6)
+        _draw_all(b)
+        ch = b.eval("document.querySelectorAll('.js-plotly-plot').length")
+    need(not bad, f"the draft CSP breaks pages: {json.dumps(bad)[:900]}")
+    need(st["tiles"] > 0 and st["markers"], f"the map did not draw under the CSP: {st}")
+    need(ch >= 3, f"charts did not draw under the CSP ({ch} Plotly charts)")
+    log(f"  csp: no violations on {len(pages)} pages; tiles {st['tiles']}, ref canvases {st['ref']}, charts {ch}")
+
+
+def check_verify_ui(b: Browser, base: str, log):
+    """dev18 Part 3: the M9 verification panel (behind verification_ui.enabled, default OFF) from FIXTURE data: flag off = hidden and no verification file is requested; enabled
+    with too little data = "Collecting data: X of 14 days" and no numbers; enough data = chart + table + one-sentence summary + caveats; the about.html scorecard follows the same
+    rules; 375 px has no sideways scroll. Edits build/data/meta.json + verification files and restores them."""
+    import shutil
+    src = Path(base_dir_holder["path"])
+    dd = src / "data"
+    meta_path = dd / "meta.json"
+    original = meta_path.read_text(encoding="utf-8") if meta_path.exists() else None
+    meta = json.loads(original) if original else {}
+    trip = "1308:UT:SNTL"                                           # Alta's nearest SNOTEL site (Atwater)
+    dates = [f"2026-12-{d:02d}" for d in range(1, 21)]
+    doc = {"triplet": trip, "d": 20, "n": 40, "span": [dates[0], dates[-1]], "common_n": 20,
+           "metrics": {"NBM expected": {"n": 20, "bias_in": 0.12, "mae_in": 0.4, "events_1": 8, "hit_1": 0.75}, "NWS (NDFD)": {"n": 20, "bias_in": -0.2, "mae_in": 0.3, "events_1": 8, "hit_1": 0.5}},
+           "daily": {"dates": dates, "obs": [0, 2.5, 0, 1.2] * 5, "nbm": [0.1, 2.0, 0.4, 1.5] * 5, "ndfd": [0, 1.5, 0, 0.8] * 5}}
+    vdir = dd / "verification"
+    had_vdir = vdir.exists()
+    backup = {f.name: f.read_bytes() for f in (dd / "verification.json",) if f.exists()}
+
+    def setup(enabled, station=None, scorecard_ready=True):
+        meta_path.write_text(json.dumps({**meta, "verification_ui": {"enabled": enabled, "min_days": 14, "min_pairs": 30}}), encoding="utf-8")
+        idx = {"min_days": 14, "min_pairs": 30, "span": [dates[0], dates[-1]], "outage_excluded": ["2026-11-16T12:00Z", "2026-11-18T00:45Z"], "stations": {},
+               "scorecard": {"ready": scorecard_ready, "days": 20 if scorecard_ready else 6, "pairs": 400 if scorecard_ready else 24,
+                             "rows": [{"source": "NBM expected", "n": 300, "bias_in": 0.12, "mae_in": 0.4, "events_1": 50, "hit_1": 0.62}] if scorecard_ready else []}}
+        if station:
+            idx["stations"][trip] = station
+        (dd / "verification.json").write_text(json.dumps(idx), encoding="utf-8")
+        shutil.rmtree(vdir, ignore_errors=True)
+        if station and station.get("ready"):
+            vdir.mkdir(parents=True, exist_ok=True)
+            (vdir / "1308_UT_SNTL.json").write_text(json.dumps(doc), encoding="utf-8")
+
+    def panel():
+        return b.eval("""(() => { const s = document.getElementById('verif-sec'); if (!s) return {exists: false};
+          return {exists: true, hidden: s.hidden, text: s.textContent.replace(/\\s+/g, ' ').slice(0, 260), chart: !!s.querySelector('.js-plotly-plot'), rows: s.querySelectorAll('tbody tr').length,
+                  caveats: s.querySelectorAll('.caveats li').length, summary: (s.querySelector('[role=img]') || {}).getAttribute ? (s.querySelector('[role=img]').getAttribute('aria-label') || '').slice(0, 200) : '',
+                  hscroll: document.documentElement.scrollWidth > innerWidth + 2}; })()""")
+    res = {}
+    try:
+        # 1. flag OFF: hidden, nothing fetched
+        setup(False, {"d": 20, "n": 40, "ready": True})
+        b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=6)
+        res["off"] = panel()
+        need(res["off"]["exists"] and res["off"]["hidden"] is True and not res["off"]["chart"], f"flag off: the panel must stay hidden: {res['off']}")
+        need(not any("verification.json" in u or "/verification/" in u for u in b.requests), f"flag off: verification data files were requested: {[u for u in b.requests if 'verification' in u]}")
+        b.open(f"{base}/about.html", width=1280, wait=3)
+        need(b.eval("document.getElementById('scorecard').hidden") is True and not any("verification.json" in u or "/verification/" in u for u in b.requests), "flag off: the scorecard must stay hidden and fetch nothing")
+        # 2. ON, too little data: "Collecting data" and no numbers
+        setup(True, {"d": 6, "n": 24})
+        b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=6)
+        res["collect"] = panel()
+        r = res["collect"]
+        need(not r["hidden"] and "Collecting data: 6 of 14 days; 24 of 30 forecast pairs" in r["text"] and not r["chart"] and r["rows"] == 0, f"collecting state: {r}")
+        need(not any("verification/" in u for u in b.requests), "collecting state must not load a station results file")
+        # 3. ON, enough data: chart + table + sentence + caveats
+        setup(True, {"d": 20, "n": 40, "ready": True})
+        for width in (1280, 375):
+            b.open(f"{base}/area.html#alta-ski-area", width=width, wait=6)
+            b.eval("document.getElementById('verif-sec').scrollIntoView(); 1")
+            _draw_all(b)
+            r = panel()
+            res[f"ready{width}"] = r
+            need(not r["hidden"] and r["chart"] and r["rows"] >= 2 and r["caveats"] >= 3, f"ready state at {width}px: {r}")
+            need("NBM's expected 24-h snowfall ran 0.12 in above" in r["summary"] and "SNOTEL site nearest this ski area" in r["summary"], f"summary sentence: {r['summary']}")
+            need("lower bound" in b.eval("document.getElementById('verif-sec').textContent"), "the lower-bound caveat is missing")
+            need(not r["hscroll"], f"sideways scroll at {width}px: {r}")
+        need(b.eval("!!document.querySelector('#verif-sec details.chart-table')"), "View as table toggle missing")
+        # 4. about.html scorecard
+        b.open(f"{base}/about.html", width=375, wait=3)
+        sc = b.eval("(() => { const s = document.getElementById('scorecard'); return {hidden: s.hidden, text: s.textContent.replace(/\\s+/g, ' ').slice(0, 900), hscroll: document.documentElement.scrollWidth > innerWidth + 2}; })()")
+        need(not sc["hidden"] and "NBM expected" in sc["text"] and "lower bound" in sc["text"] and not sc["hscroll"], f"scorecard: {sc}")
+        setup(True, {"d": 6, "n": 24}, scorecard_ready=False)
+        b.open(f"{base}/about.html", width=1280, wait=3)
+        need("Collecting data: 6 of 14 days, 24 of 30" in b.eval("document.getElementById('scorecard-body').textContent"), "scorecard collecting state")
+        # 5. a SNOTEL station page uses its own site
+        b.open(f"{base}/area.html#snotel-1308-UT-SNTL", width=375, wait=6)
+        st = panel()
+        need(st["exists"], f"station page without a verification section: {st}")
+    finally:
+        shutil.rmtree(vdir, ignore_errors=True)
+        if had_vdir:
+            vdir.mkdir(parents=True, exist_ok=True)
+        for n, data in backup.items():
+            (dd / n).write_bytes(data)
+        if not backup:
+            (dd / "verification.json").unlink(missing_ok=True)
+        if original is None:
+            meta_path.unlink(missing_ok=True)
+        else:
+            meta_path.write_text(original, encoding="utf-8")
+    log(f"  verifyui: {json.dumps(res)[:600]}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_failure_modes(b: Browser, base: str, log):
+    """dev18 stretch 2: each DATA file/source unreachable one at a time (the request fails like a dead server). The obs map, an area page, the Finder, My mountains and the status page must
+    still load: no JavaScript exception, a heading, and no "undefined" / "NaN" / "[object" text on screen. A few degraded states are asserted by name."""
+    patterns = {"snotel": "*data/snotel.geojson*", "asos": "*data/asos.geojson*", "avalanche map": "*data/avalanche.geojson*", "avalanche ratings": "*data/avalanche_ratings.json*",
+                "hazards": "*data/hazards.json*", "alerts": "*data/alerts/*", "afd": "*data/afd/*", "ndfd": "*data/ndfd/*", "points (NBM)": "*data/points/*", "multimodel": "*data/multimodel.json*",
+                "ridge": "*data/ridge.json*", "nohrsc": "*data/nohrsc/*", "model catalog": "*models/index.json*", "meta": "*data/meta.json*", "search index": "*data/search.json*",
+                "map points": "*data/map_points.json*", "webcams": "*data/webcams.json*"}
+    pages = [("index.html", "obs map"), ("area.html#alta-ski-area", "area page"), ("finder.html", "Finder"), ("mine.html", "My mountains"), ("models.html", "models"), ("status.html", "status")]
+    bad = []
+    seen = {}
+    for name, pat in patterns.items():
+        for pg, label in pages:
+            b.open(f"{base}/{pg}", width=1280, wait=3.5, block=[pat])
+            r = b.eval("""(() => { const t = document.body.innerText; return {h: !!document.querySelector('h1, h2'), junk: (t.match(/undefined|NaN|\\[object/g) || []).length, len: t.length,
+                  text: t.replace(/\\s+/g, ' ').slice(0, 2000)}; })()""")
+            seen[(name, label)] = r
+            problems = []
+            if b.errors:
+                problems.append(f"JS errors {b.errors[:2]}")
+            if not r["h"] or r["len"] < 80:
+                problems.append("page is empty")
+            if r["junk"]:
+                problems.append(f"{r['junk']} undefined/NaN/[object] on screen")
+            if problems:
+                bad.append(f"{name} unreachable -> {label}: {'; '.join(problems)}")
+    need(not bad, "degraded pages broke:\n  " + "\n  ".join(bad[:8]))
+    # named degraded states
+    b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=4, block=["*data/points/*"])
+    t = b.eval("document.body.innerText")
+    need("No point forecast is available" in t or ("NWS forecast" in t and ("out of date" in t.lower() or "ago" in t)), "area page without its NBM file must fall back to the dated NWS forecast (or say none is available)")
+    b.open(f"{base}/area.html#alta-ski-area", width=1280, wait=4, block=["*data/avalanche_ratings.json*"])
+    need("avalanche" in b.eval("document.body.innerText").lower() and not b.errors, "area page without avalanche ratings must still link to the avalanche center")
+    b.open(f"{base}/status.html", width=1280, wait=3, block=["*data/meta.json*"])
+    need("could not be read" in b.eval("document.body.innerText"), "status page without meta.json must say so")
+    log(f"  failure modes: {len(patterns)} sources x {len(pages)} pages, no broken page")
+
+
+def check_keyboard(b: Browser, base: str, log):
+    """dev18 stretch 3: keyboard-only sweep of every page with real Tab key events (CDP Input): focus moves forward through the page without a trap, every stop is a real control that is
+    visible, has an accessible name, and shows a focus indicator (outline or ring). Leaflet's internal tile/marker panes are not Tab stops here (the search box is the keyboard path to a site)."""
+    pages = ["index.html", "area.html#alta-ski-area", "area.html#snotel-1308-UT-SNTL", "finder.html", "mine.html", "models.html", "about.html", "status.html", "sources.html", "privacy.html",
+             "terms.html", "disclaimer.html", "404.html"]
+
+    def tab():
+        for typ in ("keyDown", "keyUp"):
+            b.cmd("Input.dispatchKeyEvent", type=typ, key="Tab", code="Tab", windowsVirtualKeyCode=9, nativeVirtualKeyCode=9)
+
+    probe = """(() => { const e = document.activeElement; if (!e || e === document.body) return null; const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
+      const name = (e.getAttribute('aria-label') || e.getAttribute('title') || e.textContent || e.value || e.placeholder || (e.labels && e.labels[0] && e.labels[0].textContent) || '').trim().slice(0, 40);
+      return {tag: e.tagName, id: e.id, name, w: Math.round(r.width), h: Math.round(r.height), vis: cs.visibility !== 'hidden' && cs.display !== 'none' && r.width > 0 && r.height > 0,
+              ring: (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0) || cs.boxShadow !== 'none', y: Math.round(r.top + scrollY)}; })()"""
+    res, bad = {}, []
+    for pg in pages:
+        b.open(f"{base}/{pg}", width=1280, wait=5)
+        b.eval("document.activeElement && document.activeElement.blur(); window.scrollTo(0, 0); 1")
+        stops, seen_same = [], 0
+        for _ in range(140):
+            tab()
+            r = b.eval(probe)
+            if r is None:
+                if stops:
+                    break                                            # focus left the document: the sweep reached the end
+                continue
+            if stops and (r["tag"], r["id"], r["name"], r["y"]) == (stops[-1]["tag"], stops[-1]["id"], stops[-1]["name"], stops[-1]["y"]):
+                seen_same += 1
+                if seen_same >= 3:
+                    bad.append(f"{pg}: keyboard trap at {r['tag']}#{r['id']} '{r['name']}'")
+                    break
+            else:
+                seen_same = 0
+            stops.append(r)
+        res[pg] = len(stops)
+        if len(stops) < 5:
+            bad.append(f"{pg}: only {len(stops)} Tab stops")
+        for r in stops:
+            if not r["vis"]:
+                bad.append(f"{pg}: focus lands on a hidden element {r['tag']}#{r['id']} '{r['name']}'")
+            elif not r["name"] and r["tag"] in ("A", "BUTTON", "SUMMARY"):
+                bad.append(f"{pg}: {r['tag']}#{r['id']} has no accessible name")
+            elif not r["ring"]:
+                bad.append(f"{pg}: no focus indicator on {r['tag']}#{r['id']} '{r['name']}'")
+    log(f"  keyboard Tab stops: {res}")
+    need(not bad, "keyboard sweep: " + " | ".join(list(dict.fromkeys(bad))[:8]))
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
 def check_mobile_sweep(b: Browser, base: str, log):
     """dev16: every page at 375 px: no sideways scroll, no JS errors, primary buttons tappable (>= 36 px), nothing wider than the viewport."""
-    pages = ["index.html", "finder.html", "mine.html", "about.html", "status.html", "models.html", "area.html#alta-ski-area", "area.html#sp-wing-mountain", "area.html#snotel-1000-OR-SNTL"]
+    pages = ["index.html", "finder.html", "mine.html", "about.html", "status.html", "models.html", "sources.html", "privacy.html", "terms.html", "disclaimer.html", "404.html", "area.html#alta-ski-area", "area.html#sp-wing-mountain", "area.html#snotel-1000-OR-SNTL"]
     bad = []
     for pg in pages:
         b.open(f"{base}/{pg}", width=375, wait=6)
@@ -1176,7 +1636,7 @@ def check_mobile_sweep(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep}
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard}
 
 
 def main(argv=None) -> int:
@@ -1202,6 +1662,9 @@ def main(argv=None) -> int:
                 except Fail as e:
                     failed.append(name)
                     print(f"FAIL  {name}: {e}")
+                except Exception as e:  # noqa: BLE001 - one broken check (a crashed page, a JS error in the check itself) must not hide the results of the others
+                    failed.append(name)
+                    print(f"FAIL  {name}: {type(e).__name__}: {str(e)[:300]}")
         finally:
             b.close()
     return 1 if failed else 0

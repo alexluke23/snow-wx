@@ -352,3 +352,16 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
 | Nov 17 | **dev13 UX package** (NBM-native P(≥2″), combined snow-ratio/powder panel, linked Finder menus, obs-map layer defaults + NWS hazards layer): details in `docs/ARCHIVE.md`. |
 | Nov 17 | **SNOTEL outage handling accepted:** previous good copy from the live site (option A, `SITE_ORIGIN`/`site.origin`, on the W1 cutover checklist); stale ≤ 48 h with original timestamps (never re-stamped), 24/72 h changes hidden when older than their window; data-health GitHub issues per source with limits from each source's real cadence (config `monitoring`), assigned to the owner, monitor can never fail the deploy. Independent "workflow did not run" check proposed in `docs/specs/data-pipeline.md` 5.2c (heartbeat service recommended). |
 | Nov 17 | **Owner feedback (live review) → dev14:** the **default uncertainty range for snowfall, snow level and snow ratio is 25–75% ("likely", the middle half of NBM's outcomes)**; 10–90% is kept only where explicitly noted (Finder/W3 chance fields, M9 archive). Inline text says "likely X–Y in" with no "NBM 10–90%" label (source and issue time stay in run lines and captions). **One powder-quality definition** (config `powder_quality`: Dense < 10:1, Blower ≥ 15:1). Obs map first-load layers: relief + roads + ski areas + NWS winter hazards only; avalanche, Sno-Parks, SNOTEL, ASOS, NOHRSC off. W3 "Dry stretch" outranks "Wind-affected"; alert tag computed client-side from alerts/index.json. Obs-map Lighthouse target: no worse than main (≈ 82). |
+
+
+## Moved from PLAN §3 / §2 on Nov 19 2026 (dev18)
+
+Decision rows (dev15–dev17):
+
+| Nov 17 | **Monitor bootstrap (dev15):** a failing/stale/unavailable source is judged by the data's own age, last success and `outage_since`, not only the restarted failure counter; one decision log line per source. |
+| Nov 17 | **dev16:** hazard popups show the NWS product text in-page (never an api.weather.gov link; untrusted text escaped); M7 precipitation by model built (agreement badge = documented heuristic); M9 scorer excludes the SNOTEL outage window and stale obs. |
+| Nov 18 | **dev17:** ECMWF (HRES line + IFS ENS plume, 50 members: the mirror has no control) built behind `ecmwf.enabled=false`; W7 wind flag (`wind_exposure.enabled=false`, reviewer checklist in the spec) and W6 alerts skeleton (`alerts_backend.enabled=false`) are offline-built only: **never enable without the owner/reviewer**; agreement badge now ≥ 80 % High / ≥ 66 % Medium (4 sources). |
+
+Former §2 "Known issues" text: NRCS AWDB (SNOTEL) outage over. Last good run before it ≈ 11:25 UTC Nov 16; first failing run seen 22:07 UTC Nov 16; still down 02:21 UTC Nov 17. Recovery time was unconfirmed;
+first confirmed live 00:45Z Nov 18 (owner checked the Actions logs). The archive's 821 stations at 2026-11-17 12Z may be carried-forward data. No Data-health issue was opened: the monitor (merged 13:26 UTC Nov 17) probably
+started after recovery, or history was lost; dev15 hardened the bootstrap. Handling: probe, last good copy <= 48 h flagged stale, auto-recovery.

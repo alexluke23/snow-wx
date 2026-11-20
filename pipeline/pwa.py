@@ -91,15 +91,21 @@ def make_icons(out: Path) -> None:
     draw(180, 0.12).save(out / "icons" / "apple-touch-icon.png")
 
 
+def config_js(cfg: dict, version: str) -> str:
+    """js/pwa-config.js: window.SNOWWX_PWA = {...}. A FILE, not an inline <script>: the draft Content-Security-Policy (docs/cloudflare_headers.draft) allows no inline scripts."""
+    bp = base_path(cfg)
+    conf = json.dumps({"version": version, "base": bp, "sw": f"{bp}/sw.js", "scope": f"{bp}/", "start": f"{bp}/mine.html"})
+    return f"window.SNOWWX_PWA={conf};\n"
+
+
 def inject(html: str, cfg: dict, version: str) -> str:
     if "snowwx-pwa" in html:
         return html
     bp = base_path(cfg)
-    conf = json.dumps({"version": version, "base": bp, "sw": f"{bp}/sw.js", "scope": f"{bp}/", "start": f"{bp}/mine.html"})
     head = (f'<link rel="manifest" href="{bp}/manifest.json"><meta name="theme-color" content="{THEME}">'
             f'<link rel="apple-touch-icon" href="{bp}/icons/apple-touch-icon.png"><meta name="mobile-web-app-capable" content="yes">'
             f'<meta name="apple-mobile-web-app-capable" content="yes"><meta name="snowwx-pwa" content="{version}">'
-            f'<script>window.SNOWWX_PWA={conf};</script><script src="js/pwa.js" defer></script>')
+            f'<script src="js/pwa-config.js"></script><script src="js/pwa.js" defer></script>')
     return re.sub(r"</head>", head + "\n</head>", html, count=1)
 
 
@@ -113,9 +119,11 @@ def run(cfg: dict, out: Path, *, force: bool = False) -> int:
     if not force and not pc.get("enabled"):
         log.info("pwa: disabled (config pwa.enabled=false); nothing written")
         return 0
-    files = shell_files(out)
+    files = [f for f in shell_files(out) if f != "js/pwa-config.js"]        # the config file carries the version, so it is not part of the version hash
     version = version_of(out, files, str(pc.get("version") or ""))
-    (out / "sw.js").write_text(render_sw(version, base_path(cfg), files), encoding="utf-8")
+    (out / "js").mkdir(parents=True, exist_ok=True)
+    (out / "js" / "pwa-config.js").write_text(config_js(cfg, version), encoding="utf-8")
+    (out / "sw.js").write_text(render_sw(version, base_path(cfg), files + ["js/pwa-config.js"]), encoding="utf-8")      # but the worker precaches it (offline pages need it)
     (out / "manifest.json").write_text(json.dumps(manifest(cfg), indent=1), encoding="utf-8")
     make_icons(out)
     for p in out.glob("*.html"):

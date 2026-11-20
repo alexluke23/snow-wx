@@ -10,6 +10,15 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => (
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const ft = (v) => (v === null || v === undefined ? "–" : `${Math.round(v).toLocaleString()} ft`);
+  const CAM_TYPE = { resort: "resort site", dot: "road cameras, state DOT", avalanche_center: "avalanche center", usfs: "US Forest Service" };
+  /** the Webcams row: up to 3 plain outbound links to the PROVIDER's own page. No iframe, no <img>, no embed: the pictures stay on the provider's site. */
+  function webcamRow(list) {
+    if (!Array.isArray(list) || !list.length) return "";
+    const links = list.slice(0, 3).filter((c) => /^https:\/\//i.test(c?.url || "")).map((c) =>
+      `<a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(c.label)} (opens ${esc(c.host)} in a new tab)">${esc(c.label)} ↗</a>`
+      + ` <span class="hint">${esc(CAM_TYPE[c.type] || "")}</span>`);
+    return links.length ? `<p class="webcams"><b>Webcams</b> <span class="hint">(these open the provider's own site)</span>: ${links.join(" · ")}</p>` : "";
+  }
   const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");
   const getJSON = async (path) => {
     const r = await fetch(path, { cache: "no-cache" });
@@ -116,8 +125,8 @@ What actually happened (snow measured/seen, where, photos or links welcome):
   function windExposure(wx, a, ratings, tz) {
     if (!wx || !wx.flag) return "";
     const zone = a?.avalanche ? ratings?.[String(a.avalanche.zone_id)] : null;
-    const link = zone?.link ? `<a href="${esc(safeUrl(zone.link))}" target="_blank" rel="noopener">Read the avalanche forecast for this zone →</a>`
-      : `<a href="https://avalanche.org/" target="_blank" rel="noopener">Find your avalanche center's forecast →</a>`;
+    const link = zone?.link ? `<a href="${esc(safeUrl(zone.link))}" target="_blank" rel="noopener" data-track="avalanche_click">Read the avalanche forecast for this zone →</a>`
+      : `<a href="https://avalanche.org/" target="_blank" rel="noopener" data-track="avalanche_click">Find your avalanche center's forecast →</a>`;
     const when = wx.start && wx.end ? ` <span class="hint">${esc(localDT(wx.start, tz))} to ${esc(localDT(wx.end, tz))}</span>` : "";
     return `<aside class="wind-flag" aria-label="Wind transport potential"><p><b>${esc(wx.title)}</b>${when}</p><p>${esc(wx.text)}</p>
       <p class="hint"><b>${esc(wx.disclaimer)}</b> ${esc(wx.caveat)} ${link} <a href="about.html#wind-exposure">How this flag works</a></p></aside>`;
@@ -465,8 +474,14 @@ What actually happened (snow measured/seen, where, photos or links welcome):
   // ---- Precipitation by model (M7; js/multimodel.js, data/multimodel.json): liquid-equivalent, cumulative, one line per model.
   const MM_STYLE = { nbm: { color: "#111827", width: 3.2, dash: "solid" }, hrrr: { color: C.OI.vermillion, width: 2, dash: "solid" },
     rrfs: { color: C.OI.blue, width: 2, dash: "solid" }, gfs: { color: C.OI.green, width: 2, dash: "dash" }, ecmwf: { color: C.OI.purple, width: 2, dash: "dashdot" } };
-  let mmDoc, mmMode = "liquid", mmView = "models";                                  // view = per visit only (not stored)
-  const hasPlume = () => (mmDoc?.models || []).some((m) => m.model === "ecmwf" && m.plume);
+  let mmDoc, mmMode = "liquid", mmView = "models", ensSrc = "ecmwf";                // view / source = per visit only (not stored)
+  const plumeList = () => mmDoc?.plumes ?? ((mmDoc?.models || []).some((m) => m.model === "ecmwf" && m.plume) ? ["ecmwf"] : []);   // ensemble plumes published with this build
+  const hasPlume = () => plumeList().length > 0;
+  /** the two ensemble sources (ECMWF live; GEFS built behind gefs.enabled): the same chart code reads either plume file */
+  const ENS_SRC = {
+    ecmwf: { short: "ECMWF", label: "ECMWF IFS ENS", path: "models/ecmwf/plume/", head: "ECMWF ensemble" },
+    gefs: { short: "GEFS", label: "NOAA GEFS", path: "models/gefs/plume/", head: "GEFS ensemble" },
+  };
   async function modelChart(el, fc, tz) {
     const sec = $("mm-sec"), P = fc.points.summit;
     if (mmDoc === undefined) mmDoc = await getJSON("data/multimodel.json").catch(() => null);
@@ -478,6 +493,9 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     const viewBox = $("mm-view");                                                    // the Models / Ensemble toggle exists only when ECMWF data were published
     if (viewBox) viewBox.hidden = !hasPlume();
     if (!hasPlume()) mmView = "models";
+    if (hasPlume() && !plumeList().includes(ensSrc)) ensSrc = plumeList()[0];
+    const srcBox = $("ens-src");                                                     // ECMWF | GEFS: only in the Ensemble view and only when both are published
+    if (srcBox) srcBox.hidden = !(mmView === "ens" && plumeList().length > 1);
     if (mmView === "ens") return ensembleChart(el, fc, tz);
     const nbm = { initMs: Date.parse(fc.issued), precip: P.precip, times: fc.times, ratio: P.series.slr_p50 || P.series.slr, psnow: P.series.p_snow };
     // the snow conversion needs NBM's ratio and chance of snow: without them the toggle is disabled (never a silent 10:1 / all-snow guess)
@@ -499,11 +517,13 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     C.plot(el, traces, C.layout(240, { margin: { r: 56, b: ax.b }, showlegend: false, shapes: ax.shapes, annotations: [C.axisTitle(mmMode === "snow" ? "Snow (in), at NBM's ratio" : "Liquid precipitation (in)"), ...labels],
       xaxis: ax.axis, yaxis: C.yaxis({ range: [0, ymax] }) }));
     const ag = r.agreement;
-    $("mm-badge").innerHTML = ag ? `Model agreement: <b class="mm-${ag.label.toLowerCase()}">${ag.label}</b>${ag.dry ? " (all dry)" : ""} <span class="hint">(${ag.within} of ${ag.n} models within ±25% of the median over the next ${ag.H} h; a heuristic until verified)</span>
+    $("mm-badge").innerHTML = ag ? (ag.dry
+      ? `<b class="mm-dry">${ag.text}</b> <span class="hint">(all ${ag.n} models under 0.20 in over the next ${ag.H} h, so there is no agreement rating; a heuristic)</span>`
+      : `Model agreement: <b class="mm-${ag.label.toLowerCase()}">${ag.label}</b> <span class="hint">(${ag.within} of ${ag.n} models within ±25% of the median over the next ${ag.H} h; a heuristic until verified)</span>`) + `
       <a class="info" href="about.html#model-agreement" title="Share of models within ±25% of the median liquid total (or 0.10 in) over the longest window at least 3 models cover: High ≥ 80%, Medium ≥ 66%, else Low. A heuristic, not an accuracy claim." aria-label="How model agreement works">ⓘ</a>`
       : `<span class="hint">Model agreement needs at least three models over the same hours.</span>`;
     const fmt = (v) => (v === null || v === undefined ? "–" : v.toFixed(2));
-    C.summary(el, ag ? `Next ${ag.H} h at the summit, ${mmMode === "snow" ? "snow at NBM's ratio" : "liquid precipitation"}: ${ag.totals.map(([l]) => `${l} ${fmt(MultiModel.valueAt(r.series.find((s) => s.label === l), r.t0, ag.H))} in`).join(", ")}; model agreement is ${ag.label.toLowerCase()}${ag.dry ? " (all dry)" : ""} (a heuristic).`
+    C.summary(el, ag ? `Next ${ag.H} h at the summit, ${mmMode === "snow" ? "snow at NBM's ratio" : "liquid precipitation"}: ${ag.totals.map(([l]) => `${l} ${fmt(MultiModel.valueAt(r.series.find((s) => s.label === l), r.t0, ag.H))} in`).join(", ")}; ${ag.dry ? "little precipitation is expected (every model under 0.20 in)" : `model agreement is ${ag.label.toLowerCase()}`} (a heuristic).`
       : `Precipitation by model: ${r.series.map((s) => s.label).join(", ")}.`);
     const grid = []; for (let h = 0; h <= 240; h += 6) if (r.series.some((s) => MultiModel.valueAt(s, r.t0, h) !== null)) grid.push(h);
     C.tableToggle(el, `Cumulative ${unit} since ${localDT(new Date(r.t0).toISOString(), tz)}, by model`, ["Time", ...r.series.map((s) => s.label)],
@@ -518,11 +538,13 @@ What actually happened (snow measured/seen, where, photos or links welcome):
   const chartMsg = (el, html) => { try { window.Plotly?.purge(el); } catch { /* no plot yet */ } el.innerHTML = html; };
   async function ensembleChart(el, fc, tz) {
     const P = fc.points.summit, badge = $("mm-badge"), note = $("mm-note");
-    if (!el.data) el.innerHTML = `<p class="hint">Loading the ECMWF ensemble…</p>`;
-    if (!ensDocs.has(fc.id)) ensDocs.set(fc.id, getJSON(`models/ecmwf/plume/${encodeURIComponent(fc.id)}.json`).catch(() => null));
-    const doc = await ensDocs.get(fc.id);
+    const S = ENS_SRC[ensSrc] || ENS_SRC.ecmwf;
+    if (!el.data) el.innerHTML = `<p class="hint">Loading the ${S.short} ensemble…</p>`;
+    const dkey = `${ensSrc}:${fc.id}`;
+    if (!ensDocs.has(dkey)) ensDocs.set(dkey, getJSON(`${S.path}${encodeURIComponent(fc.id)}.json`).catch(() => null));
+    const doc = await ensDocs.get(dkey);
     if (!doc || !doc.hours?.length) {
-      chartMsg(el, `<p class="hint">The ECMWF ensemble is not available for this area yet.</p>`); badge.textContent = ""; return;
+      chartMsg(el, `<p class="hint">The ${S.short} ensemble is not available for this area yet.</p>`); badge.textContent = ""; return;
     }
     const nbmRatio = P.series.slr_p50 || P.series.slr || [];
     const snowOk = nbmRatio.some((v) => v);
@@ -532,7 +554,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     const issued = Date.parse(fc.issued), init = Date.parse(doc.init);
     const t0 = Math.max(issued, init);
     const b = Ensemble.build(doc, { mode: mmMode, t0Ms: t0, ratio: nbmRatio, ratioTimes: (fc.times || []).map((x) => Date.parse(x)) });
-    if (!b.members.length || b.x.length < 3) { chartMsg(el, `<p class="hint">The ECMWF run does not cover the hours after the common start yet.</p>`); return; }
+    if (!b.members.length || b.x.length < 3) { chartMsg(el, `<p class="hint">The ${S.short} run does not cover the hours after the common start yet.</p>`); return; }
     const st = Ensemble.summarize(b), sk = Ensemble.staleness(doc, Date.now(), 24);
     const col = (k) => st.map((s) => s[k]);
     const xs = b.x.map((t) => C.wall(t, tz));
@@ -541,7 +563,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     const fx = [], fy = [];
     b.members.forEach((m) => { m.forEach((v, i) => { if (v !== null) { fx.push(xs[i]); fy.push(v); } }); fx.push(null); fy.push(null); });
     const unit = mmMode === "snow" ? "in of snow" : "in of liquid";
-    const terrain = doc.z_ft ? `ECMWF terrain ${doc.z_ft.toLocaleString()} ft (0.25° grid) vs summit ${Math.round(P.elev_ft).toLocaleString()} ft` : "ECMWF 0.25° grid, not elevation-adjusted";
+    const terrain = doc.z_ft ? `${S.short} terrain ${doc.z_ft.toLocaleString()} ft (0.25° grid) vs summit ${Math.round(P.elev_ft).toLocaleString()} ft` : `${S.short} 0.25° grid, not elevation-adjusted`;
     const traces = [
       { x: fx, y: fy, mode: "lines", line: { color: sk.stale ? "rgba(120,130,140,0.18)" : "rgba(0,114,178,0.13)", width: 1 }, hoverinfo: "skip", connectgaps: false, name: "members" },
       { x: xs, y: col("p90"), mode: "lines", line: { width: 0 }, hoverinfo: "skip" },
@@ -552,12 +574,12 @@ What actually happened (snow measured/seen, where, photos or links welcome):
         hovertemplate: `Median %{y:.2f} ${unit}<br>25–75%: %{customdata[0]:.2f}–%{customdata[1]:.2f} · 10–90%: %{customdata[2]:.2f}–%{customdata[3]:.2f}<br>%{customdata[4]} members<br>${terrain}<extra></extra>` },
       { x: xs, y: col("mean"), mode: "lines", name: "Mean", line: { color: blue, width: 2, dash: "dot" }, hovertemplate: `Mean %{y:.2f} ${unit}<extra></extra>` },
     ];
-    if (b.hres) traces.push({ x: xs, y: b.hres, mode: "lines", name: "HRES", line: { color: C.OI.purple, width: 2, dash: "dash" }, connectgaps: false, hovertemplate: `HRES (operational run) %{y:.2f} ${unit}<extra></extra>` });
+    if (b.hres) traces.push({ x: xs, y: b.hres, mode: "lines", name: "HRES", line: { color: C.OI.purple, width: 2, dash: "dash" }, connectgaps: false, hovertemplate: `HRES: ECMWF's single high-resolution (deterministic) run, a reference line, not a member %{y:.2f} ${unit}<extra></extra>` });
     const ymax = Math.max(0.3, ...st.map((s) => s.p90 ?? 0), ...b.members.map((m) => Math.max(0, ...m.filter((v) => v !== null)))) * 1.06;
     const ax = C.timeAxis(C.wall(b.x[0], tz), C.wall(b.x[b.x.length - 1], tz), el.clientWidth - C.MARGIN.l - 62);
     const last = (arr) => arr.length - 1 - [...arr].reverse().findIndex((v) => v !== null && v !== undefined);
     const lbl = [["90%", col("p90"), blue], ["Median", col("p50"), ink], ["10%", col("p10"), blue]];
-    if (b.hres) lbl.push(["HRES", b.hres, C.OI.purple]);
+    if (b.hres) lbl.push(["HRES (single run)", b.hres, C.OI.purple]);
     const labels = C.endLabels(lbl.map(([text, ys, color]) => ({ xs, ys, text, color })), { yrange: [0, ymax], plotHeight: 230 - C.MARGIN.t - ax.b + 34 });
     const shapes = [...ax.shapes];
     const annotations = [C.axisTitle(mmMode === "snow" ? "Snow (in), at NBM's ratio" : "Liquid precipitation (in)"), ...labels];
@@ -567,18 +589,67 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     const lastH = Math.round((b.x[b.x.length - 1] - b.t0) / 3.6e6), H = Math.min(72, lastH);
     const endMs = b.t0 + H * 3.6e6;
     const thr = mmMode === "snow" ? 6 : 1;
-    const sentence = Ensemble.headline(b, st, { mode: mmMode, h: H, thr, weekday: localFmt(new Date(endMs).toISOString(), tz, { weekday: "short" }) });
+    const sentence = Ensemble.headline(b, st, { mode: mmMode, h: H, thr, weekday: localFmt(new Date(endMs).toISOString(), tz, { weekday: "short" }), label: S.head });
     C.summary(el, sentence);
     const fmtT = (ms) => localDT(new Date(ms).toISOString(), tz);
-    C.tableToggle(el, `ECMWF ensemble, cumulative ${unit} since ${fmtT(b.t0)}: percentiles across ${b.n} members, then the number of members at or above each amount`,
+    C.tableToggle(el, `${S.head}, cumulative ${unit} since ${fmtT(b.t0)}: percentiles across ${b.n} members, then the number of members at or above each amount`,
       ["Time", "10%", "25%", "Median", "75%", "90%", "Mean", "HRES"], Ensemble.tableRows(b, st, { mode: mmMode, fmtTime: fmtT, thresholds: mmMode === "snow" ? [2, 6, 12] : [0.5, 1, 2] }));
-    badge.innerHTML = `ECMWF IFS ENS <b>${new Date(doc.init).toISOString().slice(11, 13)}Z</b> run, started ${esc(localDT(doc.init, tz))} · ${doc.n_members} perturbed members${sk.stale ? ` · <b class="mm-low">out of date</b>` : ""}
-      <span class="hint">(plume = all members faint, bands 25–75% and 10–90%, median and mean across members)</span>`;
+    badge.innerHTML = `${S.label} <b>${new Date(doc.init).toISOString().slice(11, 13)}Z</b> run, started ${esc(localDT(doc.init, tz))} · ${doc.n_members} ${ensSrc === "gefs" ? "members (the control run plus the perturbed members)" : "perturbed members"}${sk.stale ? ` · <b class="mm-low">out of date</b>` : ""}
+      <span class="hint">(plume = all members faint, bands 25–75% and 10–90%, median and mean across members${b.hres ? "; dashed purple = HRES, ECMWF's single deterministic run, drawn as a reference, not a member" : ""})</span>`;
+    if (ensSrc === "gefs") {
+      note.textContent = `Raw NOAA GEFS model guidance on a 0.25° grid (about 28 km): not bias-corrected, not elevation-adjusted and not the same product as NBM. ${doc.z_ft ? `${terrain}. ` : ""}`
+        + `Cumulative from ${fmtT(b.t0)}; each member is one scenario and the bands are quantiles across the ${b.n} members (no percentiles are added over time). `
+        + `${mmMode === "snow" ? "Snow = an ESTIMATE: each 6-hour precipitation amount times GEFS's categorical-snow share of that window, times NBM's median snow ratio (inches assume NBM SLR). " : "Liquid = total precipitation (rain and melted snow). "}`
+        + `The plume has ${doc.n_members} members${doc.control_member ? " (the control run plus the perturbed members)" : ""}. Data: NOAA/NCEP GEFS via the NOAA Open Data Dissemination, public domain.`;
+      return;
+    }
     note.textContent = `Raw ECMWF model guidance on a 0.25° grid (about 28 km): not bias-corrected, not elevation-adjusted and not the same product as NBM. ${terrain}. `
       + `Cumulative from ${fmtT(b.t0)}; each member is one scenario and the bands are quantiles across the ${b.n} members (no percentiles are added over time). `
       + `${mmMode === "snow" ? "Snow = ECMWF's snowfall water equivalent times NBM's median snow ratio (inches assume NBM SLR). " : "Liquid = total precipitation (rain and melted snow). "}`
-      + `The control member is not part of the open data files, so there are ${doc.n_members} members. Adapted from "ECMWF IFS 15-day Forecast Data" by ECMWF, licensed under `
+      + `The plume has ${doc.n_members} perturbed members${doc.control_member ? " plus the control run" : " (the open data files carry no control member)"}. Adapted from "ECMWF IFS 15-day Forecast Data" by ECMWF, licensed under `
       + `CC BY 4.0 (creativecommons.org/licenses/by/4.0), see the ECMWF Terms of Use (apps.ecmwf.int/datasets/licences/general/).`;
+  }
+
+  /** M9 verification panel ("How did forecasts do here?"), BUILT BEHIND config verification_ui.enabled (meta.json): flag off = the section stays hidden and nothing is fetched.
+   *  Below the minimum (days AND pairs) it says "Collecting data: X of 14 days" and shows no numbers. Observation = SNOTEL 24-h depth change, a lower bound of snowfall. */
+  async function verification(a, isRec) {
+    const sec = $("verif-sec");
+    if (!sec || isRec || typeof VerificationUI === "undefined") return;
+    const meta = await getJSON("data/meta.json").catch(() => null);
+    if (!meta?.verification_ui?.enabled) return;
+    const near = a.nearest?.snotel?.[0];
+    const proxy = !a.triplet && !String(a.id || "").startsWith("snotel-");
+    sec.hidden = false;
+    const body = $("verif-body");
+    if (!near) { body.innerHTML = `<p class="hint">No SNOTEL site is near enough to compare with.</p>`; return; }
+    const index = await getJSON("data/verification.json").catch(() => null);
+    if (!index) { body.innerHTML = `<p class="hint">Verification results are not available yet.</p>`; return; }
+    const st = VerificationUI.status(index, near.id);
+    if (st.state !== "ready") { body.innerHTML = `<p class="collecting" role="status">${esc(VerificationUI.collecting(st))}</p>`; return; }
+    const doc = await getJSON(`data/verification/${encodeURIComponent(near.id.replace(/:/g, "_"))}.json`).catch(() => null);
+    if (!doc) { body.innerHTML = `<p class="hint">Results for this site could not be loaded.</p>`; return; }
+    const where = { name: near.name, proxy, distKm: near.dist_km ?? null, dz: near.dz_base_ft ?? null };
+    body.innerHTML = `<div class="chart" id="verif-chart" style="height:240px"><p class="hint">Loading chart…</p></div>
+      <div class="tbl-wrap"><table class="st-tbl"><caption class="sr">Forecast verification at ${esc(near.name)}</caption><thead><tr>${VerificationUI.METRIC_COLS.map((c) => `<th scope="col">${esc(c)}</th>`).join("")}</tr></thead>
+        <tbody>${VerificationUI.metricRows(doc).map((r) => `<tr><th scope="row">${esc(r[0])}</th>${r.slice(1).map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+      <ul class="caveats">${VerificationUI.caveats(doc, where, index).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
+      <p class="hint">A heuristic first look, not an accuracy rating: <a href="about.html#scorecard">how this is measured</a>.</p>`;
+    C.lazy($("verif-chart"), () => loadPlotly().then(() => verifyChart($("verif-chart"), doc, where, index)));
+  }
+
+  function verifyChart(el, doc, where, index) {
+    const d = doc.daily, num = (arr) => arr.filter((v) => v !== null && v !== undefined);
+    const ymax = Math.max(0.5, ...d.obs, ...num(d.nbm), ...num(d.ndfd)) * 1.12;
+    const traces = [
+      { type: "bar", x: d.dates, y: d.obs, name: "Observed (SNOTEL depth gain)", marker: { color: "#aab4bf" }, hovertemplate: "Observed %{y:.2f} in<extra></extra>" },
+      { type: "scatter", mode: "markers", x: d.dates, y: d.nbm, name: "NBM expected", marker: { color: C.OI.blue, size: 8, symbol: "circle" }, hovertemplate: "NBM %{y:.2f} in<extra></extra>" },
+      { type: "scatter", mode: "markers", x: d.dates, y: d.ndfd, name: "NWS (NDFD)", marker: { color: C.OI.orange, size: 8, symbol: "diamond" }, hovertemplate: "NWS %{y:.2f} in<extra></extra>" },
+    ];
+    C.plot(el, traces, C.layout(250, { margin: { t: 40 }, showlegend: true, legend: { orientation: "h", x: 0, y: 1.16, font: C.font(C.tick(), C.INK) }, bargap: 0.35,
+      annotations: [C.axisTitle("24-h snow (in), one window per day (12Z to 12Z)")], xaxis: { type: "date", tickformat: "%b %-d", fixedrange: true, tickfont: C.font(C.tick(), C.INK), showgrid: false },
+      yaxis: C.yaxis({ range: [0, ymax] }) }));
+    C.summary(el, VerificationUI.sentence(doc, where));
+    C.tableToggle(el, `Observed and forecast 24-hour snow (in) at ${where.name}`, ["Window end (12Z)", "Observed", "NBM expected", "NWS (NDFD)"], VerificationUI.dailyRows(doc));
   }
 
   function snowLevelChart(el, fc, keys, tz) {
@@ -914,7 +985,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     if (!p) return `<p>${esc(a.zone)}</p>`;
     return `<p><span class="danger-chip${p.expired ? " expired" : ""}" style="background:${esc(p.color)}">${esc(p.danger)}</span>
       ${esc(p.name)}${p.expired ? ` <span class="hint">(expired)</span>` : ""}</p>
-      <a href="${esc(safeUrl(p.link))}" target="_blank" rel="noopener">Read the full forecast →</a>`;
+      <a href="${esc(safeUrl(p.link))}" target="_blank" rel="noopener" data-track="avalanche_click">Read the full forecast →</a>`;
   }
 
   function stationRows(list, kind) {
@@ -977,11 +1048,12 @@ What actually happened (snow measured/seen, where, photos or links welcome):
     const main = $("area");
     const isStation = id.startsWith("snotel-");
     // One request per source (each file embeds its site record); catalogs only as fallback.
-    const [fcR, nwsR, avyR, alR] = await Promise.allSettled([
+    const [fcR, nwsR, avyR, alR, camR] = await Promise.allSettled([
       id ? getJSON(`data/points/${encodeURIComponent(id)}.json`) : Promise.reject(new Error("no id")),
       id ? getJSON(`data/ndfd/${encodeURIComponent(id)}.json`) : Promise.reject(new Error("no id")),
       isStation ? Promise.resolve(null) : getJSON("data/avalanche_ratings.json"),
-      getJSON("data/alerts/index.json")]);
+      getJSON("data/alerts/index.json"),
+      isStation ? Promise.resolve(null) : getJSON("data/webcams.json")]);              // webcam LINKS only (config/webcams.yml); no images are ever loaded from those sites
     const nbm = fcR.status === "fulfilled" ? fcR.value : null;
     const alertRefs = alR.status === "fulfilled" ? (isStation ? alR.value.points : alR.value.areas)?.[id] || [] : [];   // client-side alert tag (§5.7)
     const nws = nwsR.status === "fulfilled" ? nwsR.value : null;
@@ -1074,6 +1146,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
       ${isStation || isRec ? "" : `<section id="mm-sec"><h3>Precipitation by model <a class="info" href="about.html#model-agreement" title="NBM, HRRR, RRFS and GFS precipitation at the summit, cumulative, in liquid-equivalent inches (or snow at NBM's ratio)." aria-label="About the model comparison">ⓘ</a></h3>
         <p class="mm-badge" id="mm-badge" aria-live="polite"></p>
         <span class="seg mm-view" id="mm-view" role="group" aria-label="View" hidden><button type="button" data-v="models" class="on" aria-pressed="true">Models</button><button type="button" data-v="ens" aria-pressed="false">Ensemble</button></span>
+        <span class="seg mm-view" id="ens-src" role="group" aria-label="Ensemble source" hidden><button type="button" data-s="ecmwf" class="on" aria-pressed="true">ECMWF</button><button type="button" data-s="gefs" aria-pressed="false">GEFS</button></span>
         <span class="sr" id="mm-announce" role="status" aria-live="polite"></span>
         <span class="seg" id="mm-mode" role="group" aria-label="Units"><button type="button" data-m="liquid" class="on" aria-pressed="true">Liquid (in)</button><button type="button" data-m="snow" aria-pressed="false">Snow (in)</button></span>
         <div class="chart" id="mm-chart" style="height:240px"><p class="hint">Loading chart…</p></div>
@@ -1086,6 +1159,7 @@ What actually happened (snow measured/seen, where, photos or links welcome):
       : `<p class="hint">No point forecast is available for this site yet.</p>`}
       <section id="afd"></section>
       <section><h3>Recent observations</h3><div id="nohrsc-obs"></div><div id="obs"></div></section>
+      ${isRec ? "" : `<section id="verif-sec" hidden><h3>How did forecasts do here? <a class="info" href="about.html#scorecard" title="Forecasts versus SNOTEL snow-depth change: bias, error and hit rate for 1 in or more. Shown only after enough days of data." aria-label="How forecast verification works">ⓘ</a></h3><div id="verif-body"></div></section>`}
       ${isStation || isRec ? "" : `<section><h3>Avalanche danger</h3>${avalanche(a.avalanche, avyR.status === "fulfilled" ? avyR.value : null)}</section>`}
       <section><h3>More</h3>
         ${isStation
@@ -1096,14 +1170,17 @@ What actually happened (snow measured/seen, where, photos or links welcome):
                <a href="${nwsLink(a.base)}" target="_blank" rel="noopener">base</a>
                ${a.url ? ` · <a href="${esc(safeUrl(a.url))}" target="_blank" rel="noopener">Area website</a>` : ""}
                · <a href="index.html#map=12/${a.summit.lat}/${a.summit.lon}&s=area:${encodeURIComponent(a.id)}">Map</a></p>
+             ${webcamRow(camR.status === "fulfilled" ? camR.value?.[a.id] : null)}
              <h4>Nearby SNOTEL</h4><ul>${stationRows(a.nearest.snotel, "snotel")}</ul>
              <h4>Nearby airports</h4><ul>${stationRows(a.nearest.asos, "asos")}</ul>`}
       </section>`;
 
     wireAlertDetails(main);
+    verification(a, isRec);
     $("fav").addEventListener("click", (e) => {
       const list = favs(), on = !list.includes(a.id);
       setFavs(on ? [...list, a.id] : list.filter((x) => x !== a.id));
+      if (on && window.snowwxTrack) snowwxTrack("favorite_added", { where: "area", kind: isStation ? "snotel" : isRec ? "snopark" : "ski" });
       e.currentTarget.textContent = on ? "★" : "☆";
       e.currentTarget.setAttribute("aria-pressed", String(on));
     });
@@ -1190,6 +1267,12 @@ What actually happened (snow measured/seen, where, photos or links welcome):
         mmView = btn.dataset.v;
         $("mm-view").querySelectorAll("button").forEach((x) => { x.classList.toggle("on", x === btn); x.setAttribute("aria-pressed", String(x === btn)); });
         $("mm-announce").textContent = mmView === "ens" ? "Showing the ECMWF ensemble plume." : "Showing the model comparison.";
+        modelChart($("mm-chart"), doc(), tz);
+      }));
+      $("ens-src")?.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {
+        ensSrc = btn.dataset.s;
+        $("ens-src").querySelectorAll("button").forEach((x) => { x.classList.toggle("on", x === btn); x.setAttribute("aria-pressed", String(x === btn)); });
+        $("mm-announce").textContent = `Showing the ${(ENS_SRC[ensSrc] || ENS_SRC.ecmwf).short} ensemble plume.`;
         modelChart($("mm-chart"), doc(), tz);
       }));
       $("mm-mode")?.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {

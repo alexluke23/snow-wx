@@ -238,7 +238,7 @@
         `${st.src === "nws" ? "" : (st.w === "7d" || st.w === "10d" ? "; expected total only beyond 72 h (no range)" : "; small numbers: the likely range (the middle half of NBM's outcomes: about a 1-in-4 chance of more or less) where NBM gives it for the whole window")}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest while precipitation is likely in the window, vs the base ` +
         `("–" when the chance of precipitation is under 20 %). Gust: highest summit gust in 72 h (NBM). ★ favorites list first.`;
     $("rows").querySelectorAll(".star").forEach((b) => b.addEventListener("click", () => {
-      const s = favs(); s.has(b.dataset.id) ? s.delete(b.dataset.id) : s.add(b.dataset.id); saveFavs(s); render();
+      const s = favs(); if (s.has(b.dataset.id)) s.delete(b.dataset.id); else { s.add(b.dataset.id); if (window.snowwxTrack) snowwxTrack("favorite_added", { where: "finder" }); } saveFavs(s); render();
     }));
     drawMap(list);
   }

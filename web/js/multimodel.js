@@ -6,6 +6,7 @@
 const MultiModel = (() => {
   const ms = (iso) => Date.parse(iso);
   const HOUR = 3.6e6;
+  const DRY_IN = 0.2;      // "little precipitation": every model under this many inches of liquid over the window (0.20 = twice the 0.10 in tolerance floor: below it the models cannot disagree by more than the floor allows, so there is no agreement to rate; dev18 calibration)
 
   /** value of the piecewise-linear series (xs ascending, ys with nulls) at x, or null outside the non-null range */
   function interpAt(xs, ys, x) {
@@ -99,7 +100,9 @@ const MultiModel = (() => {
   /**
    * Agreement badge (a HEURISTIC until verified; formula on about.html): over the longest window H in {72, 48, 36, 24, 12, 6} h after the common
    * start that at least 3 models reach, the share of models whose liquid total is within +-25% of the median total (or within 0.10 in when the
-   * median is small). share >= 80% -> High, >= 66% -> Medium, else Low (dev17: was 75 / 50; with four sources 3 of 4 made 78% of areas High); a window where every model is under 0.10 in is "High (dry)".
+   * median is small). share >= 80% -> High, >= 66% -> Medium, else Low (dev17: was 75 / 50; with four sources 3 of 4 made 78% of areas High).
+   * dev18: a window where EVERY model is under 0.20 in is not "agreement" at all (there is nothing to disagree about): label "Dry", text "Little precipitation expected",
+   * never "High agreement".
    * Always computed from LIQUID amounts so the toggle does not change it.
    */
   function agreement(series, t0) {
@@ -109,11 +112,12 @@ const MultiModel = (() => {
       if (totals.length < 3) continue;
       const vals = totals.map((t) => t[1]).sort((a, b) => a - b);
       const med = vals.length % 2 ? vals[(vals.length - 1) / 2] : (vals[vals.length / 2 - 1] + vals[vals.length / 2]) / 2;
-      if (vals.every((v) => v < 0.1)) return { H, n: totals.length, within: totals.length, median: med, label: "High", dry: true, totals };
+      if (vals.every((v) => v < DRY_IN)) return { H, n: totals.length, within: totals.length, median: med, label: "Dry", dry: true, text: "Little precipitation expected", totals };
       const tol = Math.max(0.25 * med, 0.1);
       const within = totals.filter(([, v]) => Math.abs(v - med) <= tol).length;
       const share = within / totals.length;
-      return { H, n: totals.length, within, median: med, label: share >= 0.8 ? "High" : share >= 0.66 ? "Medium" : "Low", dry: false, totals };
+      const label = share >= 0.8 ? "High" : share >= 0.66 ? "Medium" : "Low";
+      return { H, n: totals.length, within, median: med, label, dry: false, text: `${label} agreement`, totals };
     }
     return null;
   }
