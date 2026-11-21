@@ -1,7 +1,7 @@
 // Powder Finder (finder.html): every ski area ranked by forecast snowfall, or by the
 // chance of at least X inches. Plain HTML list first (fast on phones); Leaflet map and
 // the probability table (data/points/exceed_summary.json) load only when needed.
-// Data: data/points/summary.json (NBM), data/ndfd/summary.json (NWS),
+// Data: data/points/summary.json (NBM),
 //       data/nohrsc/ski.json (observed 24 h), data/alerts/index.json (NWS alerts).
 
 (() => {
@@ -27,7 +27,7 @@
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch { saved = {}; }
   const pick = (k, def) => q.get(k) ?? saved[k] ?? def;
-  const st = { m: pick("m", "amount"), w: pick("w", "72h"), e: pick("e", "summit"), src: pick("src", "nbm"),
+  const st = { m: pick("m", "amount"), w: pick("w", "72h"), e: pick("e", "summit"),
                state: pick("st", ""), region: pick("r", ""), sort: pick("sort", "snow"), fav: pick("fav", "0") === "1",
                pw: pick("pw", "24h"), px: Number(pick("px", "6")), pd: Number(pick("pd", "0")), t: pick("t", "ski"),
                ty: pick("ty", "0") === "1", dir: pick("dir", "") };
@@ -42,7 +42,7 @@
   const writeHash = () => {
     const p = new URLSearchParams({ t: st.t, m: st.m, e: st.e });
     if (st.m === "prob") { p.set("pw", st.pw); p.set("px", String(st.px)); p.set("pd", String(st.pd)); }
-    else { p.set("w", st.w); p.set("src", st.src); p.set("sort", st.sort); }
+    else { p.set("w", st.w); p.set("sort", st.sort); }
     if (st.state) p.set("st", st.state);
     if (st.region) p.set("r", st.region);
     if (st.fav) p.set("fav", "1");
@@ -50,12 +50,12 @@
     if (st.dir) p.set("dir", st.dir);
     history.replaceState(null, "", `#${p}`);
     try {
-      localStorage.setItem(PREF_KEY, JSON.stringify({ m: st.m, w: st.w, e: st.e, src: st.src, st: st.state, r: st.region,
+      localStorage.setItem(PREF_KEY, JSON.stringify({ m: st.m, w: st.w, e: st.e, st: st.state, r: st.region,
         sort: st.sort, dir: st.dir, fav: st.fav ? "1" : "0", pw: st.pw, px: String(st.px), pd: String(st.pd), t: st.t, ty: st.ty ? "1" : "0" }));
     } catch { /* private mode */ }
   };
 
-  let nbm = null, nws = null, obs = null, alerts = {}, exceed = null, exceedP = null, rows = [];
+  let nbm = null, obs = null, alerts = {}, exceed = null, exceedP = null, rows = [];
 
   function segment(el, items, key, onChange, cast = String) {
     el.innerHTML = items.map(([v, label, disabled, title]) =>
@@ -112,9 +112,8 @@
   }
 
   function buildRows() {
-    const nwsBy = new Map((nws?.areas || []).map((r) => [r.id, r]));
     rows = (nbm?.areas || []).map((a) => {
-      const src = st.m === "amount" && st.src === "nws" ? nwsBy.get(a.id) : a;
+      const src = a;
       const t = src?.[st.e]?.[st.w] || null;               // [mean, lo, hi, pop %, lowest wet snow level]
       const o = obs?.areas?.[a.id]?.[st.e]?.sf24 ?? null;
       // snow level and chance of precip for the window on screen (B3): the amount window,
@@ -148,14 +147,10 @@
       update();
     });
     $("win").hidden = prob; $("pwin").hidden = !prob; $("thr").hidden = !prob; $("pday-wrap").hidden = !prob;
-    $("sort-wrap").hidden = prob; $("src-note").hidden = !prob;
-    segment($("win"), WINDOWS.map(([v, l]) => [v, l, st.src === "nws" && (v === "7d" || v === "10d")]), "w", update);
+    $("sort-wrap").hidden = prob;
+    segment($("win"), WINDOWS.map(([v, l]) => [v, l]), "w", update);
     segment($("type"), [["ski", "Ski areas"], ["snopark", "Sno-Parks"], ["all", "All"]], "t", update);
     segment($("elev"), [["summit", ELEV_LABEL[st.t][0]], ["base", ELEV_LABEL[st.t][1]]], "e", update);
-    segment($("src"), [["nbm", "NBM"], ["nws", "NWS", !nws || prob, prob ? "Chances are NBM-only: the NWS forecast has no probabilistic snowfall" : ""]], "src", () => {
-      if (st.src === "nws" && (st.w === "7d" || st.w === "10d")) st.w = "72h";
-      update();
-    });
     if (prob) {
       segment($("pwin"), PWINDOWS, "pw", () => {
         if (!chips().includes(st.px)) st.px = chips()[Math.min(1, chips().length - 1)] || 6;
@@ -234,8 +229,8 @@
       ? `Chance of at least ${st.px}" of snow in ${st.pw.replace("h", " h")} (${dayLabel(st.pd).replace("Next: ", "")}) at the ${st.e}, from NBM's ` +
         `probabilistic guidance for the 2.5 km grid cell. ${SEPARATE} Small number: NBM's expected amount in the same window (about a 1-in-3 chance of reaching it). ` +
         `Snow level: lowest while precipitation is likely in that window.`
-      : `Expected snowfall at the ${st.e} (${st.src === "nws" ? "NWS forecast, 2.5 km grid cell" : "NBM"})` +
-        `${st.src === "nws" ? "" : (st.w === "7d" || st.w === "10d" ? "; expected total only beyond 72 h (no range)" : "; small numbers: the likely range (the middle half of NBM's outcomes: about a 1-in-4 chance of more or less) where NBM gives it for the whole window")}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest while precipitation is likely in the window, vs the base ` +
+      : `Expected snowfall at the ${st.e} (NBM)` +
+        `${st.w === "7d" || st.w === "10d" ? "; expected total only beyond 72 h (no range)" : "; small numbers: the likely range (the middle half of NBM's outcomes: about a 1-in-4 chance of more or less) where NBM gives it for the whole window"}. Obs 24 h: NOHRSC snowfall analysis. Snow level: lowest while precipitation is likely in the window, vs the base ` +
         `("–" when the chance of precipitation is under 20 %). Gust: highest summit gust in 72 h (NBM). ★ favorites list first.`;
     $("rows").querySelectorAll(".star").forEach((b) => b.addEventListener("click", () => {
       const s = favs(); if (s.has(b.dataset.id)) s.delete(b.dataset.id); else { s.add(b.dataset.id); if (window.snowwxTrack) snowwxTrack("favorite_added", { where: "finder" }); } saveFavs(s); render();
@@ -313,10 +308,10 @@
   }
 
   async function load() {
-    const [a, b, c, d] = await Promise.allSettled([getJSON("data/points/summary.json"), getJSON("data/ndfd/summary.json"),
+    const [a, c, d] = await Promise.allSettled([getJSON("data/points/summary.json"),
       getJSON("data/nohrsc/ski.json"), getJSON("data/alerts/index.json")]);
     if (a.status !== "fulfilled") { $("rows").innerHTML = `<p>Forecasts are not available yet.</p>`; $("fresh").textContent = ""; return; }
-    nbm = a.value; nws = b.status === "fulfilled" ? b.value : null; obs = c.status === "fulfilled" ? c.value : null;
+    nbm = a.value; obs = c.status === "fulfilled" ? c.value : null;
     alerts = d.status === "fulfilled" ? d.value.areas || {} : {};
     $("sort").value = st.sort; $("favonly").checked = st.fav;
     $("state").addEventListener("change", (e) => { st.state = e.target.value; render(); });
@@ -328,7 +323,7 @@
     $("stype").addEventListener("change", (e) => { st.ty = e.target.checked; render(); });
     $("pday").addEventListener("change", (e) => { st.pd = Number(e.target.value); update(); });
     const when = (iso) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", timeZoneName: "short" });
-    $("fresh").textContent = `NBM ${when(nbm.issued)} run${nws ? ` · NWS issued ${when(nws.issued)}` : ""}${obs?.snowfall_end ? ` · observed to ${when(obs.snowfall_end)}` : ""}`;
+    $("fresh").textContent = `NBM ${when(nbm.issued)} run${obs?.snowfall_end ? ` · observed to ${when(obs.snowfall_end)}` : ""}`;
     if (st.m === "prob") await ensureExceed();
     update();
     // Safari has no requestIdleCallback: setTimeout fallback (dev21; never call the function detached from window)

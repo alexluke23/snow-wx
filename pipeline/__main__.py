@@ -133,8 +133,11 @@ def ecmwf_status(outdir: Path, cfg: dict | None) -> dict:
     site folder yet -> `waiting` (first run not delivered: shown, not an alarm; once a run exists its age is judged against monitoring.sources.ecmwf)."""
     if not bool(((cfg or {}).get("ecmwf") or {}).get("enabled")):
         return {"ok": None, "disabled": True, "detail": "not enabled"}
+    from . import ecmwf_attempts as EA
+    att = EA.load(outdir / "models" / "ecmwf" / "attempts.json")
     try:
         js = json.loads((outdir / "models" / "ecmwf" / "index.json").read_text(encoding="utf-8"))
+        cycles = EA.cycles_view(att, datetime.now(timezone.utc), newest_published=js.get("cycle"))
         f = js.get("fetch") or {}
         missing = js.get("steps_missing") or []
         health = [f"mirror {f['mirror']}"] if f.get("mirror") else []
@@ -142,10 +145,11 @@ def ecmwf_status(outdir: Path, cfg: dict | None) -> dict:
             health.append(f"{f.get('retries', 0)} retries")
         health.append(f"{len(missing)} of {f.get('steps_planned', len(js.get('hours') or []) - 1 or '?')} steps missing" + (f" ({', '.join(str(x) for x in missing[:6])}{' ...' if len(missing) > 6 else ''} h)" if missing else ""))
         return {"ok": True, "detail": f"ECMWF {js['cycle'][8:10]}Z run, {js.get('n_members', '?')} ensemble members + HRES · " + " · ".join(health),
-                "at": js.get("generated_at"), "fetch": {"mirror": f.get("mirror"), "retries": f.get("retries"), "steps_missing": missing, "partial": bool(missing),
+                "at": js.get("generated_at"), "init": js.get("init"), "lag_h": EA.LAG_H, "cycles": cycles,
+                "fetch": {"mirror": f.get("mirror"), "retries": f.get("retries"), "steps_missing": missing, "partial": bool(missing),
                           "preferred": f.get("preferred_after"), "probe": f.get("probe"), "cache_mb": (f.get("cache") or {}).get("total_mb")}}
     except (OSError, ValueError, KeyError, TypeError):
-        return {"ok": None, "waiting": True, "detail": "waiting for the first run"}
+        return {"ok": None, "waiting": True, "detail": "waiting for the first run", "cycles": EA.cycles_view(att, datetime.now(timezone.utc)), "lag_h": EA.LAG_H}
 
 
 def product_status(outdir: Path, cfg: dict | None = None) -> dict:
@@ -463,8 +467,15 @@ def main(argv=None) -> int:
         return 0 if res.get("ok") or res.get("skipped") else 1
     if args.cmd == "ecmwf":
         from . import ecmwf
+        from . import ecmwf_attempts as EA
         cyc = datetime.strptime(args.cycle, "%Y%m%d%H").replace(tzinfo=timezone.utc) if args.cycle else None
-        res = ecmwf.run(cfg, make_session(cfg), Path(args.out), cycle=cyc, force=args.force, published=args.published, github_output=args.github_output)
+        croot, started = ecmwf.REPO_ROOT / "data_cache" / "ecmwf", datetime.now(timezone.utc)
+        try:
+            res = ecmwf.run(cfg, make_session(cfg), Path(args.out), cycle=cyc, force=args.force, published=args.published, github_output=args.github_output)
+        except Exception as exc:  # noqa: BLE001 - the attempt is logged (the status page says why a cycle is missing), then the failure goes on
+            EA.record(croot, None, started, error=f"{type(exc).__name__}: {exc}")
+            raise
+        EA.record(croot, Path(args.out) if res.get("ok") and not res.get("skipped") else None, started, res)     # every attempt is logged next to the cache; the copy for the site only when a run publishes (nothing else is written to --out)
         print(json.dumps({k: v for k, v in res.items() if k not in ("attribution", "hours")}))
         return 0 if res.get("ok") or res.get("skipped") else 1
     if args.cmd == "stub":

@@ -116,7 +116,7 @@ gefs:
 
 ecmwf:
   # ECMWF open data (CC BY 4.0) at ski-area summits: IFS HRES line in "Precipitation by model" + IFS ENS plume (pipeline/ecmwf.py, `python -m pipeline ecmwf`).
-  # LIVE since dev18: .github/workflows/ecmwf.yml (standalone, schedule 09:40/11:40/21:40/23:40 UTC) runs it; set false to stop the job's work (the status page then reads
+  # LIVE since dev18: .github/workflows/ecmwf.yml (standalone, schedule: hourly at :50, 08-13 and 20-01 UTC, from the measured +7.75 h release) runs it; set false to stop the job's work (the status page then reads
   # "not enabled"). `--force` runs it by hand even when false. The 0.25 degree ENS files carry 50 perturbed members and no control; the count is read from the data.
   enabled: true
   cycles: [0, 12]

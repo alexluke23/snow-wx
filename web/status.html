@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Snow-Wx · Data status</title>
-  <meta name="description" content="Is Snow-Wx up to date? Last successful update, age and health of every data source (SNOTEL, ASOS, NWS alerts, NBM point forecasts, NDFD, model maps, hazards).">
+  <meta name="description" content="Is Snow-Wx up to date? Last successful update, age and health of every data source (SNOTEL, ASOS, NWS alerts, NBM point forecasts, model maps, hazards).">
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -45,7 +45,7 @@
         date; the cell says since when. <b>Not reported</b>: no status yet (for example right after a deploy).</li>
       <li><b>SNOTEL</b> is fetched from the USDA NRCS service. When that service is down the site keeps the last good copy for up to
         48 hours, labelled with its age, and then shows "unavailable"; it never shows old values as current.</li>
-      <li>NBM point forecasts update every 6 hours, NWS (NDFD) and model maps every 3 hours; observations, alerts and hazards hourly
+      <li>NBM point forecasts update every 6 hours and model maps every 3 hours; observations, alerts and hazards hourly
         (GitHub's schedules are best-effort and can run late).</li>
     </ul>
     <p>Something looks wrong? <span data-mailto-wrap hidden><a data-mailto data-subject="Snow-Wx data status" hidden>Tell us</a>. </span>Safety information
@@ -58,6 +58,7 @@
   </footer>
   <script src="js/site-config.js"></script>
   <script src="js/search.js" defer></script>
+  <script src="js/freshness.js"></script>
   <script src="js/status.js"></script>
 </body>
 </html>

@@ -26,7 +26,7 @@ sources:
   - id: noaa-nws
     name: NOAA / National Weather Service
     kind: data
-    role: "National Blend of Models (NBM) point forecasts, the official NWS forecast (NDFD), alerts, forecast discussions, winter hazards; links to the full NWS forecast"
+    role: "National Blend of Models (NBM) point forecasts, alerts, forecast discussions, winter hazards; links to the full NWS forecast; the NDFD forecast is fetched only for the verification archive"
     licence: "US Government work: public domain"
     licence_url: https://www.weather.gov/disclaimer
     credit: "Data: NOAA / National Weather Service"
