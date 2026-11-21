@@ -155,8 +155,8 @@ const SnowCharts = (() => {
   }
 
   // ---------------------------------------------------------------- accessibility
-  /** One-sentence summary above the chart, also its aria-label. */
-  function summary(el, text) {
+  /** One-sentence takeaway above the chart; the aria-label is the same text unless a fuller `aria` sentence is given (dev22: the visible line is short). */
+  function summary(el, text, aria) {
     let p = el.previousElementSibling;
     if (!p || !p.classList.contains("chart-sum")) {
       p = document.createElement("p");
@@ -165,18 +165,27 @@ const SnowCharts = (() => {
     }
     p.textContent = text;
     el.setAttribute("role", "img");
-    el.setAttribute("aria-label", text);
+    el.setAttribute("aria-label", aria || text);
+  }
+  const LEGEND_SIBLING = (n) => n && (n.classList.contains("lg") || n.classList.contains("snow-legend"));
+  /** One-line legend under the chart: items = [swatch kind, label] (kinds: line, dotted, dashed, band, bandsoft, hatch, or a css colour for a filled square). Sits between the chart and its table toggle. */
+  function legend(el, items) {
+    let n = el.nextElementSibling;
+    while (LEGEND_SIBLING(n) && n.classList.contains("lg")) { const m = n.nextElementSibling; n.remove(); n = m; }
+    const html = items.map(([k, label, color]) => `<span class="lgi"><i class="sw-${["line", "dotted", "dashed", "band", "bandsoft", "hatch"].includes(k) ? k : "box"}" style="${k === "hatch" || ["line", "dotted", "dashed"].includes(k) ? `color:${color || "#111827"}` : `background:${color || k}`}" aria-hidden="true"></i>${escHtml(label)}</span>`).join("");
+    el.insertAdjacentHTML("afterend", `<p class="lg" role="note">${html}</p>`);
   }
   const escHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => (
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   /** "View as table" after the chart; the table is built when opened. */
   function tableToggle(el, caption, columns, rows) {
-    let d = el.nextElementSibling;
+    let d = el.nextElementSibling, last = el;
+    while (LEGEND_SIBLING(d)) { last = d; d = d.nextElementSibling; }                       // the legend sits between the chart and the toggle
     if (!d || !d.classList.contains("chart-table")) {
       d = document.createElement("details");
       d.className = "chart-table";
       d.innerHTML = "<summary data-track=\"table_view\">View as table</summary><div class=\"tbl-wrap\"></div>";
-      el.after(d);
+      last.after(d);
       d.addEventListener("toggle", () => { if (d.open) d._build?.(); });
     }
     d._build = () => {
@@ -240,5 +249,5 @@ const SnowCharts = (() => {
   }
 
   return { OI, INK, MUTED, GRID, font, tick, MARGIN, CONFIG, wall, dayName, narrow, markLabel, endLabels, extent, plotH, timeAxis, yaxis, axisTitle, refLine, endLabel,
-    layout, plot, summary, tableToggle, heatTable, textOn, lazy, small };
+    layout, plot, summary, legend, tableToggle, heatTable, textOn, lazy, small };
 })();

@@ -17,7 +17,7 @@
 | Nov 7 | **Product focus: ski-area point forecasts (western US first).** |
 | Nov 7 | **Remove upper-air fields (500 mb, 700 mb) from HRRR and RRFS. Keep them for GFS (and ECMWF later).** |
 | Nov 7 | **Model maps must be zoomable** → interactive data layers for surface fields (§5.4). |
-| Nov 7 | **NBM is the primary point-forecast engine; NDFD shown as the NWS official forecast alongside it.** |
+| Nov 7 | **NBM is the primary point-forecast engine; NDFD shown as the NWS official forecast alongside it.** *Superseded Nov 21 (dev22): the site shows NBM only; NDFD is still fetched and archived for verification.* |
 | Nov 7 (S2) | Day/night = 12Z–00Z periods, labeled in local time. |
 | Nov 7 (S2) | Snowfall: NBM snowfall percentiles 0–48 h; beyond 48 h QPF pct × SLR × P(snow), styled "extended outlook". |
 | Nov 7 (S2) | Bars/headline/totals use NBM deterministic (mean) so bars sum to totals; percentiles only as 10–90% ranges; zero snow when QPF < 0.01". |

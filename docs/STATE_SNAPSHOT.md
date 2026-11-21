@@ -19,7 +19,7 @@ Business planning is private and not part of this repo; do not create business d
 |---|---|---|
 | `update-site.yml` | hourly at :17 (and on dispatch) | obs fetch, unpack newest product tars, build, deploy, forecast archive, monitor |
 | `models.yml` | 55 1-22/3 (maps, NDFD, NOHRSC); 55 2,8,14,20 (NBM points) | model maps, NBM point forecasts, NDFD, NOHRSC -> release assets |
-| `ecmwf.yml` | 40 9,11,21,23 | ECMWF HRES + ENS (+ AIFS) with mirror failover, resume cache |
+| `ecmwf.yml` | 50 8-13,20-23,0-1 (hourly attempts around the measured +7.75 h release) | ECMWF HRES + ENS (+ AIFS) with mirror failover, resume cache |
 | `gefs.yml` (dev21) | 10 6,8,18,20 | NOAA GEFS plume (00Z/12Z; times from measured NOAA release times), resume cache |
 | `verify.yml` (dev21) | 25 15 daily | scores the forecast archive against SNOTEL -> `models/verify/` |
 | `tests.yml` | pull requests | pytest (offline) |

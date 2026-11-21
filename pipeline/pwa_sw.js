@@ -4,7 +4,7 @@
  * What it caches (and nothing else; no map tiles, no third-party bulk):
  *   shell   versioned precache of our own pages/CSS/JS (cache "snowwx-shell-<version>", old versions deleted on activate)
  *   data    stale-while-revalidate for the small JSON the pages need: summary.json, meta.json, alerts/avalanche indexes and each
- *           FAVORITE's points/<id>.json + ndfd/<id>.json (the page tells us the favorites; see message FAVORITES)
+ *           FAVORITE's points/<id>.json (the page tells us the favorites; see message FAVORITES)
  *   lib     the Plotly bundle (CORS, cache-first), so charts draw offline
  * Update flow: a new worker installs and WAITS; pages show "Update available" and post SKIP_WAITING; then they reload.
  * Kill switch: pwa.kill=true in config makes the build emit a worker that unregisters itself and deletes every snowwx-* cache.
@@ -84,7 +84,7 @@ self.addEventListener("fetch", (e) => {
     return;
   }
   if (SMALL_DATA.includes(url.pathname)) { e.respondWith(swr(new Request(url.origin + url.pathname), DATA)); return; }
-  const m = /^data\/(points|ndfd)\/([^/]+)\.json$/.exec(rel);
+  const m = /^data\/(points)\/([^/]+)\.json$/.exec(rel);
   if (m && m[2] !== "summary") {
     e.respondWith((async () => {
       const f = await loadFavs();
@@ -120,7 +120,7 @@ async function prefetch(ids, client) {
   };
   await saveFavs(ids);
   for (const p of SMALL_DATA.map((x) => x.slice(BASE.length + 1)).filter((x) => /summary|meta|alerts|avalanche/.test(x))) await get(p);
-  for (const id of ids) { await get(`data/points/${encodeURIComponent(id)}.json`); await get(`data/ndfd/${encodeURIComponent(id)}.json`); ok++; }
+  for (const id of ids) { await get(`data/points/${encodeURIComponent(id)}.json`); ok++; }
   try { const l = await caches.open(LIB); if (!(await l.match(PLOTLY))) { const r = await fetch(PLOTLY); if (r.ok) { bytes += (await r.clone().blob()).size; await l.put(PLOTLY, r); } } } catch { /* offline */ }
   if (client) client.postMessage({ type: "PREFETCHED", count: ok, bytes });
 }

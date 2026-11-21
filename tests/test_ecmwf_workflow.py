@@ -38,7 +38,7 @@ def on_of(doc):
 def test_workflow_yaml_has_the_required_keys():
     d = load(WF)
     on = on_of(d)
-    assert d["name"] and on["schedule"] == [{"cron": "40 9,11,21,23 * * *"}]                  # schedule ACTIVE
+    assert d["name"] and on["schedule"] == [{"cron": "50 8-13,20-23,0-1 * * *"}]                  # schedule ACTIVE
     inputs = on["workflow_dispatch"]["inputs"]["force"]
     assert inputs["type"] == "boolean" and inputs["default"] is False
     assert d["permissions"] == {"contents": "write", "actions": "write"}
