@@ -180,7 +180,11 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 20 2026: main has dev13-dev21; branch scrub-business removes business content from the tree; owner summary: docs/STATE_SNAPSHOT.md)**
+**Current state (Nov 20 2026: main has dev13-dev21 + scrub-business; branch dev22 in progress; owner summary: docs/STATE_SNAPSHOT.md)**
+- **dev22 (branch):** NBM ONLY (the "NWS official" toggle, its state and `data/ndfd/` browser fetches are gone; the NDFD fetch and archive rows stay: guard `tests/test_lean_charts.py`); lean chart modules (takeaway + chart + legend + table + one `.note.src` source line + `how()` link;
+  all explanations in About "Reading the charts"; `C.summary(el, short, aria)`, `C.legend`); snow-ratio chart per run (`web/js/charts/segments.js`, browser check `slrchart`); freshness `web/js/freshness.js` (latest / late / out of date, lags measured) + `pipeline/ecmwf_attempts.py` + `ecmwf.yml` hourly attempts
+  (the ONLY .github edit, schedule + comment; a proposed extra publish step was denied by the tool classifier and is NOT applied); `tools/page_metrics.py` (area-page height / CLS on frozen fixtures), `tools/slr_baseline.py` + `docs/specs/snow-ratio-ml.md` (research only).
+  GitHub delivers few cron events here (6 of ~46 hourly runs): never assume a scheduled job ran.
 - **dev21 (merged, PR #30):** TWO new owner-authorized workflows (the only `.github/` change): `verify.yml` (daily 15:25 UTC: archive CSVs -> `pipeline verify-ci` = the same
   `verify.run` -> `verify-<YYYYMMDDHH>-<hash>.tar` on model-maps -> update-site's existing unpack -> `build/models/verify/`; the panel reads `models/verify/` (`VerificationUI.BASE`), flag
   `verification_ui.enabled` still OFF; switch `verification.ci_enabled`; NEVER an index.json in models/verify: the model catalog collects */index.json) and `gefs.yml` (06:10/08:10/18:10/20:10

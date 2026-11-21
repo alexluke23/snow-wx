@@ -3,7 +3,7 @@ NOT be enabled before the W1 domain move (installed users get stranded if the or
 
 `python -m pipeline pwa --out build` (after the site and data are assembled) writes, only when enabled:
   manifest.json   name, icons (192/512 + maskable + apple-touch 180), display standalone, start_url = My mountains, scope = base path
-  sw.js           from pipeline/pwa_sw.js: versioned shell precache, SWR for the small data files and each favorite's points/ndfd files
+  sw.js           from pipeline/pwa_sw.js: versioned shell precache, SWR for the small data files and each favorite's points file
   icons/*.png     generated with Pillow (a simple snowflake)
   and injects the manifest link, theme colour and the page config + js/pwa.js into every top-level page.
 With `pwa.kill: true` (and enabled false) it writes ONLY a worker that unregisters itself and deletes every snowwx-* cache, so a bad

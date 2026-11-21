@@ -511,18 +511,18 @@ def check_charts(b: Browser, base: str, log):
           return {h: el.getBoundingClientRect().height, strip: !!document.getElementById('snow-type-strip'),
                   bands: (L.shapes || []).filter(s => s.fillcolor && s.xref === 'paper' && s.type === 'rect' && s.y0 !== 0).length,
                   dashed: (L.shapes || []).filter(s => s.type === 'line' && s.line && s.line.dash === 'dash' && s.xref === 'paper').length,
-                  nTraces: (el.data || []).length, bandTrace: (el.data || []).some(t => t.fill === 'tonexty'),
-                  median: ((el.data || []).find(t => t.mode === 'lines' && t.line && t.line.dash === 'dot') || {y: []}).y.filter(v => v !== null).length,
-                  head: (document.querySelector('#slr-chart + .chart-table th') || {textContent: ''}).textContent,
+                  nTraces: (el.data || []).length, bandTrace: (el.data || []).some(t => t.fill === 'toself' || t.fill === 'tonexty'),
+                  median: ((el.data || []).find(t => t.meta && t.meta.kind === 'slr-line') || {y: []}).y.filter(v => v !== null).length,
+                  head: (document.querySelector('#slr-chart ~ .chart-table th') || {textContent: ''}).textContent,
                   labels: ['Dense', 'Medium', 'Blower'].every(n => anns.some(t => t.includes(n))),
                   slider: !!(L.xaxis && L.xaxis.rangeslider && L.xaxis.rangeslider.visible),
-                  summary: (el.previousElementSibling || {}).textContent || '', table: !!document.querySelector('#slr-chart + .chart-table'),
-                  tableHead: (() => { const d = document.querySelector('#slr-chart + .chart-table'); d.open = true; d._build && d._build();
+                  summary: el.getAttribute('aria-label') || '', table: !!document.querySelector('#slr-chart ~ .chart-table'),
+                  tableHead: (() => { const d = document.querySelector('#slr-chart ~ .chart-table'); d.open = true; d._build && d._build();
                     const h = [...d.querySelectorAll('th[scope=col]')].map(t => t.textContent).join('|'); d.open = false; return h; })()}; })()""")
         log(f"  charts {area}: powder panel {pq}")
         # dev14 F3: thin dashed threshold lines (2), no full-height colour bands, direct labels, median + likely band over the whole run, complete sentence
         need(pq["h"] >= 260 and not pq["strip"] and pq["bands"] == 0 and pq["dashed"] == 2 and pq["labels"] and not pq["slider"] and pq["table"]
-             and pq["bandTrace"] and pq["median"] > 40, f"{area}: combined snow-ratio/powder panel: {pq}")
+             and pq["bandTrace"] and pq["median"] > 10, f"{area}: combined snow-ratio/powder panel: {pq}")
         need(not pq["summary"].rstrip().endswith("…") and pq["summary"].rstrip().endswith("."), f"{area}: powder summary is not a complete sentence: {pq['summary']!r}")
         need("25" in pq["tableHead"] and "75" in pq["tableHead"], f"{area}: table needs p25/p50/p75 columns: {pq['tableHead']}")
         need("heuristic" in pq["summary"] or "No snow" in pq["summary"], f"{area}: powder summary must say heuristic: {pq['summary'][:100]}")
@@ -1238,7 +1238,9 @@ def check_ensemble(b: Browser, base: str, log):
             need({"Median", "Mean", "HRES"} <= set(st["names"]), f"median / mean / HRES missing: {st['names']}")
             need((st["aria"] or "").startswith("ECMWF ensemble (50 members): median ") and "25–75%" in st["aria"] and "of 50 members above" in st["aria"] and st["role"] == "img", f"headline / aria-label: {st['aria']}")
             need("ECMWF IFS ENS" in st["badge"] and "00Z" in st["badge"] and "50 perturbed members" in st["badge"], f"cycle / issue time missing: {st['badge']}")
-            need("CC BY 4.0" in st["note"] and "Adapted from" in st["note"] and "not bias-corrected" in st["note"] and "0.25°" in st["note"] and "terrain" in st["note"], f"attribution / caveats missing: {st['note']}")
+            need("CC BY 4.0" in st["note"] and "Contains ECMWF open data" in st["note"] and "adapted" in st["note"] and "run started" in st["note"], f"attribution / issue time missing: {st['note']}")      # dev22: one-line credit; the caveats are in About
+            _ab = (Path(base_dir_holder["path"]) / "about.html").read_text(encoding="utf-8")
+            need("not bias-corrected" in _ab and "0.25°" in _ab and "terrain height" in _ab and 'adapted from "ECMWF IFS 15-day Forecast Data"' in _ab, "the ensemble caveats / full ECMWF statement are missing from About")
             need(st["announce"].startswith("Showing the ECMWF ensemble") and st["pressed"] == ["false", "true"] and st["plumeReq"] == 1, f"announce / state / one fetch: {st['announce']} {st['pressed']} {st['plumeReq']}")
             need("members" in st["table"] and "Median" in st["table"] and "at least" in st["table"] and not st["hscroll"], f"table rows / layout: {st['table'][:200]} hscroll={st['hscroll']}")
             if width == 375:
@@ -1248,7 +1250,7 @@ def check_ensemble(b: Browser, base: str, log):
             # Snow (in) toggle in the Ensemble view: sf x NBM's ratio; back to Models keeps working
             b.eval("[...document.querySelectorAll('#mm-mode button')].find(x => x.dataset.m === 'snow').click(); 1"); b.settle(2.5)
             sn = b.eval("(() => ({aria: document.getElementById('mm-chart').getAttribute('aria-label'), note: document.getElementById('mm-note').textContent}))()")
-            need("snow" in sn["aria"] and "median snow ratio" in sn["note"] and "inches assume NBM SLR" in sn["note"], f"snow mode in the ensemble: {sn}")
+            need("snow" in sn["aria"] and "NBM's ratio" in sn["aria"] and "median snow ratio" in (Path(base_dir_holder["path"]) / "about.html").read_text(encoding="utf-8"), f"snow mode in the ensemble: {sn}")      # dev22: the method text is in About
             b.eval("[...document.querySelectorAll('#mm-view button')].find(x => x.dataset.v === 'models').click(); 1"); b.settle(2.5)
             back = b.eval("(() => ({names: (document.getElementById('mm-chart').data || []).map(t => t.name), announce: document.getElementById('mm-announce').textContent}))()")
             need("NBM" in back["names"] and "ECMWF" in back["names"] and back["announce"].startswith("Showing the model comparison"), f"back to Models: {back}")
@@ -1271,11 +1273,11 @@ def check_ensemble(b: Browser, base: str, log):
                 log(f"  gefs {width}px: {g['names']}, segments {g['nulls']}, aria: {g['aria']}")
                 need(g["nulls"] == gn and "HRES" not in g["names"] and {"Median", "Mean"} <= set(g["names"]), f"GEFS plume traces: {g['names']} segments {g['nulls']}")
                 need((g["aria"] or "").startswith(f"GEFS ensemble ({gn} members): median ") and "NOAA GEFS" in g["badge"] and "control run plus the perturbed members" in g["badge"], f"GEFS headline / badge: {g['aria']} / {g['badge']}")
-                need("public domain" in g["note"] and "not bias-corrected" in g["note"] and "ECMWF" not in g["note"], f"GEFS note: {g['note'][:200]}")
+                need("public domain" in g["note"] and "NOAA/NCEP GEFS" in g["note"] and "run started" in g["note"] and "ECMWF" not in g["note"], f"GEFS note: {g['note'][:200]}")
                 need(g["announce"].startswith("Showing the GEFS ensemble") and g["pressed"] == ["false", "true"] and not g["hscroll"], f"GEFS announce / state: {g}")
                 b.eval("[...document.querySelectorAll('#mm-mode button')].find(x => x.dataset.m === 'snow').click(); 1"); b.settle(2.5)
                 sn = b.eval("document.getElementById('mm-note').textContent")
-                need("ESTIMATE" in sn and "categorical-snow share" in sn, f"GEFS snow mode must say it is an estimate: {sn[:160]}")
+                need("ESTIMATE" in sn and "categorical-snow" in (Path(base_dir_holder["path"]) / "about.html").read_text(encoding="utf-8"), f"GEFS snow mode must say it is an estimate: {sn[:160]}")
         # stale: a run started 30 h ago is greyed and says so
         d = json.loads(orig)
         d["init"] = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=30)).strftime("%Y-%m-%dT%H:00Z")
@@ -1340,7 +1342,7 @@ def check_multimodel(b: Browser, base: str, log):
     need(st and st["names"][0] == "NBM" and len(st["names"]) >= 3 and {"HRRR", "RRFS", "GFS"} & set(st["names"]), f"model lines missing: {st and st['names']}")
     need(("High" in st["badge"] or "Medium" in st["badge"] or "Low" in st["badge"]) and "heuristic" in st["badge"], f"agreement badge/heuristic label: {st['badge']}")
     need("customdata" in st["hover"] and "summit" in st["hover"] and "terrain" in st["terrain"], f"tooltip lacks model terrain vs summit: {st['hover']} {st['terrain']}")
-    need(st["summary"].rstrip().endswith(".") and "…" not in st["summary"] and "model agreement" in st["summary"], f"headline sentence: {st['summary']}")
+    need(st["summary"].rstrip().endswith(".") and "…" not in st["summary"] and ("across the models" in st["summary"] or "model agreement" in st["summary"]), f"headline sentence: {st['summary']}")
     need("Liquid" in st["title0"] and "Snow" in st["title1"] and st["badge1"] == st["badge"], f"units toggle: {st['title0']} / {st['title1']}; badge must not change")
     need(st["cols"][:2] == ["Time", "NBM"] and st["rows"] >= 4 and st["h"] >= 200, f"table/height: {st['cols']} {st['rows']} {st['h']}")
     py = mm_mod.rebase(datetime(2026, 11, 18, 12, tzinfo=timezone.utc), [0, 6, 12], [0, 0.2, 0.9], datetime(2026, 11, 18, 15, tzinfo=timezone.utc))
@@ -1383,7 +1385,7 @@ def check_multimodel(b: Browser, base: str, log):
                           hscroll: document.documentElement.scrollWidth > innerWidth + 2}; })()""")
                 res[(badge, width)] = r
                 need(r["drawn"] and r["dash"] == "dot" and "AIFS (AI)" in r["labels"].split("|") and "not elevation-adjusted" in r["tip"] and not r["hscroll"], f"AIFS line {width}px: {r}")
-                need("AIFS Single" in r["note"] and "CC BY 4.0" in r["note"] and ("not part of" if not badge else "included in") in r["note"], f"AIFS attribution / badge note: {r['note'][-260:]}")
+                need("experimental" in r["note"] and "CC BY 4.0" in r["note"] and (("not in the agreement rating" in r["note"]) if not badge else ("not in the agreement rating" not in r["note"])) and "AIFS Single" in (Path(base_dir_holder["path"]) / "about.html").read_text(encoding="utf-8"), f"AIFS attribution / badge note: {r['note'][-260:]}")
         n_off = int(re.search(r"of (\d+) models", res[(False, 1280)]["badge"]).group(1)) if re.search(r"of (\d+) models", res[(False, 1280)]["badge"]) else None
         n_on = int(re.search(r"of (\d+) models", res[(True, 1280)]["badge"]).group(1)) if re.search(r"of (\d+) models", res[(True, 1280)]["badge"]) else None
         log(f"  AIFS line: badge models excluded={n_off} included={n_on} | {res[(False, 1280)]['badge'][:90]}")
@@ -1589,6 +1591,76 @@ def check_alert_cls(b: Browser, base: str, log):
         b.cmd("Page.removeScriptToEvaluateOnNewDocument", identifier=sid)
     log(f"  alert CLS: {res}")
     need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_slr_chart(b: Browser, base: str, log):
+    """dev22 Part 3: the snow-ratio chart is drawn ONLY where precipitation is likely: ONE median line (solid, never dotted), one closed band polygon per run, polygons that never overlap
+    each other or a hatched 'dry' strip, nothing drawn inside a dry strip, a legend entry for the strip; at 375 and 1280 px on the Grand Targhee fixture."""
+    res = {}
+    for width in (375, 1280):
+        b.open(f"{base}/area.html#grand-targhee-resort", width=width, height=900, wait=10)
+        _draw_all(b)
+        wait_for(b, "document.getElementById('slr-chart') && document.getElementById('slr-chart').data", 20)
+        d = b.eval("""(() => { const el = document.getElementById('slr-chart'); const ms = (w) => Date.parse(String(w).replace(' ', 'T') + ':00Z');
+          const T = el.data.map((t) => ({kind: (t.meta || {}).kind || (t.type === 'bar' ? 'bar' : 'other'), dash: t.line && t.line.dash, fill: t.fill, fc: t.fillcolor, type: t.type,
+            xs: (t.x || []).map((x) => (typeof x === 'number' ? x : ms(x))), y: t.y || [], w: t.width, mode: t.mode}));
+          return {traces: T, legend: (document.querySelector('#slr-chart ~ .lg') || {}).textContent || '', slr: window.snowwx && window.snowwx.slr, errors: 0}; })()""")
+        tr = d["traces"]
+        lines = [t for t in tr if t["kind"] == "slr-line"]
+        bands = [t for t in tr if t["kind"] == "slr-band"]
+        dry = [t for t in tr if t["kind"] == "slr-dry"]
+        need(len(lines) == 1, f"{width}px: expected ONE median line trace, got {len(lines)}")
+        need(lines[0].get("dash") in (None, "solid"), f"{width}px: the median line is not solid: {lines[0].get('dash')}")
+        need(not [t for t in tr if t.get("dash") in ("dot", "dash") and t["kind"] != "other"], f"{width}px: a dotted/dashed variant of the ratio line exists")
+        need(len({t["fc"] for t in bands}) <= 1 and all(t["fill"] == "toself" for t in bands), f"{width}px: bands must share one fill colour and be closed polygons")
+        spans = sorted((min(t["xs"]), max(t["xs"])) for t in bands)
+        for (a0, a1), (c0, c1) in zip(spans, spans[1:]):
+            need(a1 < c0, f"{width}px: overlapping band polygons {a1} >= {c0}")
+        dry_iv = [(c - w / 2, c + w / 2) for t in dry for c, w in zip(t["xs"], t["w"] if isinstance(t["w"], list) else [t["w"]] * len(t["xs"]))]
+        eps = 60000.0
+        for t in bands:
+            for x in t["xs"]:
+                need(not any(a + eps < x < c - eps for a, c in dry_iv), f"{width}px: a band polygon reaches into a dry strip (x={x})")
+        ln = lines[0]
+        for x, y in zip(ln["xs"], ln["y"]):
+            need(y is None or not any(a + eps < x < c - eps for a, c in dry_iv), f"{width}px: the median line is drawn inside a dry strip (x={x})")
+        need((not dry_iv) or "dry" in d["legend"], f"{width}px: no legend entry for the dry strip: {d['legend']!r}")
+        need(d["slr"] is not None and "outside" in d["slr"], f"{width}px: the p50-outside-p25-p75 count was not recorded")
+        res[width] = {"bands": len(bands), "dry": len(dry_iv), "runs": d["slr"]["runs"], "outside": d["slr"]["outside"]}
+    log(f"  slr chart: {res}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
+
+def check_lean_modules(b: Browser, base: str, log):
+    """dev22 Part 2: every chart module = title + one short takeaway + chart + legend + View as table + ONE source line with a 'How it works' link to an existing About anchor;
+    no long grey notes under charts; info popovers one sentence; the NBM-only page has no 'NWS official' choice."""
+    about = (Path(base_dir_holder["path"]) / "about.html").read_text(encoding="utf-8")
+    ids = set(re.findall(r'\bid="([\w-]+)"', about))
+    out = {}
+    for width in (375, 1280):
+        b.open(f"{base}/area.html#grand-targhee-resort", width=width, height=900, wait=10)
+        _draw_all(b)
+        d = b.eval("""(() => { const secs = [...document.querySelectorAll('#area section')].filter((s) => s.querySelector('.chart, .heat-box'));
+          return {mods: secs.map((s) => ({id: s.id || s.querySelector('h3').textContent.slice(0, 20), sum: [...s.querySelectorAll('.chart-sum')].map((p) => p.textContent.length),
+            src: [...s.querySelectorAll('.note.src')].map((p) => p.textContent.length), how: [...s.querySelectorAll('a.how')].map((a) => a.getAttribute('href')),
+            notes: [...s.querySelectorAll('p.note:not(.src)')].map((p) => p.textContent.length), toggles: s.querySelectorAll('details.chart-table').length})),
+            titles: [...document.querySelectorAll('#area a.info[title]')].map((a) => a.title), text: document.getElementById('area').textContent,
+            srcBtn: document.querySelectorAll('[data-src]').length}; })()""")
+        need(d["srcBtn"] == 0 and "NWS official" not in d["text"] and "NWS blend" not in d["text"], f"{width}px: an NWS-official choice is still on the page")
+        need(len(d["mods"]) >= 6, f"{width}px: too few chart modules: {len(d['mods'])}")
+        for m in d["mods"]:
+            need(m["src"] and m["how"], f"{width}px: module {m['id']} has no source line / How it works link: {m}")
+            for h in m["how"]:
+                need(h.startswith("about.html#") and h.split("#")[1] in ids, f"{width}px: {m['id']} links to a missing About anchor {h}")
+            need(all(n <= 230 for n in m["src"]), f"{width}px: {m['id']} source line too long: {m['src']}")      # the model panel's line also carries the ECMWF credit and freshness
+            need(all(n <= 170 for n in m["sum"]), f"{width}px: {m['id']} takeaway too long: {m['sum']}")
+            need(not m["notes"], f"{width}px: {m['id']} still has a long grey note: {m['notes']}")
+        for t in d["titles"]:
+            need(len(re.findall(r"[.!?](?:\s|$)", t.strip().rstrip(".") + ".")) <= 1, f"{width}px: info popover longer than one sentence: {t[:90]}")
+        out[width] = len(d["mods"])
+    log(f"  lean modules: {out}")
+    need(not b.errors, f"JS errors: {b.errors}")
+
 
 
 def check_webcams(b: Browser, base: str, log):
@@ -1977,7 +2049,7 @@ def check_mobile_sweep(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips, "alertcls": check_alert_cls,
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips, "alertcls": check_alert_cls, "slrchart": check_slr_chart, "lean": check_lean_modules,
           **{f"failure{k}": functools.partial(check_failure_modes, shard=(k, 3)) for k in (1, 2, 3)}}
 FULL_RUN = [n for n in CHECKS if n != "failure"]          # the full run uses the three failure shards (same coverage, parallel)
 

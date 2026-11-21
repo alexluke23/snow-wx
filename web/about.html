@@ -41,7 +41,7 @@
 
     <nav class="toc" aria-label="On this page">
       <a href="#nbm">NBM forecasts</a> · <a href="#daily-snow">Snowfall by day</a> · <a href="#accumulated">Accumulated snow</a> · <a href="#snow-colors">Snowfall colours</a> · <a href="#probabilities">Ranges and chances</a> · <a href="#daily-summary">Daily summary</a> · <a href="#model-agreement">Model comparison</a> · <a href="#storm-total">Storm total</a> · <a href="#verification">Verification</a> · <a href="#winter-hazards">Winter hazards layer</a> · <a href="#forecast-map">Forecast map</a> · <a href="#powder-quality">Powder quality</a> ·
-      <a href="#snow-level">Snow level</a> · <a href="#elevation">Elevation</a> · <a href="#nws">NWS forecast</a> ·
+      <a href="#snow-level">Snow level</a> · <a href="#elevation">Elevation</a> · <a href="#reading-the-charts">Reading the charts</a> ·
 <a href="#snoparks">Sno-Parks</a> · <a href="#afd">Forecaster discussion</a> ·
       <a href="#sources">Data sources</a> · <a href="#disclaimer">Disclaimer</a>
     </nav>
@@ -221,7 +221,7 @@
 
     <section id="verification">
       <h3>Verification (in progress)</h3>
-      <p>We keep an archive of every NBM and NDFD snowfall forecast we publish (24-hour and 72-hour windows) and a script that compares the 24-hour forecasts with observed snow depth change at SNOTEL
+      <p>We keep an archive of every NBM snowfall forecast we publish (24-hour and 72-hour windows), plus the NWS NDFD forecast we still fetch for comparison but no longer show (24-hour and 72-hour windows), and a script that compares the 24-hour forecasts with observed snow depth change at SNOTEL
         stations. Depth change is a <b>lower bound</b> of snowfall (settling and compaction remove depth), so a forecast that looks too high may simply be compared with a depth that settled. The comparison leaves
         out observations from the SNOTEL outage window, observations with fewer than 20 hourly reports in the day, stale observations and missing pairs, and it counts what it left out. With only days of archive it can show
         no seasonal skill, so <b>we make no accuracy claim yet</b>: the model-agreement badge and the powder-quality classes are documented heuristics until this comparison covers a season. Results will be published here.</p>
@@ -307,12 +307,80 @@
         Sno-Parks give access to avalanche terrain, and snowmobilers are among the most affected groups.</p>
     </section>
 
-    <section id="nws">
-      <h3>NWS official forecast</h3>
-      <p>The "NWS official" toggle shows the National Digital Forecast Database (NDFD): the forecast written by
-        NWS forecasters, on the same 2.5-km grid as NBM. It is shown <b>raw, as issued</b>, for the grid cell — not
-        adjusted to the summit or base — because it already includes the forecasters' rain/snow decisions.
-        Snowfall, precipitation and snow level are available to 72 hours.</p>
+    <section id="reading-the-charts">
+      <h3>Reading the charts</h3>
+      <p>Every chart on an area page is one module: a title, one takeaway line, the chart, a legend, "View as table" and one line naming the source and
+        the issue time of the run. Everything that used to sit in long grey notes under the charts is here, one section per chart. All forecasts are NBM
+        (NOAA/NWS National Blend of Models); this site no longer offers the NWS NDFD forecast as a second choice. The NWS point forecast is still linked from
+        each page ("More"), and NWS alerts, winter hazards and forecast discussions are unchanged.</p>
+
+      <h4 id="snowfall-by-day">Snowfall by day</h4>
+      <p>Each bar is NBM's <b>likely range</b> for that day: the middle half (25th–75th percentile) of its possible outcomes for the 24 hours from about
+        4–5 AM local to the same time the next day (12Z to 12Z), coloured by the median with the NWS snowfall colours. Greyed days: little or no snow likely
+        (the likely range tops out under ½ in). NBM gives these percentiles only for whole 24-hour windows, so a short first day, and days past NBM's
+        percentile data, show the <b>expected amount</b> instead as a hatched grey bar: "partial day — expected amount, no range". Percentiles are never
+        added across windows. The takeaway names the snowiest day and the expected total over the forecast. More: <a href="#daily-snow">Daily snowfall</a>.</p>
+
+      <h4 id="accumulated-snow">Accumulated snow</h4>
+      <p>NBM's expected snowfall added up day by day, on the same days as "Snowfall by day"; the label on each bar is the running total. It ends where the
+        10-day total ends (a narrower last bar, marked *, when that falls mid-day), so the last bar matches "Next 10 days". These are expected amounts
+        only: NBM has no range for a running total, so none is drawn. More: <a href="#accumulated">Accumulated snow</a>.</p>
+
+      <h4 id="snow-ratio">Snow ratio and powder quality</h4>
+      <p>NBM's forecast snow-to-liquid ratio, drawn only where it means something: <b>while precipitation is likely</b> (at least a 20% chance). The line is the
+        median and the blue band the <b>likely range</b> (the middle half of NBM's outcomes), both from the same native NBM percentile series. Where precipitation is
+        not likely the chart shows a hatched "dry: ratio not shown" strip; nothing is drawn or joined across it, and a single wet hour is a marker with its
+        range. The dashed lines mark the powder-quality classes, a <b>documented heuristic</b> (Dense below 10:1, Medium 10–15, Blower 15 and up; "wind-affected"
+        when summit gusts reach 30 mph while it snows), not an accuracy claim and not an avalanche rating. The table shows a dash wherever no ratio is shown.
+        More: <a href="#powder-quality">Powder quality</a>.</p>
+
+      <h4 id="chance-of">Chance of at least…</h4>
+      <p>NBM's own chance of at least each amount for the 2.5 km grid cell around the summit or base, in 24, 48 and 72 h windows starting about 5 AM
+        local (12Z); columns are labelled with the day the window starts (hover for exact times). These probabilities are calibrated separately from the
+        expected-amount bars, so the two can disagree. NBM only. More: <a href="#probabilities">Probabilities</a>.</p>
+
+      <h4 id="snow-level-chart">Snow level</h4>
+      <p>Below the line precipitation falls as rain. The line is NBM's median snow level over the whole forecast; it is solid and dark where precipitation is
+        likely (at least a 20% chance) and dotted where it is not, because a snow level exists without precipitation. The orange band is the likely range
+        (the middle half of NBM's outcomes) as far as NBM provides it, about 10 days; grey stretches have no NBM snow level. Base and summit are drawn as
+        reference lines, and a line inside the blue zone means snow down to the base. Times are local. More: <a href="#snow-level">Snow level</a>.</p>
+
+      <h4 id="precip-by-model">Precipitation by model</h4>
+      <p>Cumulative precipitation at the summit point from NBM, HRRR, RRFS, GFS and ECMWF (and the experimental AIFS), in liquid-equivalent inches so models with
+        different snowfall products compare fairly, or snow inches at NBM's median snow ratio and NBM's chance of snow at the point (the NBM line is NBM's own
+        expected snowfall). Cumulative from the newest model start. Each model's own terrain height is in the tooltip: coarser grids sit lower or higher
+        than the summit. The model chips only change what is drawn; the agreement rating, the takeaway and the table always use every model.
+        The <b>agreement rating</b> is a heuristic: the share of models within ±25% of the median total (or 0.10 in) over the longest window at least three
+        models cover (High at 80% or more, Medium at 66% or more, otherwise Low); when every model is under 0.20 in it says "Little precipitation
+        expected" instead. It is not an accuracy claim. AIFS is shown for comparison and is not part of the rating unless the site configuration says so.
+        Sources: NOAA/NWS NBM, HRRR, RRFS and GFS; ECMWF IFS (operational run, 0.25°): adapted from "ECMWF IFS 15-day Forecast Data" by ECMWF, licensed under
+        <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>, see the
+        <a href="https://apps.ecmwf.int/datasets/licences/general/" target="_blank" rel="noopener">ECMWF Terms of Use</a>; ECMWF AIFS Single (AI model,
+        experimental, 0.25°, no terrain height): adapted from ECMWF AIFS open data, CC BY 4.0, ECMWF Terms of Use. More: <a href="#model-agreement">Model comparison</a>.</p>
+
+      <h4 id="ensemble">Ensemble (ECMWF ENS and NOAA GEFS)</h4>
+      <p>The Ensemble view of the same panel shows every member of the ensemble as a faint line, bands for the middle half (25–75%) and 10–90% of the members, the
+        median and the mean, and, for ECMWF, the HRES line: ECMWF's single high-resolution run, a reference and not a member. It is raw model guidance on a 0.25°
+        grid (about 28 km): not bias-corrected, not elevation-adjusted and not the same product as NBM; the grid's terrain height versus the summit is in the tooltip.
+        Each member is one scenario and the bands are quantiles across members at each time (no percentiles are added over time). Liquid is total
+        precipitation (rain and melted snow). Snow inches are an estimate: ECMWF's snowfall water equivalent (GEFS: each 6-hour amount times GEFS's categorical-snow
+        share) times NBM's median snow ratio. The ECMWF open data carry no control member, so its plume has the perturbed members only; the GEFS plume has the
+        control run plus the perturbed members. A forecast step that could not be fetched from the mirror is drawn as a gap in every member and never
+        interpolated. The badge names the run, when it started and which of three states it is in: the <b>latest run</b>, <b>late</b> (a newer run is expected
+        but is not yet due or not yet published) or <b>out of date</b> (a newer run should exist and we failed to get it).
+        Credits: ECMWF panels carry "Contains ECMWF open data, CC BY 4.0, adapted" and the full statement is under "Precipitation by model" above and on the
+        <a href="sources.html">Sources</a> page; GEFS is NOAA/NCEP data via the NOAA Open Data Dissemination (public domain). More: <a href="#ecmwf">ECMWF</a>, <a href="#gefs">GEFS</a>.</p>
+
+      <h4 id="recent-observations">Recent observations</h4>
+      <p>Observed snowfall is the NOAA/NWS NOHRSC National Snowfall Analysis for the 24, 48 and 72 h windows ending at the time shown; depth and snow water equivalent (SWE) come from the
+        SNODAS analysis. These are analyses on grids of about 1–4 km, not measurements at the lifts. The SNOTEL panel shows the nearest station's snow depth and SWE changes: a
+        depth change includes compaction and settling, so it is <b>not snowfall</b>; the SWE change is the water in the snowpack. NOHRSC publishes snowfall for 24–72 h only.
+        A SNOTEL copy older than the window it describes shows no change instead of an old value presented as current. Sources: USDA NRCS SNOTEL, NOAA/NWS NOHRSC.</p>
+
+      <h4 id="hour-by-hour">Hour by hour</h4>
+      <p>Temperatures are adjusted from the 2.5 km NBM grid to each elevation (6.5 °C per km). Snow is shown as a rate (inches per hour): hourly to 36 h, then
+        6-hour amounts, so they compare on one axis. After about 3½ days (shaded) temperature and wind are NBM's 6-hourly values, and snow after that is in the
+        day-by-day bars.</p>
     </section>
 
 
@@ -326,7 +394,7 @@
     <section id="sources">
       <h3>Data sources and attribution</h3>
       <ul>
-        <li><b>Forecasts:</b> NOAA/NWS National Blend of Models (NBM) and National Digital Forecast Database (NDFD),
+        <li><b>Forecasts:</b> NOAA/NWS National Blend of Models (NBM); the National Digital Forecast Database (NDFD) is fetched only for the verification archive,
           via the NOAA Open Data Dissemination program on AWS; NWS alerts and Area Forecast Discussions via
           api.weather.gov.</li>
         <li><b>Model maps:</b> NOAA HRRR, RRFS and GFS (NOAA Open Data Dissemination on AWS).</li>

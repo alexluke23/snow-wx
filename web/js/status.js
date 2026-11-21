@@ -5,7 +5,7 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const NAMES = { snotel: "SNOTEL snow observations", asos: "Airport weather stations (ASOS/AWOS)", alerts: "NWS alerts", afd: "NWS forecast discussions",
     avalanche: "Avalanche danger ratings", hazards: "NWS winter hazards layer", points: "NBM point forecasts (ski areas, Sno-Parks, SNOTEL)",
-    ndfd: "NWS official forecast (NDFD)", models: "Model maps (HRRR, RRFS, GFS)", nohrsc: "NOHRSC snowfall analysis", ecmwf: "ECMWF forecasts (HRES line + ensemble plume)", aifs: "ECMWF AIFS line (AI model, experimental)", gefs: "NOAA GEFS ensemble plume", verify: "Forecast verification (daily scores vs SNOTEL)" };
+    ndfd: "NDFD fetch (forecast archive only; not shown on the site)", models: "Model maps (HRRR, RRFS, GFS)", nohrsc: "NOHRSC snowfall analysis", ecmwf: "ECMWF forecasts (HRES line + ensemble plume)", aifs: "ECMWF AIFS line (AI model, experimental)", gefs: "NOAA GEFS ensemble plume", verify: "Forecast verification (daily scores vs SNOTEL)" };
   const ORDER = ["points", "ndfd", "snotel", "asos", "alerts", "hazards", "avalanche", "afd", "models", "nohrsc", "ecmwf", "aifs", "gefs", "verify"];
   const hoursSince = (iso, now) => { const t = Date.parse(iso || ""); return Number.isFinite(t) ? Math.max(0, (now - t) / 3.6e6) : null; };
   const ageText = (h) => (h === null ? "–" : h < 1 ? "under 1 h" : h < 48 ? `${Math.round(h)} h` : `${Math.round(h / 24)} days`);
@@ -45,9 +45,13 @@
       const label = { ok: "✓ OK", late: "⚠ Late", none: "– Not reported", nolimit: "• Reported", off: "– Not enabled", wait: "– Waiting for first run" }[j.state];
       const limit = lim ? [lim.max_failures ? `${lim.max_failures} failed runs` : "", lim.max_age_hours ? `${lim.max_age_hours} h` : ""].filter(Boolean).join(" or ") : "–";
       const outage = e?.outage_since && !e.unavailable ? `outage since ${when(e.outage_since)}` : "";
-      const detail = [e?.detail || (e?.count != null ? `${e.count} ${e.unit || "items"}` : ""), j.why, outage].filter(Boolean).join(" · ");
+      // dev22: the run's own freshness (latest / late / out of date, judged against when the next run is due) and one line per recent cycle: expected time, last attempt, result, reason
+      const fr = n === "ecmwf" && e?.init && typeof Freshness === "function" ? Freshness.words(Freshness.state(Date.parse(e.init), now, "ecmwf"), { label: "run" }).text : "";
+      const detail = [e?.detail || (e?.count != null ? `${e.count} ${e.unit || "items"}` : ""), fr, j.why, outage].filter(Boolean).join(" · ");
+      const hm = (iso) => (iso ? `${iso.slice(5, 10)} ${iso.slice(11, 16)} UTC` : "–");
+      const cyc = Array.isArray(e?.cycles) && e.cycles.length ? `<ul class="st-cyc">${e.cycles.map((c) => `<li><b>${esc(c.cycle.slice(8))}Z ${esc(c.cycle.slice(4, 8).replace(/^(\d\d)(\d\d)$/, "$1-$2"))}</b>: expected ${esc(hm(c.expected))} · last attempt ${esc(hm(c.last_attempt))} (${c.attempts} so far) · ${esc(c.result_text)}: ${esc(c.reason)}</li>`).join("")}</ul>` : "";
       return `<tr class="st-${j.state}"><th scope="row">${esc(NAMES[n] || n)}</th><td data-label="Status"><b class="st-badge">${label}</b></td>
-        <td data-label="Last success">${j.ref ? esc(when(j.ref)) : "–"}</td><td data-label="Age">${esc(ageText(j.age ?? null))}</td><td data-label="Limit">${esc(limit)}</td><td data-label="Detail">${esc(detail) || "–"}</td></tr>`;
+        <td data-label="Last success">${j.ref ? esc(when(j.ref)) : "–"}</td><td data-label="Age">${esc(ageText(j.age ?? null))}</td><td data-label="Limit">${esc(limit)}</td><td data-label="Detail">${esc(detail) || "–"}${cyc}</td></tr>`;
     });
     $("st-table").innerHTML = `<div class="tbl-wrap"><table class="st-tbl"><caption class="sr">Last successful update and health of each data source</caption>
       <thead><tr><th scope="col">Source</th><th scope="col">Status</th><th scope="col">Last success</th><th scope="col">Age</th><th scope="col">Limit</th><th scope="col">Detail</th></tr></thead>

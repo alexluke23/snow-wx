@@ -159,3 +159,16 @@ High 20 (13 %), Medium 80 (50 %), Low 21 (13 %), dry 39 (24 %); with AIFS in the
   ecCodes `parse_file` assertion): ecCodes loads its definition files lazily per GRIB template and that is NOT thread-safe, and GEFS's first decodes all start in worker threads (ECMWF
   happened to decode its first field single-threaded). Fix in `ecmwf.decode` (shared by GEFS and AIFS): a one-time warm-up under a lock plus one decode at a time (`_DECODE_LOCK`);
   downloads stay parallel. Re-run: **00Z Nov 20 2026, 31 members (control + 30), 160 areas, 41 steps, 0 missing messages, 376 MB in 249 s, mirror aws, 0 retries** (3,722 requests).
+
+
+### Model-run freshness and the ECMWF schedule (dev22 Part 4)
+- **Diagnosis (Nov 20-21):** the 12Z ENS run was never published because the scheduled workflow never ran. Public API evidence: `ecmwf.yml` had 4 runs in total (3 manual dispatches and one scheduled run at 18:00 UTC), none at the 21:40 / 23:40 cron times;
+  GitHub delivered 6 of about 46 hourly `update-site` runs between Nov 19 00:00 and Nov 20 21:00 UTC, and none for `gefs.yml` / `verify.yml`. The pipeline itself was healthy: manual runs published (00Z at 13:09 UTC) and the 12Z files were on the mirror at 19:45 UTC.
+- **Measured release (S3 Last-Modified of the 240 h index/GRIB file, 17 cycles Nov 12-20, every one identical to +-0.01 h):** HRES +7.57 h, ENS +7.75 h after the nominal time (GEFS +5.5 to +5.65 h, dev21). So 00Z is complete at about 07:45 UTC and 12Z at 19:45 UTC.
+- **Schedule:** `50 8-13,20-23,0-1 * * *` (one cheap attempt per hour from +0:20 to +5:20 after release; an attempt with nothing to do costs about 25 s; finished steps resume from the cache). Dropped cron events are a GitHub property we cannot fix; more attempts raise the chance
+  that one is delivered. An external trigger of `workflow_dispatch` (owner decision) would remove the dependence on GitHub's scheduler.
+- **Three states** (`web/js/freshness.js`, tests with frozen clocks): **latest** = no newer run is due yet (now < init + 12 h + lag); **late** = a newer run is due and we are inside the 3 h grace window; **out of date** = a newer run should exist and we have not got it. Age alone never
+  makes a run out of date. Used by the plume badge (and the grey-out), the "Precipitation by model" footer for the ECMWF and AIFS lines, and the status page.
+- **Attempt log:** `pipeline/ecmwf_attempts.py` records every attempt (published / already published / not on the mirror yet / incomplete / unreachable / error, with a reason) in `data_cache/ecmwf/attempts.json` (restored with the resume cache); a copy rides in the ecmwf product
+  tar (`ecmwf/attempts.json`) whenever a run publishes, and the status page lists the last four cycles (expected time, last attempt, result, reason). Attempts that publish nothing upload nothing, so the page shows attempts up to the last published run;
+  a small extra asset published after every attempt would need one more workflow step (not applied; see the dev22 report).
