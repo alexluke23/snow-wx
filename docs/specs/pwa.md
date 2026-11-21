@@ -6,7 +6,7 @@
 
 ---
 
-### 5.8 Offline-first PWA (W4) — *new, from Gemini #2*
+### 5.8 Offline-first PWA (W4) — *new*
 - **Files:** `manifest.json` (name, icons 192/512 incl. maskable, `display:
   standalone`, theme color, `start_url` = "My mountains"), `sw.js`, install
   coach mark.

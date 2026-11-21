@@ -8,13 +8,13 @@
 
 | Date | Decision |
 |---|---|
-| Nov 6 | Public site for owner + friends; may monetize later → only sources whose terms allow public display & commercial use. |
+| Nov 6 | Public site → only sources whose terms allow public display and reuse (licence table: PLAN §10). |
 | Nov 6 | No Synoptic. Obs from NRCS AWDB, IEM, avalanche.org. |
 | Nov 6 | Stack: Python pipeline on GitHub Actions → static site. Dev in VS Code + Claude Code; env `C:/miniforge3/envs/snow-wx`. |
 | Nov 7 | Model images stored as GitHub Release assets; site pulls newest per model; 900 MB guard. |
 | Nov 7 | Snow level (model maps) = wet-bulb 0 °C height, capped at lowest 0 °C height; free-atmosphere freezing level dashed. |
 | Nov 7 | 700 mb temperature in °C; surface °F / in / mph or kt (see §6). |
-| Nov 7 | **Product focus: OpenSnow competitor centered on ski-area point forecasts (western US first).** |
+| Nov 7 | **Product focus: ski-area point forecasts (western US first).** |
 | Nov 7 | **Remove upper-air fields (500 mb, 700 mb) from HRRR and RRFS. Keep them for GFS (and ECMWF later).** |
 | Nov 7 | **Model maps must be zoomable** → interactive data layers for surface fields (§5.4). |
 | Nov 7 | **NBM is the primary point-forecast engine; NDFD shown as the NWS official forecast alongside it.** |
@@ -34,7 +34,6 @@
 | Nov 8 | Keep local disk small: auto-prune `data_cache` (> 2 days); report disk use in summaries. |
 | Nov 8 | Priority: Obs map + per-site Forecast pages first; model maps last (models.html on low maintenance). Model pipeline keeps running — it feeds point products. |
 | Nov 8 | Consumer snow-forecast map (NBM expected snowfall + chance-of) lives on the Obs map as overlays, not on models.html. |
-| ~~Nov 8~~ | ~~Monetization on the back burner; decision point fall 2027.~~ **Superseded Nov 15 (below).** The fall-2027 *full launch* target survives; preparation starts now. |
 
 ---
 
@@ -74,24 +73,16 @@ Track 1/2/3 ordering from Nov 8(b) was merged into PLAN.md §8 (sprint table + b
 ### Principles
 
 1. **Trust first.** Show uncertainty, issue times and sources; publish our misses.
-2. **Safety information is always free:** avalanche danger, NWS alerts, snow
-   level/rain-at-base, data freshness. These are never gated.
-3. **The free product must be genuinely good** — it *is* the marketing.
-4. **Paid = convenience, personalization, compute** (alerts, unlimited saved
-   places, exports/API, embeds) — never public data itself.
-5. **Web/PWA first.** No native apps until demand is proven (avoids app-store
-   fees and double the dev work).
-6. **License-clean open data only** (§10).
-7. **Automate over people.** Pipeline + rules engine, not human writers.
-8. **Side-hustle realism.** Plan assumes roughly 8–12 focused hours/week with
-   Claude Code doing most implementation **[assumption — owner to confirm]**.
+2. **Safety information is always shown:** avalanche danger, NWS alerts, snow
+   level/rain-at-base, data freshness. These are never gated or hidden.
+3. **Web/PWA first.** No native apps.
+4. **License-clean open data only** (§10).
+5. **Automate.** Pipeline + rules engine, not human writers.
 
-### Audience
+### Users
 Skiers/riders (headline numbers, day/night snow, powder quality), backcountry
 users (avalanche danger, wind, snow level), **snowmobile / Nordic / snowshoe /
-sledding users** (Sno-Parks — underserved by incumbents), meteorologists
-(models, percentiles, method, verification), and later **B2B**: lodging, guides,
-ski shops, clubs, small ski areas, avalanche centers.
+sledding users** (Sno-Parks), meteorologists (models, percentiles, method, verification).
 
 ---
 
@@ -107,29 +98,17 @@ ski shops, clubs, small ski areas, avalanche centers.
 - Model-agreement thresholds and summary rules are heuristics until verified.
 - GitHub cron reliability for hourly runs.
 
-### 11.2 Owner decisions needed
-1. **Name:** final brand + domain (blocks W1).
-2. **Entity/tax:** sole prop vs LLC, state, CPA — and whether to use a merchant of
-   record.
-3. **Time budget:** is ~8–12 h/week right? (drives the cut list).
-4. **Soft launch:** comfortable with a capped Founding Supporter launch in Feb
-   2027 if Gate 3 passes, or wait for pre-season?
-5. **Hosting move now** (W1) vs later — recommended now.
-6. **Private vs public repo** long-term.
-7. **SMS:** never / only if users ask / launch with it.
-8. **External cron trigger** for the pipeline.
-9. **avalanche.org permission:** who contacts them, and when.
+### 11.2 Owner decisions
+Tracked privately (business planning is not part of this repo).
 
-#### PLAN §3 Nov 15 rows (long wording, until Nov 16)
+#### PLAN §3 Nov 15 rows (technical, long wording, until Nov 16)
 
-| Nov 15 | **Business intent is active.** Free-first. No paywall before Feb 2027; optional Founding Supporter soft launch Feb 2027 (Gate 3); full paid launch Sep–Oct 2027. |
-| Nov 15 | **Adopt** from the Gemini review: Daily Snow summaries (W3), offline-first PWA (W4), multi-model comparison incl. ECMWF (M7/M8). **Reshape** wind-loading (§5.9). **Reject** Open-Meteo API for production (rationale: `docs/BUSINESS.md` Appendix A). |
-| Nov 15 | **Move to a custom domain + Cloudflare Pages (site) + R2 (frequently-updated data) before any public promotion** (W1). GitHub Pages stays as a redirect/canonical stub. Reason: GitHub Pages is not permitted for online businesses/SaaS, installed PWAs and SEO are tied to the origin, and Pages file-count limits may bite the model-map frames. |
+| Nov 15 | **Adopt:** Daily Snow summaries (W3), offline-first PWA (W4), multi-model comparison incl. ECMWF (M7/M8). **Reshape** wind-loading (§5.9). **Open-Meteo API not used in production** (free tier is non-commercial only; PLAN §10). |
+| Nov 15 | **Move to a custom domain + Cloudflare Pages (site) + R2 (frequently-updated data)** (W1; domain set by owner at W1). GitHub Pages stays as a redirect/canonical stub. Reason: installed PWAs and SEO are tied to the origin, and Pages file-count limits may bite the model-map frames. |
 | Nov 15 | **Path-based, prerendered area URLs** (`/ski/<state>/<id>/`), not hash routing, so ~600 pages are indexable (W2). Old `#id` links redirect. |
-| Nov 15 | **Offline cache of the last-fetched forecast is free.** (Gemini proposed paywalling it.) It builds trust, drives PWA installs, and iOS push needs the install anyway. |
+| Nov 15 | **Offline cache of the last-fetched forecast is always available.** It builds trust and iOS push needs the install anyway. |
 | Nov 15 | **No numeric "lee-aspect accumulation adjustment" until verified** (M9). Wind is shown as an informational flag, never as an avalanche rating. |
 | Nov 15 | **Alerts: email + web push first; SMS is an optional later add-on** (carrier fees + registration + TCPA overhead; its advantage is working on weak signal). |
-| Nov 15 | **Payments via a merchant of record at first** (Stripe Managed Payments / Paddle / Lemon Squeezy class) to offload sales-tax registration; revisit when volume justifies Stripe + Stripe Tax. Confirm with a CPA. |
 | Nov 15 | Models compared primarily in **liquid-equivalent (SWE/QPF)**, with an inches toggle using the NBM SLR — apples-to-apples across models. |
 
 #### PLAN §8.3 W1-W7 and M4.5 (long form, until Nov 16)
@@ -167,10 +146,6 @@ render for 5 test cases; reviewed by an avalanche-literate person before launch.
 - Schedules are best-effort on GitHub. If gaps persist, add an external trigger
   (cron service calling `workflow_dispatch` with a fine-grained token) — owner
   decision.
-- Repo visibility: GitHub Actions minutes are free for public repos; a private
-  repo would cost money at current cadence — estimate before switching. Public
-  code is copyable (acceptable; our moat is data operations, verification,
-  brand and audience).
 - Size budget: points ≈ 600 pages/areas × ≤ 150 KB ≈ 90 MB in R2 (not in the
   site bundle).
 
@@ -334,8 +309,8 @@ from HRRR/RRFS). Terrain contours roughly doubled HRRR PNG size.
   (`pipeline/monitor.py`, config `monitoring`, `monitor` job after the deploy; check `gh`-created issues are assigned and
   e-mails reach the owner after the first failure). Open: independent "workflow did not run" check (spec 5.2c, heartbeat
   service recommended, needs the owner's account/secret).
-- Next (PLAN §8.2 Sprint 1): SNOTEL fix + W5a pipeline monitoring and data-status page, W1 hosting prep (brand name and domain
-  not decided; configurable SITE_ORIGIN / DATA_ORIGIN, GitHub URLs as defaults), then W3 daily summaries (before W2), W2, W4.
+- Next (PLAN §8.2 Sprint 1): SNOTEL fix + W5a pipeline monitoring and data-status page, W1 hosting prep (domain set by owner at W1;
+  configurable SITE_ORIGIN / DATA_ORIGIN, GitHub URLs as defaults), then W3 daily summaries (before W2), W2, W4.
 - Not started: storm-total tracker (PLAN §8.4), M7, M8 (ECMWF via Herbie `ifs`/`aifs`, attribution "© ECMWF, CC BY 4.0"),
   M6, model-map NWS colors (§8.4), self-hosted PMTiles backup (§8.4).
 

@@ -65,7 +65,7 @@ site:
   # Folder the site is served from ("" = root; "/snow-wx" on GitHub Pages today). Pages emit scripts as "<base_path>/js/...", and
   # web/js/site-config.js loads data/meta.json relative to its own location, so nested pages (W2) work. Used by pages.py (W2).
   base_path: "/snow-wx"     # GitHub Pages project site today; "" at the W1 custom-domain cutover
-  # Brand (dev20): PLACEHOLDERS until the owner picks the name. Used by the share cards (pipeline/og.py) and the W2 page titles (pages.py).
+  # Site name (dev20): PLACEHOLDERS, set by owner at W1. Used by the share cards (pipeline/og.py) and the W2 page titles (pages.py).
   name: "Snow-Wx"
   tagline: "Open snow forecasts for western US mountains"
   feedback_email: "alexluke2323@gmail.com"

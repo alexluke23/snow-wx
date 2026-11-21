@@ -2,7 +2,7 @@
 
 Public website of open weather, snowpack and avalanche data for western US
 mountains, built for skiers and snow-science users. Owner is a meteorologist
-comfortable with Python. Free-first, with a possible small business later.
+comfortable with Python.
 Hosting today: GitHub Actions (hourly) builds static JSON/PNG + HTML and deploys
 to GitHub Pages; the planned move to a custom domain + Cloudflare Pages + R2 is
 milestone W1 (docs/specs/hosting-seo.md). No servers, no API keys so far (the W6
@@ -12,7 +12,10 @@ alerts backend will add a small one; see docs/specs/alerts-backend.md).
 - At the start of every session read `docs/PLAN.md` (lean plan: status, rules, roadmap, acceptance criteria).
 - Before working on a feature, read ONLY its spec in `docs/specs/` (index in the "Where things live" table in PLAN.md).
 - Read `docs/DESIGN.md` only when building or changing charts, maps legends, colors or layout.
-- Do NOT read `docs/BUSINESS.md` (pricing, legal, go-to-market) or `docs/ARCHIVE.md` (history) unless the task explicitly asks for them.
+- **Business planning is private and not part of this repo; do not create business docs here** (no pricing, entity, positioning, brand/domain shortlists or
+  partner strategy in any tracked file; `tests/test_no_business_content.py` guards it, `private/` is gitignored). Where a technical item waits on a business
+  choice, write "set by owner" (e.g. the domain: "set by owner at W1").
+- Do NOT read `docs/ARCHIVE.md` (history) unless the task explicitly asks for it.
 - When a milestone lands, tick it in PLAN.md §8; move finished items and stale decisions to `docs/ARCHIVE.md` so PLAN.md stays around ~17 KB.
 - Keep section numbers (§) stable; cross-references rely on them.
 - Keep PLAN.md §2 Status and §3 Decisions log current as work lands.
@@ -50,7 +53,7 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 
 ## Layout
 - `docs/` — PLAN.md (lean plan), DESIGN.md (§6 chart/map/UI standards), specs/ (one per feature),
-  BUSINESS.md and ARCHIVE.md (not read by default), plus the reference docs listed under "Project docs".
+  ARCHIVE.md (not read by default), plus the reference docs listed under "Project docs".
 - `config/settings.yml` — region, states, windows, toggles. Prefer config over code.
 - `pipeline/` — one module per source, each with `run(cfg, session, outdir) -> dict`
   registered in `pipeline/__main__.py:SOURCES`. Sources fail independently.
@@ -77,7 +80,7 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 - Keep this file's handoff section short: when a session's work is merged, move its entry to
   `docs/ARCHIVE.md` and keep only the gotchas worth re-reading every session.
 
-## Data licensing rules (free-first now; monetization planned, see PLAN §10 for the full table)
+## Data licensing rules (see PLAN §10 for the full table)
 - OK: NOAA/NWS (NODD on AWS, api.weather.gov), USDA NRCS AWDB, IEM (states
   any lawful use incl. commercial), ECMWF open data (CC-BY-4.0, attribute).
 - Synoptic API: NOT available to this project.
@@ -177,8 +180,8 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 20 2026, dev21 branch; the uncommitted dev21_report.md has the briefing; owner summary: docs/STATE_SNAPSHOT.md)**
-- **dev21 (branch, on top of merged dev20):** TWO new owner-authorized workflows (the only `.github/` change): `verify.yml` (daily 15:25 UTC: archive CSVs -> `pipeline verify-ci` = the same
+**Current state (Nov 20 2026: main has dev13-dev21; branch scrub-business removes business content from the tree; owner summary: docs/STATE_SNAPSHOT.md)**
+- **dev21 (merged, PR #30):** TWO new owner-authorized workflows (the only `.github/` change): `verify.yml` (daily 15:25 UTC: archive CSVs -> `pipeline verify-ci` = the same
   `verify.run` -> `verify-<YYYYMMDDHH>-<hash>.tar` on model-maps -> update-site's existing unpack -> `build/models/verify/`; the panel reads `models/verify/` (`VerificationUI.BASE`), flag
   `verification_ui.enabled` still OFF; switch `verification.ci_enabled`; NEVER an index.json in models/verify: the model catalog collects */index.json) and `gefs.yml` (06:10/08:10/18:10/20:10
   UTC from MEASURED S3 release times; `gefs.enabled: true`; resume cache `data_cache/gefs/<cycle>`; too many missing members = new=false). Monitored sources `verify` (50 h) and `gefs` (30 h).

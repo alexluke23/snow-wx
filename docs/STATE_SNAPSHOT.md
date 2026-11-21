@@ -1,6 +1,7 @@
 # Snow-Wx state snapshot (Nov 20 2026, through dev21)
 
 For pasting into the owner's project notes. Details live in the files named in brackets. No secrets, no personal data.
+Business planning is private and not part of this repo; do not create business docs here.
 
 ## Live now (after the dev21 merge)
 - **Site:** GitHub Pages project site (`site.origin` in `config/settings.yml`); custom domain + Cloudflare is milestone W1 [docs/specs/hosting-seo.md].
@@ -47,9 +48,8 @@ For pasting into the owner's project notes. Details live in the files named in b
 - Model-map snowfall colours still use the older table (deferred).
 
 ## Pending owner decisions (file with the details)
-1. Merge dev21 (compare link in the session report).
-2. Brand name and tagline: placeholders `site.name` / `site.tagline` in `config/settings.yml`.
-3. Custom domain + Cloudflare account (W1) [docs/w1_cutover_checklist.md].
-4. Analytics provider [docs/specs/launch-readiness.md 2c]; legal review of the draft pages [launch-readiness.md 2b].
-5. `HEALTHCHECK_URL` secret for the monitor [docs/specs/data-pipeline.md 5.2c].
-6. When to show verification (`verification_ui.enabled`), W6 alerts backend choices and a W7 wind-exposure reviewer.
+1. Site name and tagline: placeholders `site.name` / `site.tagline` in `config/settings.yml` (set by owner at W1).
+2. Custom domain + Cloudflare account (W1) [docs/w1_cutover_checklist.md].
+3. Analytics provider [docs/specs/launch-readiness.md 2c]; legal review of the draft pages [launch-readiness.md 2b].
+4. `HEALTHCHECK_URL` secret for the monitor [docs/specs/data-pipeline.md 5.2c].
+5. When to show verification (`verification_ui.enabled`), W6 alerts backend choices and a W7 wind-exposure reviewer.
