@@ -1484,7 +1484,7 @@ def check_mm_chips(b: Browser, base: str, log):
 
 
 def check_models_layout(b: Browser, base: str, log):
-    """dev18 Part 0a: the model viewer from a FIXTURE catalog + frames (tools/model_fixture.py): cumulative layout shift < 0.1 at 1280 and 375 px
+    """dev18 Part 0a: the model viewer from a FIXTURE catalog + frames (tools/model_fixture.py) [+ hotfix: ecmwf/gefs entries and #m=ecmwf deep links]: cumulative layout shift < 0.1 at 1280 and 375 px
     (new catalog with per-field pixel sizes, and an old-style catalog without them), the picture's box is reserved from the catalog size, switching
     model/field/region keeps CLS low and never leaves a missing frame."""
     import shutil
@@ -1522,9 +1522,38 @@ def check_models_layout(b: Browser, base: str, log):
                     r = b.eval("({cls: window.__cls, missing: document.getElementById('frame').classList.contains('missing'), d: document.getElementById('domain').value})")
                     res[f"{variant}-switch"] = r
                     need(not r["missing"] and r["cls"] < 0.1, f"switching model/region: {r}")
+        # hotfix fix-models-page: the catalog that was LIVE: ecmwf + gefs (plume products, no label/domains: tests/fixtures/models_catalog) listed next to the map models.
+        # The viewer must show the map models only: no blank option, no "undefined" anywhere, and no JS error for a deep link to ecmwf / gefs / an unknown model.
+        junk = re.compile(r"undefined|NaN|\[object")
+        plumes = {n: {**json.loads((REPO / "tests" / "fixtures" / "models_catalog" / n / "index.json").read_text(encoding="utf-8")), "base": f"{n}/"} for n in ("ecmwf", "gefs")}
+        for variant, only_plumes in (("plumes-listed", False), ("plumes-only", True)):
+            with tempfile.TemporaryDirectory() as tmp:
+                t = Path(tmp)
+                for f in ("models.html", "css", "js"):
+                    (shutil.copytree if (src / f).is_dir() else shutil.copy)(src / f, t / f)
+                write_fixture(t / "models", with_sizes=True)
+                cat = json.loads((t / "models" / "index.json").read_text(encoding="utf-8"))
+                cat["models"] = dict(plumes) if only_plumes else {**cat["models"], **plumes}
+                (t / "models" / "index.json").write_text(json.dumps(cat), encoding="utf-8")
+                with serve(t) as tbase:
+                    for hsh in ("", "#m=ecmwf&f=qpf_total&d=west&h=6", "#m=gefs", "#m=anything-unknown&f=nope&d=nope&h=999"):
+                        b.open(f"{tbase}/models.html{hsh}", width=1280, wait=4.0)
+                        r = b.eval("""(() => ({options: [...document.querySelectorAll('#model option')].map(o => [o.value, o.textContent.trim()]), model: document.getElementById('model').value,
+                          text: document.body.innerText, updated: document.getElementById('updated').textContent, empty: !document.getElementById('empty').hidden,
+                          frame: document.getElementById('frame').naturalWidth, hash: location.hash}))()""")
+                        res[f"{variant}{hsh[:8]}"] = {k: r[k] for k in ("options", "model", "updated", "frame", "hash")}
+                        need(not b.errors, f"{variant} {hsh or '(no hash)'}: JS errors {b.errors}")
+                        bad = junk.search(r["text"])
+                        need(not bad, f"{variant} {hsh or '(no hash)'}: junk text on the page: {bad and bad.group(0)} in {r['text'][:200]!r}")
+                        if only_plumes:
+                            need(r["options"] == [] and r["empty"] and "No model runs yet" in r["updated"], f"{variant}: a catalog with no map model must say so: {r['updated']} {r['options']}")
+                            continue
+                        need([o[0] for o in r["options"]] == ["hrrr", "rrfs", "gfs"] and all(o[1] and not o[1].startswith(("00Z", "12Z")) for o in r["options"]), f"{variant} {hsh}: dropdown: {r['options']}")
+                        need(r["model"] == "hrrr" and r["updated"].startswith("Runs: HRRR ") and "ECMWF" not in r["updated"] and r["frame"] == 900, f"{variant} {hsh}: fell back wrongly: {r['model']} {r['updated']} frame {r['frame']}")
+                        need(r["hash"].startswith("#m=hrrr&"), f"{variant} {hsh}: the hash was not rewritten to the default model: {r['hash']}")
     finally:
         pass
-    log(f"  models CLS: {json.dumps(res)[:700]}")
+    log(f"  models CLS + catalog guard: {json.dumps(res)[:900]}")
     need(not b.errors, f"JS errors: {b.errors}")
 
 
