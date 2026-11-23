@@ -47,3 +47,15 @@ def test_nbm_slr_is_scored_only_when_a_file_supplies_it():
     s = B.score(ev, nbm=nbm)
     row = s[(s.predictor == "NBM SLR p50") & (s.region == "all")].iloc[0]
     assert abs(row.bias - 2) < 1e-9 and row.mae == 2
+
+
+def test_nbm_slr_from_the_archive_columns_newest_cycle_wins_and_old_format_is_skipped():
+    """dev23: the nbm archive rows carry slr_p50 at the 12Z end; the shortest lead per (end, triplet) is used, blank / old-format rows give nothing"""
+    rows = [{"point": "snotel-1000-ID-SNTL", "hours": 24, "end": "2026-12-20T12:00Z", "lead_h": 44, "slr_p50": 9.0},
+            {"point": "snotel-1000-ID-SNTL", "hours": 24, "end": "2026-12-20T12:00Z", "lead_h": 20, "slr_p50": 13.0},
+            {"point": "snotel-1000-ID-SNTL", "hours": 72, "end": "2026-12-20T12:00Z", "lead_h": 20, "slr_p50": 99.0},
+            {"point": "alta-ski-area", "hours": 24, "end": "2026-12-20T12:00Z", "lead_h": 20, "slr_p50": 12.0},
+            {"point": "snotel-2000-UT-SNTL", "hours": 24, "end": "2026-12-20T12:00Z", "lead_h": 20, "slr_p50": None}]
+    got = B.nbm_slr_from_archive(pd.DataFrame(rows))
+    assert got.to_dict("records") == [{"end": "2026-12-20T12:00Z", "triplet": "1000:ID:SNTL", "slr_p50": 13.0}]
+    assert B.nbm_slr_from_archive(pd.DataFrame(rows).drop(columns="slr_p50")) is None and B.nbm_slr_from_archive(pd.DataFrame()) is None

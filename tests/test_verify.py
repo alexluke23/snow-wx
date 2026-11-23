@@ -88,3 +88,37 @@ def test_outage_exclusion_is_an_overlap_test_and_duplicate_observations_do_not_i
     pairs, ex = verify.pair(nb, o, OUTAGE)
     # 11-15T12Z window ends before the outage and is kept; 11-16T12Z (ends at the start), 11-18T12Z (starts before the recovery) are excluded; 11-19T12Z kept once
     assert sorted(pairs["end"]) == ["2026-11-15T12:00Z", "2026-11-19T12:00Z"] and ex["outage_window"] == 2
+
+
+# ---------------------------------------------------------------- dev23: archives with and without the NBM snow-ratio columns
+FC_SLR = FC + ("slr_p25", "slr_p50", "slr_p75")
+
+
+def test_old_and_new_format_archives_score_identically(tmp_path):
+    """the scorer reads a pre-dev23 nbm file (16 columns) and a dev23 one (19 columns, SLR filled or blank) and gives the same scores; mixed months concatenate"""
+    (tmp_path / "old").mkdir()
+    old = archive(tmp_path / "old")
+    new = tmp_path / "new"
+    new.mkdir()
+    rows = []
+    with gzip.open(old / "nbm-202611.csv.gz", "rt", encoding="utf-8", newline="") as f:
+        for r in csv.DictReader(f):
+            rows.append({**r, "slr_p25": "9", "slr_p50": "11.5", "slr_p75": "14"})
+    write_gz(new / "nbm-202611.csv.gz", FC_SLR, rows)
+    for n in ("ndfd-202611.csv.gz", "snotel-202611.csv.gz"):
+        (new / n).write_bytes((old / n).read_bytes())
+    nb_old, _, ob = verify.load_archive(old)
+    nb_new, _, ob2 = verify.load_archive(new)
+    assert "slr_p50" not in nb_old.columns and list(nb_new["slr_p50"].unique()) == [11.5]
+    po, exo = verify.pair(nb_old, ob, OUTAGE)
+    pn, exn = verify.pair(nb_new, ob2, OUTAGE)
+    assert exo == exn and list(po["obs"]) == list(pn["obs"]) and list(po["det"]) == list(pn["det"])
+    # a new-format December next to an old-format November: one frame, blanks where the column did not exist
+    write_gz(new / "nbm-202612.csv.gz", FC_SLR, [nbm("snotel-1000-OR-SNTL", "2026-12-02T12:00Z", 1.0, 1.0, 10)])
+    both = verify.load_archive(new)[0]
+    assert len(both) == len(nb_new) + 1 and both["slr_p50"].notna().sum() == len(nb_new)
+    sa, sb = verify.score(po.assign(_src="nbm"), ["lead_bucket"]), verify.score(pn.assign(_src="nbm"), ["lead_bucket"])
+    assert sa.equals(sb)
+    out = tmp_path / "scores"
+    verify.run(new, out, {"verification": {"snotel_outage": {"start": OUTAGE[0], "end": OUTAGE[1]}}})
+    assert (out / "summary.json").exists() and "slr" not in (out / "scores_by_lead.csv").read_text(encoding="utf-8").lower()   # scores never use the SLR columns

@@ -41,6 +41,13 @@ missing. Numbers are inches; probabilities are whole percent. All times are UTC,
 | `det_cell` | NBM deterministic snowfall for the grid cell, not elevation-adjusted (sum of the 6-h amounts). NBM only |
 | `p10`, `p50`, `p90` | NBM's own snowfall percentiles for the window and grid cell. NBM only |
 | `p_ge4`, `p_ge8`, `p_ge12` | NBM's own chance (%) of at least 4, 8 and 12 inches in the window, for the grid cell. NBM only |
+| `slr_p25`, `slr_p50`, `slr_p75` | **NBM only; added dev23 (M11 prep), appended after `p_ge12`.** NBM's own snow-to-liquid ratio (SNOWLR) percentiles for the grid cell, valid at the window's **end hour (12Z)**. NBM publishes no SLR percentiles for 24/72 h windows, so this is the native hourly value at that instant: it is never averaged, summed or derived from other hours or windows. The 24-h and 72-h rows that end at the same 12Z carry the same values, so **the `slr_*` values of a 72-h row are NOT comparable with a 72-h observed ratio** (they are one hour's value, not a 72-h quantity): only the 24-h rows are meant for scoring against a 24-h observed ratio (`tools/slr_baseline.py` uses only those). Ratio (e.g. `12.5` = 12.5:1), 1 decimal. Blank if the cycle has no SLR percentiles or the end hour is not in the points file's series |
+
+**SNOW-RATIO COLUMNS (dev23).** `nbm-*` files have 19 columns from the first NBM cycle archived by a site build that contains dev23 (the branch was written on
+Nov 21 2026; the exact first cycle is printed by `pipeline archive-check`, "SLR p25/p50/p75 filled: ... since cycle YYYYMMDDHH"). Older rows, and monthly files written
+before, have no such columns: every reader treats them as blank (`archive.read_csv_gz` fills `""`, pandas gives NaN) and the next merge rewrites the month's file with the new
+header (old rows stay blank). `ndfd-*` and `snotel-*` files are unchanged. The scorer (`pipeline verify`, `verify-ci`) does not use these columns. The SNOTEL-derived baseline
+`tools/slr_baseline.py` can run once there are about four weeks of them (docs/specs/snow-ratio-ml.md §6).
 
 **Windows.** NBM rows cover every 24-h window and every 72-h window that ends at 12Z and
 is covered by the forecast, so days 1–10 of each cycle.
@@ -86,6 +93,11 @@ lower bound and use the SWE change for liquid.
   merged before they are replaced. If a download fails, nothing is uploaded.
 - Only the current and previous UTC month are written.
 - Gzip is written with a fixed timestamp, so identical content gives identical bytes.
+
+## Integrity check (`pipeline archive-check`)
+Header, row length, unique keys, month, row-count never shrinking, no missing month. An NBM file with the 16 pre-dev23 columns or the 19 current ones is valid; a header that grows from
+16 to 19 between two checks is allowed once. It also prints the **fill rate of the SLR columns** per NBM file: rows with any of `slr_p25/p50/p75` filled, counted from the first
+cycle that has values (earlier rows are "before start", not missing), plus the same for the 01/07/13/19Z cycles (the suite with SLR percentiles). Reported, never a problem on its own.
 
 ## Loading (pandas)
 
