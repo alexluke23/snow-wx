@@ -32,6 +32,11 @@ log = logging.getLogger("snow-wx.archive")
 
 FORECAST_COLS = ("cycle", "point", "elev", "elev_ft", "cell_elev_ft", "hours", "end", "lead_h",
                  "det", "det_cell", "p10", "p50", "p90", "p_ge4", "p_ge8", "p_ge12")
+# dev23 (M11 prep): NBM's own snow-to-liquid ratio percentiles, appended AFTER the existing columns (NBM files only; NDFD keeps FORECAST_COLS). The value is NBM's
+# native hourly SNOWLR percentile for the grid cell valid at the window's END hour (12Z): NBM publishes no SLR percentiles for 24/72 h windows, so nothing is averaged
+# or derived across hours. Files written before dev23 have no such columns: readers treat them as blank (read_csv_gz, pandas), archive-check accepts both headers.
+SLR_COLS = ("slr_p25", "slr_p50", "slr_p75")
+NBM_COLS = FORECAST_COLS + SLR_COLS
 FORECAST_KEY = ("cycle", "point", "elev", "hours", "end")
 OBS_COLS = ("end", "triplet", "depth_in", "depth_med3_in", "swe_in",
             "d_depth_24h", "d_depth_med3_24h", "d_swe_24h", "hours_present")
@@ -107,10 +112,13 @@ def nbm_rows(doc: dict) -> list[dict]:
 
     det = NBM mean as shown on the site (12-h periods scaled by P(snow) at the point's
     elevation); det_cell, p10/p50/p90 and p_ge* = NBM's values for the 2.5 km cell
-    (exceedance windows of the 01/07/13/19Z cycles)."""
+    (exceedance windows of the 01/07/13/19Z cycles); slr_p25/p50/p75 = NBM's native SNOWLR
+    percentiles for the cell at the window's end hour (series.slr_p* of the points file; blank if absent)."""
     cycle, point = doc["cycle"], doc["id"]
+    at = {t: i for i, t in enumerate(doc.get("times") or [])}
     rows = []
     for elev, pt in doc.get("points", {}).items():
+        series = pt.get("series") or {}
         for hours in WINDOWS:
             ex = (pt.get("exceed") or {}).get(f"{hours}h") or {}
             ex_at = {e: k for k, e in enumerate(ex.get("end") or [])}
@@ -128,7 +136,11 @@ def nbm_rows(doc: dict) -> list[dict]:
                     for t in THRESHOLDS:
                         if t in thr and ex.get("p"):
                             vals[f"p_ge{int(t)}"] = ex["p"][k][thr.index(t)]
-                rows.append(_forecast_row(cycle, point, elev, pt, hours, end, **vals))
+                row = _forecast_row(cycle, point, elev, pt, hours, end, **vals)
+                for c in SLR_COLS:
+                    arr, i = series.get(c) or [], at.get(end)
+                    row[c] = _s(arr[i] if i is not None and i < len(arr) else None, 1)
+                rows.append(row)
     return rows
 
 
@@ -357,7 +369,7 @@ def archive(data: Path, store, work: Path, now: datetime | None = None) -> dict:
     ok_months = allowed_months(now)
     stats, new_state = {}, {k: list(v) for k, v in state.items()}     # {"nbm": [...], "ndfd": [...]}
     for kind in ("nbm", "ndfd", "snotel"):
-        cols, key = (OBS_COLS, OBS_KEY) if kind == "snotel" else (FORECAST_COLS, FORECAST_KEY)
+        cols, key = (OBS_COLS, OBS_KEY) if kind == "snotel" else (NBM_COLS if kind == "nbm" else FORECAST_COLS, FORECAST_KEY)
         todo = rows[kind]
         if kind != "snotel":
             done = set(state.get(kind, []))

@@ -362,9 +362,16 @@ def main(argv=None) -> int:
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("stub", help="W1 cutover: write the GitHub Pages redirect stub (old pages + #id map) pointing at the new origin")
-    p.add_argument("--origin", required=True, help="the NEW site origin, e.g. https://snowwx.example")
-    p.add_argument("--base-path", default="", help="folder the new site is served from (default: root)")
+    p.add_argument("--origin", default="", help="the NEW site origin, e.g. https://snowwx.example (default: config site.stub_target_origin; empty = write nothing)")
+    p.add_argument("--base-path", default=None, help="folder the new site is served from (default: config site.stub_target_base_path, else the root)")
     p.add_argument("--out", default="stub")
+    p.add_argument("--config", default=None, help="path to settings.yml")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("r2-plan", help="W1 prep: PRINT the R2 sync plan for the bulk data (points JSON); uploads nothing, reads no credential (config r2.*)")
+    p.add_argument("--data", default="build/data", help="site data folder")
+    p.add_argument("--prev", default=None, help="manifest of the previous sync ({'objects': {key: sha1}}); without it everything counts as new")
+    p.add_argument("--write-manifest", default=None, help="write the manifest of the local files (input for the next plan)")
+    p.add_argument("--limit", type=int, default=15, help="operations to list")
     p.add_argument("--config", default=None, help="path to settings.yml")
     p.add_argument("-v", "--verbose", action="store_true")
     p = sub.add_parser("linkcheck", help="check the generated site (build/): internal links/ids, robots/sitemap/canonical sanity, optionally every outbound link")
@@ -483,13 +490,22 @@ def main(argv=None) -> int:
         cat = json.loads((REPO_ROOT / "data" / "ski_areas.json").read_text(encoding="utf-8"))["areas"]
         rec = REPO_ROOT / "data" / "rec_points.json"
         others = [a["id"] for a in json.loads(rec.read_text(encoding="utf-8")).get("areas", [])] if rec.exists() else []
-        print(json.dumps(stub.build(cfg, Path(args.out), args.origin, cat, others, args.base_path)))
+        site = cfg.get("site") or {}
+        origin = args.origin or str(site.get("stub_target_origin") or "")
+        if not origin:
+            print("stub: no target origin (--origin or config site.stub_target_origin is empty; set by owner at W1): nothing written")
+            return 0
+        bp = args.base_path if args.base_path is not None else str(site.get("stub_target_base_path") or "")
+        print(json.dumps(stub.build(cfg, Path(args.out), origin, cat, others, bp)))
         return 0
+    if args.cmd == "r2-plan":
+        from . import r2_plan
+        return r2_plan.run(cfg, Path(args.data), Path(args.prev) if args.prev else None, Path(args.write_manifest) if args.write_manifest else None, args.limit)
     if args.cmd == "linkcheck":
         from . import linkcheck
         site = cfg.get("site") or {}
         return linkcheck.run(Path(args.build), args.outbound, args.data, make_session(cfg), origin=os.environ.get("SITE_ORIGIN") or site.get("origin") or "",
-                             base_path=site.get("base_path") or "", report=Path(args.report) if args.report else None, strict=args.strict)
+                             base_path=("/" + str(site.get("base_path")).strip("/")) if str(site.get("base_path") or "").strip("/") else "", report=Path(args.report) if args.report else None, strict=args.strict)
     if args.cmd == "webcams":
         from . import webcams
         if not args.check:

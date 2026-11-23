@@ -69,6 +69,18 @@ site:
   name: "Snow-Wx"
   tagline: "Open snow forecasts for western US mountains"
   feedback_email: "alexluke2323@gmail.com"
+  # W1 redirect stub (pipeline/stub.py, `python -m pipeline stub`): the NEW origin the old GitHub Pages site would redirect to. EMPTY = the command writes nothing
+  # (set by owner at W1; no domain is named in this repository). Nothing deploys the stub automatically.
+  stub_target_origin: ""
+  stub_target_base_path: ""    # "" = the new site is served from the root of its host
+
+r2:
+  # W1 bulk-data sync PLAN (pipeline/r2_plan.py, `python -m pipeline r2-plan`; docs/specs/hosting-seo.md "R2 sync"). OFF, and there is no upload code anywhere: the command only PRINTS what a sync
+  # of build/data/<prefixes> to an R2 bucket would do. bucket = set by owner at W1 (empty here). Do not enable anything from a dev session.
+  enabled: false
+  bucket: ""
+  prefixes: [points]
+  key_prefix: "data/"
 
 og_images:
   # Share-card images 1200x630 (pipeline/og.py, `python -m pipeline og`): one per ski area + a generic Sno-Park and site card. OFF; pages.py

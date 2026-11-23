@@ -1,0 +1,21 @@
+# External scheduler for the GitHub Actions workflows (built in dev23, NOT deployed). See README.md.
+# No account id and no secrets here: `wrangler deploy` asks you to log in, and the GitHub token is a Worker secret (GH_DISPATCH_TOKEN).
+name = "snow-wx-scheduler"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+# Cron-only Worker: no public URL, no routes (nothing on the internet can call it).
+workers_dev = false
+
+[triggers]
+# ONE trigger (the free plan allows 5 per account). The code decides what is due.
+crons = ["*/10 * * * *"]
+
+[vars]
+GH_REPOSITORY = "alexluke23/snow-wx"
+GH_REF = "main"
+# "true" = log the decisions but dispatch nothing (use it to check the first runs; then set it back to "false" and deploy again)
+DRY_RUN = "false"
+
+[observability]
+enabled = true

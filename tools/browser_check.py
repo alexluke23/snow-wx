@@ -1848,9 +1848,9 @@ def check_verify_ui(b: Browser, base: str, log):
     meta = json.loads(original) if original else {}
     trip = "1308:UT:SNTL"                                           # Alta's nearest SNOTEL site (Atwater)
     dates = [f"2026-12-{d:02d}" for d in range(1, 21)]
-    doc = {"triplet": trip, "d": 20, "n": 40, "span": [dates[0], dates[-1]], "common_n": 20,
-           "metrics": {"NBM expected": {"n": 20, "bias_in": 0.12, "mae_in": 0.4, "events_1": 8, "hit_1": 0.75}, "NWS (NDFD)": {"n": 20, "bias_in": -0.2, "mae_in": 0.3, "events_1": 8, "hit_1": 0.5}},
-           "daily": {"dates": dates, "obs": [0, 2.5, 0, 1.2] * 5, "nbm": [0.1, 2.0, 0.4, 1.5] * 5, "ndfd": [0, 1.5, 0, 0.8] * 5}}
+    doc = {"triplet": trip, "d": 20, "n": 40, "span": [dates[0], dates[-1]],
+           "metrics": {"NBM expected": {"n": 20, "bias_in": 0.12, "mae_in": 0.4, "events_1": 8, "hit_1": 0.75}},
+           "daily": {"dates": dates, "obs": [0, 2.5, 0, 1.2] * 5, "nbm": [0.1, 2.0, 0.4, 1.5] * 5}}
     vd = src / "models" / "verify"                                  # dev21: the verify product tar lands in build/models/verify/
     vd.mkdir(parents=True, exist_ok=True)
     vdir = vd / "verification"
@@ -1900,15 +1900,18 @@ def check_verify_ui(b: Browser, base: str, log):
             _draw_all(b)
             r = panel()
             res[f"ready{width}"] = r
-            need(not r["hidden"] and r["chart"] and r["rows"] >= 2 and r["caveats"] >= 3, f"ready state at {width}px: {r}")
+            need(not r["hidden"] and r["chart"] and r["rows"] == 1 and r["caveats"] >= 3, f"ready state at {width}px: {r}")
             need("NBM's expected 24-h snowfall ran 0.12 in above" in r["summary"] and "SNOTEL site nearest this ski area" in r["summary"], f"summary sentence: {r['summary']}")
             need("lower bound" in b.eval("document.getElementById('verif-sec').textContent"), "the lower-bound caveat is missing")
+            panel_html = b.eval("document.getElementById('verif-sec').innerHTML")            # dev23: NBM only: no NDFD / "NWS (...)" label, column, legend entry or sentence
+            need(not re.search(r"NDFD|NWS \(|the NWS forecast|NWS official", panel_html), f"verification panel still mentions NDFD/NWS at {width}px")
             need(not r["hscroll"], f"sideways scroll at {width}px: {r}")
         need(b.eval("!!document.querySelector('#verif-sec details.chart-table')"), "View as table toggle missing")
         # 4. about.html scorecard
         b.open(f"{base}/about.html", width=375, wait=3)
         sc = b.eval("(() => { const s = document.getElementById('scorecard'); return {hidden: s.hidden, text: s.textContent.replace(/\\s+/g, ' ').slice(0, 900), hscroll: document.documentElement.scrollWidth > innerWidth + 2}; })()")
         need(not sc["hidden"] and "NBM expected" in sc["text"] and "lower bound" in sc["text"] and not sc["hscroll"], f"scorecard: {sc}")
+        need(not re.search(r"NDFD|NWS \(", b.eval("document.getElementById('scorecard').textContent")), "the scorecard must not mention NDFD")
         setup(True, {"d": 6, "n": 24}, scorecard_ready=False)
         b.open(f"{base}/about.html", width=1280, wait=3)
         need("Collecting data: 6 of 14 days, 24 of 30" in b.eval("document.getElementById('scorecard-body').textContent"), "scorecard collecting state")
@@ -2049,7 +2052,99 @@ def check_mobile_sweep(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips, "alertcls": check_alert_cls, "slrchart": check_slr_chart, "lean": check_lean_modules,
+def check_no_ndfd(b: Browser, base: str, log):
+    """dev23 Part 4: the deployed site no longer contains data/ndfd/ (update-site.yml removes it after the forecast-archive step). With that folder REMOVED from the site copy, every page kind
+    loads without a request to anything called ndfd, without a failed local request (no 404 in the console) and without JS errors; the status page still lists the NDFD fetch (from meta.json)."""
+    import shutil
+    src = Path(base_dir_holder["path"])
+    nd = src / "data" / "ndfd"
+    stash = src / "data" / "_ndfd_stash"
+    shutil.rmtree(stash, ignore_errors=True)
+    had = nd.exists()
+    if had:
+        nd.rename(stash)
+    try:
+        pages = ["index.html", "index.html#v=depth_24h&map=7/40.6/-111.6&s=1308:UT:SNTL", "area.html#alta-ski-area", "area.html#snotel-1308-UT-SNTL", "area.html#sp-wing-mountain",
+                 "finder.html", "mine.html", "models.html", "status.html", "about.html", "sources.html"]
+        seen = 0
+        for pg in pages:
+            b.open(f"{base}/{pg}", width=1280, wait=6)
+            if pg.startswith(("area", "index")):
+                _draw_all(b)
+            reqs = [u for u in b.requests if "ndfd" in u.lower()]
+            need(not reqs, f"{pg}: requested NDFD files: {reqs[:3]}")
+            missing = [c for c in b.console if "404" in c and ("127.0.0.1" in c or "localhost" in c or "/data/" in c)]
+            need(not missing, f"{pg}: failed local requests: {missing[:3]}")
+            need(not b.errors, f"{pg}: JS errors: {b.errors}")
+            seen += len(b.requests)
+        b.open(f"{base}/status.html", width=1280, wait=6)
+        txt = b.eval("document.body.innerText")
+        need("NDFD fetch" in txt, "status page lost the NDFD fetch row (it is read from meta.json, not from the removed files)")
+        log(f"  nondfd: {len(pages)} pages, {seen} requests, none for ndfd")
+    finally:
+        if had:
+            stash.rename(nd)
+
+
+def check_root_base(b: Browser, base: str, log):
+    """dev23 Part 6 (W1 staging prep): the SAME site works when served from the ROOT of a host (a `*.pages.dev` or custom domain) instead of `/snow-wx/`. A trimmed copy of the build is
+    generated with config site.base_path "/" (pages, sitemap, canonical, PWA manifest + service worker, 404 base) and served at the root: no request names the old folder, the obs map, Finder,
+    My mountains and a prerendered nested area page (ski/<state>/<id>/) load without JS errors or failed local requests, `area.html#id` redirects to the path page, and the sitemap /
+    canonical / manifest / service worker follow the config value. Nothing here touches the live site or any account."""
+    import shutil
+    sys.path.insert(0, str(REPO))
+    from pipeline import pages as pages_mod, pwa as pwa_mod
+    from pipeline.__main__ import fill_404_base
+    from pipeline.common import load_config
+    src = Path(base_dir_holder["path"])
+    fav, origin = "alta-ski-area", "https://staging.example.test"
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        for f in src.iterdir():
+            if f.name in ("data", "models"):
+                continue
+            (shutil.copytree if f.is_dir() else shutil.copy)(f, t / f.name)
+        (t / "data").mkdir(exist_ok=True)
+        for f in (src / "data").iterdir():                      # all small data; the per-area point files (65 MB) are trimmed to one area + the layer index
+            if f.name not in ("points", "ndfd"):
+                (shutil.copytree if f.is_dir() else shutil.copy)(f, t / "data" / f.name)
+        for rel in ("points/summary.json", f"points/{fav}.json", "points/layers"):
+            if (src / "data" / rel).exists():
+                (t / "data" / rel).parent.mkdir(parents=True, exist_ok=True)
+                (shutil.copytree if (src / "data" / rel).is_dir() else shutil.copy)(src / "data" / rel, t / "data" / rel)
+        cfg = load_config()
+        cfg["site"] = {**cfg["site"], "origin": origin, "base_path": "/"}
+        need(pages_mod.run(cfg, t, force=True) == 0 and pwa_mod.run(cfg, t, force=True) == 0, "pages / pwa build failed for base_path '/'")
+        fill_404_base(t, cfg)
+        sm = (t / "sitemap.xml").read_text(encoding="utf-8")
+        locs = re.findall(r"<loc>([^<]+)</loc>", sm)
+        need(locs and all(u.startswith(origin + "/") and "snow-wx" not in u for u in locs), f"sitemap does not follow base_path '/': {locs[:3]}")
+        page = (t / "ski" / "ut" / fav / "index.html").read_text(encoding="utf-8")
+        need(f'rel="canonical" href="{origin}/ski/ut/{fav}/"' in page, "canonical does not follow base_path '/'")
+        need('href="/css/style.css"' in page and f'href="/area.html#{fav}"' in page and "snow-wx" not in page, "prerendered page links must be root-relative without the old folder")
+        man = json.loads((t / "manifest.json").read_text(encoding="utf-8")) if (t / "manifest.json").exists() else {}
+        need(man.get("scope") == "/" and man.get("start_url", "").startswith("/"), f"manifest scope/start_url: {man.get('scope')} {man.get('start_url')}")
+        need('const BASE = "";' in (t / "sw.js").read_text(encoding="utf-8"), "service worker BASE must be empty at the root")
+        need('<base href="/">' in (t / "404.html").read_text(encoding="utf-8"), "404 base href must be /")
+        with serve(t) as tbase:
+            seen = 0
+            for pg in ("index.html", "finder.html", "mine.html", f"ski/ut/{fav}/", "about.html"):
+                b.open(f"{tbase}/{pg}", width=1280, wait=6)
+                if pg.startswith(("ski", "area", "index")):
+                    _draw_all(b)
+                old = [u for u in b.requests if "snow-wx" in u]
+                need(not old, f"{pg}: requested the old folder: {old[:3]}")
+                missing = [c for c in b.console if "404" in c and ("127.0.0.1" in c or "/data/" in c)]
+                need(not missing, f"{pg}: failed local requests: {missing[:3]}")
+                need(not b.errors, f"{pg}: JS errors: {b.errors}")
+                need(b.eval("!!document.querySelector('h1, h2')"), f"{pg}: nothing rendered")
+                seen += len(b.requests)
+            b.open(f"{tbase}/area.html#{fav}", width=1280, wait=6)
+            need(b.eval("location.pathname") == f"/ski/ut/{fav}/", f"area.html#{fav} did not redirect to the path page: {b.eval('location.href')}")
+            log(f"  rootbase: sitemap {len(locs)} urls, 5 pages + the #id redirect, {seen} requests, none for the old folder")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips, "alertcls": check_alert_cls, "slrchart": check_slr_chart, "lean": check_lean_modules, "nondfd": check_no_ndfd, "rootbase": check_root_base,
           **{f"failure{k}": functools.partial(check_failure_modes, shard=(k, 3)) for k in (1, 2, 3)}}
 FULL_RUN = [n for n in CHECKS if n != "failure"]          # the full run uses the three failure shards (same coverage, parallel)
 

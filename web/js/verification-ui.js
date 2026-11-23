@@ -35,22 +35,21 @@ const VerificationUI = (() => {
 
   /** the one-sentence summary above the chart (also its aria-label). `where`: {name, proxy: bool, distKm} */
   function sentence(doc, where) {
-    const nbm = doc.metrics?.["NBM expected"], nws = doc.metrics?.["NWS (NDFD)"];
+    const nbm = doc.metrics?.["NBM expected"];
     const place = where.proxy ? `${where.name} (the SNOTEL site nearest this ski area${where.distKm != null ? `, ${where.distKm} km away` : ""})` : where.name;
-    const parts = [lead(nbm, "NBM's expected 24-h snowfall"), lead(nws, "the NWS forecast")].filter(Boolean);
-    return `At ${place}, over ${doc.d} days and ${doc.n} forecasts issued up to 48 h ahead: ${parts.join("; ")}. Depth change is a lower bound of snowfall, so a small positive bias is expected.`;
+    return `At ${place}, over ${doc.d} days and ${doc.n} forecasts issued up to 48 h ahead: ${lead(nbm, "NBM's expected 24-h snowfall")}. Depth change is a lower bound of snowfall, so a small positive bias is expected.`;
   }
 
-  /** table: one row per source (bias, MAE, hit rate for >= 1 in) */
+  /** table: one row per forecast source in the file (NBM only since dev23) (bias, MAE, hit rate for >= 1 in) */
   function metricRows(doc) {
     return Object.entries(doc.metrics || {}).map(([src, m]) => [src, String(m.n), f1(m.bias_in), f1(m.mae_in), m.events_1 ? `${pct(m.hit_1)} of ${m.events_1}` : "no day with 1 in or more"]);
   }
   const METRIC_COLS = ["Forecast", "Days scored", "Bias (in)", "Mean abs. error (in)", "Hit rate, 1 in or more"];
 
-  /** the daily table behind the chart: observed vs each forecast, 24-h snow in inches */
+  /** the daily table behind the chart: observed vs NBM, 24-h snow in inches */
   function dailyRows(doc) {
     const d = doc.daily;
-    return d.dates.map((day, i) => [day, f1(d.obs[i]), f1(d.nbm[i]), f1(d.ndfd[i])]);
+    return d.dates.map((day, i) => [day, f1(d.obs[i]), f1(d.nbm[i])]);
   }
 
   /** the caveats shown under every result (plain words, never an accuracy claim) */

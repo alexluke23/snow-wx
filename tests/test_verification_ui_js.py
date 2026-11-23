@@ -22,11 +22,10 @@ pytestmark = pytest.mark.skipif(_node() is None, reason="node not installed")
 
 INDEX = {"min_days": 14, "min_pairs": 30, "span": ["2026-12-01", "2026-12-20"], "outage_excluded": ["2026-11-16T12:00Z", "2026-11-18T00:45Z"],
          "stations": {"1:UT:SNTL": {"d": 6, "n": 24}, "2:UT:SNTL": {"d": 20, "n": 40, "ready": True}, "3:UT:SNTL": {"d": 16, "n": 20}},
-         "scorecard": {"ready": True, "days": 20, "pairs": 400, "rows": [{"source": "NBM expected", "n": 300, "bias_in": 0.12, "mae_in": 0.4, "events_1": 50, "hit_1": 0.62},
-                                                                          {"source": "NWS (NDFD)", "n": 280, "bias_in": -0.05, "mae_in": 0.35, "events_1": 48, "hit_1": 0.5}]}}
+         "scorecard": {"ready": True, "days": 20, "pairs": 400, "rows": [{"source": "NBM expected", "n": 300, "bias_in": 0.12, "mae_in": 0.4, "events_1": 50, "hit_1": 0.62}]}}
 DOC = {"triplet": "2:UT:SNTL", "d": 20, "n": 40, "span": ["2026-12-01", "2026-12-20"],
-       "metrics": {"NBM expected": {"n": 20, "bias_in": 0.12, "mae_in": 0.4, "events_1": 8, "hit_1": 0.75}, "NWS (NDFD)": {"n": 20, "bias_in": -0.2, "mae_in": 0.3, "events_1": 8, "hit_1": 0.5}},
-       "daily": {"dates": ["2026-12-01", "2026-12-02"], "obs": [0, 2.5], "nbm": [0.1, 2.0], "ndfd": [None, 1.5]}}
+       "metrics": {"NBM expected": {"n": 20, "bias_in": 0.12, "mae_in": 0.4, "events_1": 8, "hit_1": 0.75}},
+       "daily": {"dates": ["2026-12-01", "2026-12-02"], "obs": [0, 2.5], "nbm": [0.1, 2.0]}}
 
 
 def js(tmp_path, body):
@@ -51,7 +50,7 @@ def test_sentence_states_bias_error_hit_rate_sample_and_the_lower_bound_caveat(t
     out = js(tmp_path, """console.log(JSON.stringify({own: V.sentence(D.doc, {name: 'Atwater', proxy: false}), proxy: V.sentence(D.doc, {name: 'Atwater', proxy: true, distKm: 1.5})}))""")
     s = out["own"]
     assert s.startswith("At Atwater, over 20 days and 40 forecasts issued up to 48 h ahead:") and "NBM's expected 24-h snowfall ran 0.12 in above the observed snow-depth gain on average (typical error 0.40 in)" in s
-    assert "caught 75% of the 8 days with at least 1 in" in s and "the NWS forecast ran 0.20 in below" in s and "lower bound of snowfall" in s
+    assert "caught 75% of the 8 days with at least 1 in" in s and "NWS" not in s and "NDFD" not in s and "lower bound of snowfall" in s
     assert "the SNOTEL site nearest this ski area, 1.5 km away" in out["proxy"]
     assert "accurate" not in s.lower() and "reliable" not in s.lower()                                        # no accuracy claim
 
@@ -59,7 +58,7 @@ def test_sentence_states_bias_error_hit_rate_sample_and_the_lower_bound_caveat(t
 def test_rows_and_caveats(tmp_path):
     out = js(tmp_path, """console.log(JSON.stringify({m: V.metricRows(D.doc), d: V.dailyRows(D.doc), cols: V.METRIC_COLS,
       c: V.caveats(D.doc, {name: 'A', proxy: true, distKm: 1.5, dz: 213}, D.index), c2: V.caveats(D.doc, {name: 'A', proxy: false}, D.index)}))""")
-    assert out["m"][0] == ["NBM expected", "20", "0.12", "0.40", "75% of 8"] and out["d"][1] == ["2026-12-02", "2.50", "2.00", "1.50"] and out["d"][0][3] == "–"
+    assert out["m"][0] == ["NBM expected", "20", "0.12", "0.40", "75% of 8"] and out["d"][1] == ["2026-12-02", "2.50", "2.00"] and len(out["d"][0]) == 3 and len(out["m"]) == 1
     joined = " ".join(out["c"])
     assert "lower bound for snowfall" in joined and "Sample size: 40 forecasts over 20 days" in joined and "outage (2026-11-16 to 2026-11-18)" in joined
     assert "nearest SNOTEL site (1.5 km away, 213 ft higher than the base), not the ski area itself" in joined

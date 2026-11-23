@@ -25,8 +25,10 @@ def _nbm_doc():
     ex24 = {"start": ["2026-11-08T12:00Z", "2026-11-09T12:00Z"], "end": ["2026-11-09T12:00Z", "2026-11-10T12:00Z"],
             "thr": [0.1, 1.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0], "p": [[90, 70, 50, 30, 20, 10, 5, 2], [40, 10, 5, 1, 0, 0, 0, 0]],
             "pct": {"10": [0.4, 0.0], "50": [3.1, 0.2], "90": [7.9, 1.4]}, "mean": [3.5, 0.5], "cell_mean": [4.0, 0.6]}
-    pt = {"elev_ft": 10500, "grid_elev_ft": 9600, "periods": PERIODS, "exceed": {"24h": ex24}}
-    return {"id": "alta-ski-area", "cycle": "2026110801", "points": {"summit": pt}}
+    # hourly series like the points file's: NBM's native SNOWLR percentiles; 12Z 11 Nov is beyond the series (blank)
+    series = {"slr_p25": [9.0, 11.0, 12.0], "slr_p50": [10.5, 13.0, 14.5], "slr_p75": [12.0, 15.5, None]}
+    pt = {"elev_ft": 10500, "grid_elev_ft": 9600, "periods": PERIODS, "exceed": {"24h": ex24}, "series": series}
+    return {"id": "alta-ski-area", "cycle": "2026110801", "times": ["2026-11-08T01:00Z", "2026-11-09T12:00Z", "2026-11-10T12:00Z"], "points": {"summit": pt}}
 
 
 def test_twelve_z_windows_need_exact_cover():
@@ -49,6 +51,36 @@ def test_nbm_rows_all_leads_with_cell_values():
     late = by[("24", "2026-11-11T12:00Z")]                # beyond the exceedance windows: det only
     assert late["det"] == "10" and late["p50"] == "" and late["p_ge4"] == ""
     assert by[("72", "2026-11-11T12:00Z")]["det"] == "14"
+
+
+def test_nbm_rows_carry_native_slr_percentiles_at_the_window_end_hour():
+    by = {(r["hours"], r["end"]): r for r in A.nbm_rows(_nbm_doc())}
+    r = by[("24", "2026-11-09T12:00Z")]
+    assert (r["slr_p25"], r["slr_p50"], r["slr_p75"]) == ("11", "13", "15.5")            # the value valid at the end hour, nothing averaged
+    assert by[("72", "2026-11-11T12:00Z")]["slr_p50"] == "" and by[("24", "2026-11-11T12:00Z")]["slr_p25"] == ""    # end hour not in the series: blank
+    assert (by[("24", "2026-11-10T12:00Z")]["slr_p25"], by[("24", "2026-11-10T12:00Z")]["slr_p75"]) == ("12", "")    # a missing percentile stays blank
+    assert A.NBM_COLS[:len(A.FORECAST_COLS)] == A.FORECAST_COLS and A.NBM_COLS[len(A.FORECAST_COLS):] == ("slr_p25", "slr_p50", "slr_p75")   # additive: old columns untouched
+    old = _nbm_doc()
+    del old["points"]["summit"]["series"]                                                   # a points file without the series (older build): all blank, nothing fails
+    assert all(r[c] == "" for r in A.nbm_rows(old) for c in A.SLR_COLS)
+    assert all(c not in A.ndfd_rows({"id": "x", "issued": "2026-11-09T00:00Z", "points": {"summit": {"periods": PERIODS}}})[0] for c in A.SLR_COLS)   # NDFD files keep their columns
+
+
+def test_old_format_monthly_file_is_extended_and_old_rows_stay_blank(tmp_path):
+    """a nbm-YYYYMM.csv.gz written before dev23 (16 columns) is read, merged with new rows and rewritten with the SLR columns; old rows keep blanks"""
+    release = tmp_path / "release"
+    release.mkdir()
+    old_row = {c: "" for c in A.FORECAST_COLS} | {"cycle": "2026110719", "point": "alta-ski-area", "elev": "summit", "hours": "24", "end": "2026-11-08T12:00Z", "lead_h": "17", "det": "2"}
+    A.write_csv_gz(release / "nbm-202611.csv.gz", A.FORECAST_COLS, {tuple(old_row[k] for k in A.FORECAST_KEY): old_row})
+    (release / "state.json").write_text(json.dumps({"nbm": ["2026110719"], "ndfd": []}), encoding="utf-8")
+    store = A.LocalStore(release)
+    stats = A.archive(_write_build(tmp_path), store, tmp_path / "w", now=datetime(2026, 11, 9, 3, tzinfo=timezone.utc))
+    assert stats["nbm-202611.csv.gz"]["rows"] == 5 and stats["nbm-202611.csv.gz"]["added"] == 4
+    got = A.read_csv_gz(release / "nbm-202611.csv.gz", A.NBM_COLS, A.FORECAST_KEY)
+    assert got[tuple(old_row[k] for k in A.FORECAST_KEY)]["det"] == "2" and got[tuple(old_row[k] for k in A.FORECAST_KEY)]["slr_p50"] == ""
+    assert any(r["slr_p50"] == "13" for r in got.values())
+    with gzip.open(release / "ndfd-202611.csv.gz", "rt") as f:
+        assert f.readline().strip() == ",".join(A.FORECAST_COLS)                           # NDFD header unchanged
 
 
 def test_ndfd_rows_only_windows_after_issue():
@@ -111,7 +143,7 @@ def test_archive_idempotent_and_safe(tmp_path):
     assert s3["nbm-202611.csv.gz"]["rows"] == 8 and "snotel-202611.csv.gz" not in s3
     with gzip.open(tmp_path / "release" / "nbm-202611.csv.gz", "rt") as f:
         lines = f.read().splitlines()
-    assert lines[0] == ",".join(A.FORECAST_COLS) and len(lines) == 9
+    assert lines[0] == ",".join(A.NBM_COLS) and len(lines) == 9
 
 
 def test_archive_month_split_and_guard():
@@ -148,3 +180,32 @@ def test_exceedance_carries_cell_percentiles():
     W = {h: {"raw": 1.5} for h in (17, 23, 29, 35)}
     assert cell_window_sums(W, init, ex["24h"]["start"], ex["24h"]["end"]) == [6.0]
     assert cell_window_sums({35: {"raw": 1.0}}, init, ex["24h"]["start"], ex["24h"]["end"]) == [None]
+
+
+def test_rewritten_month_has_one_19_column_header_and_every_row_19_fields_wide(tmp_path):
+    """the raw bytes, not the parsed rows: an existing 16-column month (several old rows) gets its first SLR rows; the file ends with ONE header of 19 columns and every data row has
+    19 fields (old rows padded with empty cells), so mixed widths never reach a reader. A second month that is NOT touched keeps its 16 columns (closed months are never rewritten)."""
+    import csv
+    release = tmp_path / "release"
+    release.mkdir()
+    old_rows = {}
+    for cyc in ("2026110719", "2026110801"):
+        r = {c: "" for c in A.FORECAST_COLS} | {"cycle": cyc, "point": "alta-ski-area", "elev": "summit", "hours": "24", "end": "2026-11-09T12:00Z", "lead_h": "17", "det": "2"}
+        old_rows[tuple(r[k] for k in A.FORECAST_KEY)] = r
+    A.write_csv_gz(release / "nbm-202611.csv.gz", A.FORECAST_COLS, old_rows)
+    A.write_csv_gz(release / "nbm-202610.csv.gz", A.FORECAST_COLS, {("2026100101", "x", "summit", "24", "2026-10-02T12:00Z"): {c: "" for c in A.FORECAST_COLS} | {"cycle": "2026100101", "point": "x", "elev": "summit", "hours": "24", "end": "2026-10-02T12:00Z"}})
+    (release / "state.json").write_text(json.dumps({"nbm": ["2026110719", "2026110801"], "ndfd": []}), encoding="utf-8")
+    A.archive(_write_build(tmp_path, cycle="2026110807"), A.LocalStore(release), tmp_path / "w", now=datetime(2026, 11, 9, 3, tzinfo=timezone.utc))
+    with gzip.open(release / "nbm-202611.csv.gz", "rt", encoding="utf-8", newline="") as f:
+        rows = list(csv.reader(f))
+    header, body = rows[0], rows[1:]
+    assert tuple(header) == A.NBM_COLS and len(header) == 19 and header.count("cycle") == 1          # one header
+    assert [r for r in body if r == header] == []                                                    # no second header row anywhere
+    assert len(body) == 2 + 4 and {len(r) for r in body} == {19}                                      # 2 old rows + 4 new, all 19 wide
+    assert {r[0] for r in body if r[0] in ("2026110719", "2026110801")} == {"2026110719", "2026110801"}
+    assert all(r[-3:] == ["", "", ""] for r in body if r[0] in ("2026110719", "2026110801"))          # older rows padded with empty SLR cells
+    with gzip.open(release / "nbm-202610.csv.gz", "rt", encoding="utf-8", newline="") as f:
+        assert len(next(csv.reader(f))) == 16                                                        # the untouched month stays in the old format
+    from pipeline import verify as V
+    nb, _, _ = V.load_archive(release)                                                               # pandas: 16-col October + 19-col November in one frame
+    assert len(nb) == 1 + 6 and nb["slr_p50"].notna().sum() >= 1

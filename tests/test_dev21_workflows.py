@@ -3,7 +3,6 @@ permissions, own concurrency group, resume/archive cache restore + save(always))
 into build/models/<product>/ (no edit there), the upload step deletes only this product's old assets, and verify's archive download never fails the job."""
 import os
 import re
-import shutil
 import stat
 import subprocess
 from pathlib import Path
@@ -11,11 +10,11 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests._shell import BASH, SKIP_REASON
 from tests.test_ecmwf_workflow import FAKE_GH, load, on_of
 
 REPO = Path(__file__).resolve().parents[1]
 WFD = REPO / ".github" / "workflows"
-BASH = shutil.which("bash")
 SPEC = {"verify": {"file": "verify.yml", "cron": "25 15 * * *", "cache": "verify_archive", "timeout": 20},
         "gefs": {"file": "gefs.yml", "cron": "10 6,8,18,20 * * *", "cache": "data_cache/gefs", "timeout": 40}}
 
@@ -64,7 +63,7 @@ def test_update_site_already_unpacks_the_asset_into_build_models(product):
     assert product not in case                                                    # -> dest=build/models: build/models/<product>/...
 
 
-@pytest.mark.skipif(not BASH, reason="bash not available")
+@pytest.mark.skipif(not BASH, reason=SKIP_REASON)
 @pytest.mark.parametrize("product", SPEC)
 def test_upload_deletes_only_this_products_old_assets(tmp_path, product):
     step = next(s for s in load(WFD / SPEC[product]["file"])["jobs"][product]["steps"] if s.get("name") == "Upload to the model-maps release")["run"]
@@ -122,7 +121,7 @@ def run_download(tmp_path, assets, list_fails=False, dl_fails=False, cached=()):
     return r, (out.read_text(encoding="utf-8") if out.exists() else ""), [c for c in calls if c.startswith("gh release download")]
 
 
-@pytest.mark.skipif(not BASH, reason="bash not available")
+@pytest.mark.skipif(not BASH, reason=SKIP_REASON)
 def test_verify_download_never_fails_the_job(tmp_path):
     r, out, _ = run_download(tmp_path / "a", [], list_fails=True)
     assert r.returncode == 0 and "ok=false" in out
@@ -130,7 +129,7 @@ def test_verify_download_never_fails_the_job(tmp_path):
     assert r.returncode == 0 and "ok=false" in out
 
 
-@pytest.mark.skipif(not BASH, reason="bash not available")
+@pytest.mark.skipif(not BASH, reason=SKIP_REASON)
 def test_verify_download_reuses_cached_closed_months(tmp_path):
     r, out, dls = run_download(tmp_path, ["nbm-202001.csv.gz", "snotel-202001.csv.gz", "state.json", "nbm-209912.csv.gz"], cached=["nbm-202001.csv.gz"])
     assert r.returncode == 0 and "ok=true" in out, r.stderr

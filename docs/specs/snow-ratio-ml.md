@@ -57,8 +57,16 @@ Time cost estimate: a points-only extraction (sample ~600 points, a few levels) 
 ### 6.4 Recommendation
 1. Keep S0 closed. The decision that matters is the **ground truth**: SNOTEL depth change is a poor proxy (6.3 caveat 1), and the training target in the paper is a different instrument. Without a better target (interval-board or SNOTEL-derived with a compaction correction), a model trained here
    learns to predict compaction. Ask the paper's author about licensing and about the CLN observations before S2.
-2. S1 needs (a) >= 4 weeks of archive (about Dec 18) and (b) the additive SLR archive file above, started now so it has data by then. This is a small owner-authorised change to the archive writer, not made in dev22.
+2. S1 needs (a) >= 4 weeks of archive (about Dec 18) and (b) NBM's SLR percentiles in the archive. **Done in dev23** (6.5): additive columns instead of a separate file.
 3. S2 (offline candidate) uses 3-5 HRRR pressure levels at the point cells, quantile gradient boosting or quantile forest, whole-site hold-out; S3 only after S2 beats NBM p50 in held-out MAE and calibration of the p25-p75 band.
+
+### 6.5 SLR columns in the archive (dev23, Nov 21 2026)
+- The `nbm-YYYYMM.csv.gz` forecast files gain `slr_p25`, `slr_p50`, `slr_p75` (appended after `p_ge12`; docs/verification.md). They hold NBM's **native hourly SNOWLR percentiles for the grid cell at the window end hour (12Z)** of each 24-h/72-h row; nothing is averaged or derived.
+  The 72-h rows repeat the 24-h row's values for the same end hour: **72-h rows' `slr_*` are NOT comparable with a 72-h observed ratio**; S1 and `tools/slr_baseline.py` use only the 24-h rows.
+  Limitation: a single hour is a coarse stand-in for the 24-h mean ratio a SNOTEL depth/SWE change measures; S1 must say so when it scores it.
+- **Start date:** the first NBM cycle archived by a site build that contains dev23 (merged by the owner; nothing before Nov 21 2026). `pipeline archive-check` prints the first cycle with values and the fill rate.
+- **S1 baseline:** `tools/slr_baseline.py` can run **after >= 4 weeks of these columns** (Dec 19 2026 at the earliest if dev23 merges on Nov 21; later by the merge delay), comparing NBM p50 and the p25-p75 band with the SNOTEL-derived ratio (6.3 caveats still apply).
+  Older rows have blank SLR and are skipped. The points JSON and the site are unchanged.
 
 ## 7. Open decisions *(draft)*
 Licence/terms answer from the paper's author; training-target choice; whether to add the SLR archive file; whether ERA5 is acceptable for training; the label text for the experimental line.

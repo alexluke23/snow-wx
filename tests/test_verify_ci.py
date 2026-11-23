@@ -3,6 +3,8 @@
 The job must score exactly like the local scorer (same outage window, same stale-observation rule), publish into <out>/verify/ (update-site extracts the tar into
 build/models/verify/, where the panel reads), exit 0 with new=false when there is nothing new or the input is missing/stale (the last good result stays), and say
 how far the data are from the panel minima."""
+import csv
+import gzip
 import json
 from datetime import datetime, timezone
 
@@ -10,7 +12,7 @@ import pandas as pd
 import pytest
 
 from pipeline import verify
-from tests.test_verify import FC, OB, archive, nbm, obs, write_gz
+from tests.test_verify import FC, FC_SLR, OB, archive, nbm, obs, write_gz
 
 CFG = {"verification": {"snotel_outage": {"start": "2026-11-16T12:00Z", "end": "2026-11-18T00:45Z"}}, "verification_ui": {"enabled": False, "min_days": 14, "min_pairs": 30}}
 NOW = datetime(2026, 11, 23, 15, tzinfo=timezone.utc)
@@ -53,7 +55,7 @@ def test_not_enough_data_yet_publishes_counts_only_and_projects_the_date(tmp_pat
     run = json.loads((v / "run.json").read_text(encoding="utf-8"))
     assert idx["stations"]["1000:OR:SNTL"] == {"d": 2, "n": 2}
     assert not list((v / "verification").glob("*.json"))                         # no site meets the minima: no results file, counts only
-    assert run["stations_ready"] == 0 and run["days"] == 2 and run["pairs"] == 3 and run["newest_obs"] == "2026-11-22T12:00Z"
+    assert run["stations_ready"] == 0 and run["days"] == 2 and run["pairs"] == 2 and run["newest_obs"] == "2026-11-22T12:00Z"
     # 2 days, 2 pairs (1 per day): 12 more days for the days rule, 28 more for the pairs rule -> 28 days after the newest observation
     assert run["first_station_days_to_go"] == 28 and run["first_station_ready"] == "2026-12-20"
     assert not (v / "index.json").exists()                                         # never an index.json: the model-map catalog collects */index.json
@@ -63,7 +65,7 @@ def test_same_scores_as_the_local_scorer_outage_and_stale_obs_excluded(tmp_path)
     arch = arc(tmp_path / "a")
     res, _ = go(arch, tmp_path / "out", tmp=tmp_path)
     local = verify.run(arch, tmp_path / "local", CFG)
-    assert res["pairs"] == local["pairs"] and res["exclusions"] == local["exclusions"]
+    assert res["pairs"] == local["by_source"]["nbm"]["pairs"] and res["exclusions"] == {"nbm": local["exclusions"]["nbm"]}       # public numbers = the NBM part of the local scorer's
     assert res["exclusions"]["nbm"]["outage_window"] == 1 and res["exclusions"]["nbm"]["low_coverage"] == 1
     assert res["outage_excluded"] == ["2026-11-16T12:00Z", "2026-11-18T00:45Z"] or res["outage_excluded"] == ("2026-11-16T12:00Z", "2026-11-18T00:45Z")
 
@@ -128,3 +130,21 @@ def test_status_entries(tmp_path):
     (tmp_path / "models" / "gefs" / "index.json").write_text(json.dumps({"cycle": "2026112000", "n_members": 31, "areas": 160, "generated_at": "2026-11-20T06:00Z"}), encoding="utf-8")
     g = gefs_status(tmp_path, {"gefs": {"enabled": True}})
     assert g["ok"] is True and "31 members" in g["detail"] and g["count"] == 160
+
+
+def test_new_format_archive_with_slr_columns_gives_the_same_result_as_the_old_format(tmp_path):
+    """dev23: the nbm file carries slr_p25/p50/p75 (read next to older months without them): verify-ci scores and publishes exactly as before"""
+    old, new = big_archive(tmp_path / "old"), big_archive(tmp_path / "new")
+    with gzip.open(old / "nbm-202611.csv.gz", "rt", encoding="utf-8", newline="") as f:
+        rows = [{**r, "slr_p25": "9", "slr_p50": "11", "slr_p75": "14"} for r in csv.DictReader(f)]
+    write_gz(new / "nbm-202611.csv.gz", FC_SLR, rows)
+    later = datetime(2026, 12, 8, 15, tzinfo=timezone.utc)
+    (tmp_path / "t1").mkdir()
+    (tmp_path / "t2").mkdir()
+    r_old, _ = go(old, tmp_path / "out_old", now=later, tmp=tmp_path / "t1")
+    r_new, _ = go(new, tmp_path / "out_new", now=later, tmp=tmp_path / "t2")
+    assert r_old["new"] is True and r_new["new"] is True and r_old["pairs"] == r_new["pairs"] > 0
+    for name in ("verification.json", "verification/1000_OR_SNTL.json"):
+        a = json.loads((tmp_path / "out_old" / "verify" / name).read_text(encoding="utf-8"))
+        b = json.loads((tmp_path / "out_new" / "verify" / name).read_text(encoding="utf-8"))
+        assert a == b, name

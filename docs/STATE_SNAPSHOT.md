@@ -1,12 +1,12 @@
-# Snow-Wx state snapshot (Nov 20 2026, through dev21)
+# Snow-Wx state snapshot (Nov 21 2026, through dev22; dev23 branch in progress)
 
 For pasting into the owner's project notes. Details live in the files named in brackets. No secrets, no personal data.
 Business planning is private and not part of this repo; do not create business docs here.
 
-## Live now (after the dev21 merge)
+## Live now (after the dev22 merge)
 - **Site:** GitHub Pages project site (`site.origin` in `config/settings.yml`); custom domain + Cloudflare is milestone W1 [docs/specs/hosting-seo.md].
 - **Obs map:** SNOTEL (~836), ASOS (~544), avalanche danger (avalanche.org), NWS winter hazards, NOHRSC snowfall + NBM forecast overlays, reference layer (OpenFreeMap).
-- **Forecast pages** for 160 ski areas, ~447 Sno-Parks and 837 SNOTEL sites: NBM to day 10-11 with "likely" (p25-p75) ranges, NWS (NDFD) view, snow level, snow ratio /
+- **Forecast pages** for 160 ski areas, ~447 Sno-Parks and 837 SNOTEL sites: NBM to day 10-11 with "likely" (p25-p75) ranges (NBM only since dev22; the NWS point forecast is linked), snow level, snow ratio /
   powder quality (heuristic), hour-by-hour charts, chances of at least X, daily summary, alerts, AFD, webcam LINKS, storm totals.
 - **Precipitation by model:** NBM, HRRR, RRFS, GFS, ECMWF HRES and the ECMWF AIFS line (experimental, NOT in the badge), with **model chips** to show/hide lines (dev21); agreement
   badge (a labelled heuristic, always over every model). **Ensemble view: ECMWF ENS | NOAA GEFS** (GEFS live from dev21).
@@ -24,6 +24,11 @@ Business planning is private and not part of this repo; do not create business d
 | `verify.yml` (dev21) | 25 15 daily | scores the forecast archive against SNOTEL -> `models/verify/` |
 | `tests.yml` | pull requests | pytest (offline) |
 
+GitHub delivers few of these cron events (Nov 19-20: about 6 of 46 hourly `update-site` runs, 1 `ecmwf`, none for `gefs`/`verify`); manual dispatch always works. The external scheduler below is the fix.
+
+## External scheduler: built, not deployed (dev23) [infra/scheduler/README.md]
+A Cloudflare Worker (one cron trigger every 10 minutes, free plan) that dispatches the five workflows above on time: it lists each due workflow's latest 5 runs and dispatches (`ref: main`) only when none is queued/running or started since the slot, so it never double-dispatches. The workflows keep their own schedules as a backup. **Owner deploys it** (fine-grained token limited to this repo with Actions read/write, `wrangler secret put`, `wrangler deploy`; 6 steps in the README). Tests: `node --test` + `tests/test_scheduler.py` (also checks that its cron table equals the workflows' crons).
+
 ## Built but switched off (enable in this order at the custom-domain move)
 1. **W1 domain + Cloudflare** first (owner: domain, account) [docs/w1_cutover_checklist.md, `tools/w1_rehearsal.py`].
 2. `pages.enabled` (W2 indexable area pages, sitemap) [hosting-seo.md].
@@ -34,10 +39,11 @@ Business planning is private and not part of this repo; do not create business d
 7. Independent of the domain: `wind_exposure.enabled` (W7, needs a reviewer), `alerts_backend.enabled` (W6, needs e-mail provider/Cloudflare decisions).
 
 ## Key numbers
-- **Site:** ~5.7 k files, ~220 MB (limits 20,000 files, 25 MiB per file); GEFS adds 161 files / 1.8 MB, verification up to ~840 small files; share cards would add 162 files / 3.1 MB.
+- **Site:** after dev23 the deployed site no longer contains `data/ndfd/` (nothing requests it): 6,851 -> 5,405 files, 319 -> 302 MB on a local build (limits 20,000 files, 25 MiB per file); GEFS adds 161 files / 1.8 MB, verification up to ~840 small files; share cards would add 162 files / 3.1 MB.
 - **Lighthouse (mobile, local gzip server):** see docs/budgets_baseline.md §5; accessibility 100.
-- **Tests:** 530 pytest passed + 9 skipped (~2.3 min, offline). Chrome browser suite: 32 checks, ~6 min full / ~1.5 min `--quick`. WebKit + Firefox smoke: ~1 min (optional).
+- **Tests:** 590 pytest passed + 9 skipped (~2.4 min, offline, green on Windows without a PATH change since dev23). Chrome browser suite: 38 checks in the full run (dev23 added `nondfd`, `rootbase`), ~6 min full / ~1.5 min `--quick`. WebKit + Firefox smoke: ~1 min (optional).
 - **CI:** update-site median ~5 min; models ~4 min; ECMWF ~5-10 min (1.3 GB); GEFS ~5 min (376 MB); verification ~2 min [docs/budgets_baseline.md].
+- **Forecast archive (dev23):** NBM files gain `slr_p25/p50/p75` (NBM's native snow-ratio percentiles at the window end hour) from the first build after the merge; the M11 baseline needs about 4 weeks of them (docs/specs/snow-ratio-ml.md 6.5). NDFD stays in the archive but is not shown (verification panel and deployed site are NBM only).
 - **Verification today:** 4 observation days, 88,131 forecast/observation pairs at 790 SNOTEL sites; no site has reached 14 days + 30 pairs yet.
 
 ## Known issues
