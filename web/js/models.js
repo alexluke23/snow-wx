@@ -17,6 +17,12 @@
   let timer = null;
   const cache = new Map(); // url -> Image (keeps preloaded frames alive)
 
+  // The catalog should list map models only, but a stale or odd entry (ECMWF / GEFS plume products carry no label or domains) must never reach the page:
+  // no blank option, no "undefined" in the Runs line, no TypeError. Everything the viewer reads without a fallback is checked here.
+  const isMapModel = (m) => !!m && typeof m.label === "string" && m.label !== "" && !!m.domains && typeof m.domains === "object" && !!m.fields && typeof m.fields === "object"
+    && typeof m.cycle === "string" && typeof m.init === "string" && typeof m.path === "string"
+    && Object.values(m.fields).length > 0 && Object.values(m.fields).every((f) => f && Array.isArray(f.domains) && f.domains.length > 0 && Array.isArray(f.fhours) && f.fhours.length > 0);
+
   const model = () => catalog.models[state.m];
   const field = () => model().fields[state.f];
 
@@ -203,7 +209,9 @@
     } catch (e) {
       catalog = { models: {} };
     }
-    const names = Object.keys(catalog.models || {});
+    catalog = catalog && typeof catalog === "object" ? catalog : {};
+    catalog.models = Object.fromEntries(Object.entries(catalog.models || {}).filter(([, m]) => isMapModel(m)));
+    const names = Object.keys(catalog.models);
     if (!names.length) {
       $("updated").textContent = "No model runs yet";
       $("empty").hidden = false;
