@@ -1,0 +1,9 @@
+{
+  "name": "snow-wx-scheduler",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker that dispatches the snow-wx GitHub Actions workflows on time (GitHub drops most scheduled runs).",
+  "scripts": {
+    "test": "node --test"
+  }
+}
