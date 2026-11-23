@@ -55,7 +55,7 @@ def test_not_enough_data_yet_publishes_counts_only_and_projects_the_date(tmp_pat
     run = json.loads((v / "run.json").read_text(encoding="utf-8"))
     assert idx["stations"]["1000:OR:SNTL"] == {"d": 2, "n": 2}
     assert not list((v / "verification").glob("*.json"))                         # no site meets the minima: no results file, counts only
-    assert run["stations_ready"] == 0 and run["days"] == 2 and run["pairs"] == 3 and run["newest_obs"] == "2026-11-22T12:00Z"
+    assert run["stations_ready"] == 0 and run["days"] == 2 and run["pairs"] == 2 and run["newest_obs"] == "2026-11-22T12:00Z"
     # 2 days, 2 pairs (1 per day): 12 more days for the days rule, 28 more for the pairs rule -> 28 days after the newest observation
     assert run["first_station_days_to_go"] == 28 and run["first_station_ready"] == "2026-12-20"
     assert not (v / "index.json").exists()                                         # never an index.json: the model-map catalog collects */index.json
@@ -65,7 +65,7 @@ def test_same_scores_as_the_local_scorer_outage_and_stale_obs_excluded(tmp_path)
     arch = arc(tmp_path / "a")
     res, _ = go(arch, tmp_path / "out", tmp=tmp_path)
     local = verify.run(arch, tmp_path / "local", CFG)
-    assert res["pairs"] == local["pairs"] and res["exclusions"] == local["exclusions"]
+    assert res["pairs"] == local["by_source"]["nbm"]["pairs"] and res["exclusions"] == {"nbm": local["exclusions"]["nbm"]}       # public numbers = the NBM part of the local scorer's
     assert res["exclusions"]["nbm"]["outage_window"] == 1 and res["exclusions"]["nbm"]["low_coverage"] == 1
     assert res["outage_excluded"] == ["2026-11-16T12:00Z", "2026-11-18T00:45Z"] or res["outage_excluded"] == ("2026-11-16T12:00Z", "2026-11-18T00:45Z")
 

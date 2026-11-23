@@ -137,8 +137,9 @@ def run(archive_dir: Path, out_dir: Path, cfg: dict | None = None, min_hours: in
         df.to_csv(out_dir / name, index=False)
     span = (pairs["end_ts"].min().strftime("%Y-%m-%d"), pairs["end_ts"].max().strftime("%Y-%m-%d")) if not pairs.empty else (None, None)
     days = int(pairs["end_ts"].dt.normalize().nunique()) if not pairs.empty else 0
+    by_src = {n: {"pairs": int(len(g)), "days": int(g["end_ts"].dt.normalize().nunique())} for n, g in pairs.groupby("_src")} if not pairs.empty else {}
     summary = {"generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "pairs": int(len(pairs)), "days": days, "span": span,
-               "outage_excluded": outage, "min_hours": min_hours, "exclusions": exs}
+               "outage_excluded": outage, "min_hours": min_hours, "exclusions": exs, "by_source": by_src}
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     (out_dir / "README.md").write_text(readme(summary, by_lead), encoding="utf-8")
     if publish_dir is not None:                                 # the public JSON for the (flag-gated) verification UI
@@ -173,7 +174,8 @@ def readme(s: dict, by_lead: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 # ---------------------------------------------------------------- public documents for the verification UI (dev18 Part 3; behind config verification_ui.enabled, never enabled by a dev session)
-SRC_LABEL = {"nbm": "NBM expected", "ndfd": "NWS (NDFD)"}
+# dev23 (owner decision Nov 21): the public documents show NBM only. NDFD stays in the archive and in the local scorer CSVs / README above, never in the panel's JSON.
+SRC_LABEL = {"nbm": "NBM expected"}
 UI_LEAD_MAX_H = 48            # the panel scores forecasts issued at most 48 h before the window ends (days 1-2): one lead range per chart and table
 
 
@@ -204,13 +206,20 @@ def _ready(days: int, n: int, min_days: int, min_pairs: int) -> bool:
     return days >= min_days and n >= min_pairs
 
 
+def public_exclusions(ex: dict | None) -> dict | None:
+    """the exclusion counts of the NBM scoring only (the summary also counts NDFD, which is not shown)"""
+    return None if ex is None else {k: v for k, v in ex.items() if k == "nbm"}
+
+
 def public_docs(pairs: pd.DataFrame, summary: dict, min_days: int = 14, min_pairs: int = 30, window_days: int = 30) -> tuple[dict, dict[str, dict]]:
     """(index document, {station file name: station document}). Results stay hidden (only counts) until a SNOTEL site has `min_days` observation days AND `min_pairs`
     forecast/observation pairs; the same minima gate the regional scorecard. Every metric compares forecasts with the observed 24-h snow-depth change, a LOWER BOUND of snowfall."""
+    if "_src" in pairs.columns:
+        pairs = pairs[pairs["_src"] == "nbm"]                                          # NBM only: no NDFD / "NWS" row, column or number reaches the public files
     allp = _lead_filtered(pairs)
     sel = _select_leads(pairs)
     index = {"generated_at": summary.get("generated_at"), "min_days": min_days, "min_pairs": min_pairs, "span": list(summary.get("span") or [None, None]),
-             "outage_excluded": summary.get("outage_excluded"), "exclusions": summary.get("exclusions"), "lead_max_h": UI_LEAD_MAX_H,
+             "outage_excluded": summary.get("outage_excluded"), "exclusions": public_exclusions(summary.get("exclusions")), "lead_max_h": UI_LEAD_MAX_H,
              "metric": "24-h snow-depth change at SNOTEL sites (lower bound of snowfall)", "stations": {}, "scorecard": {"ready": False, "days": 0, "pairs": 0, "rows": []}}
     files: dict[str, dict] = {}
     if sel.empty:
@@ -226,31 +235,28 @@ def public_docs(pairs: pd.DataFrame, summary: dict, min_days: int = 14, min_pair
             continue
         keep = both.loc[trip]
         o = obs.loc[trip]
-        common = keep.dropna() if {"nbm", "ndfd"} <= set(keep.columns) else keep
         metrics = {}
-        for src in ("nbm", "ndfd"):
-            if src in keep.columns:
-                col = common[src] if src in common.columns and len(common) >= min_pairs else keep[src].dropna()
-                if len(col):
-                    metrics[SRC_LABEL[src]] = _metrics(col.astype(float), o.reindex(col.index).astype(float))
+        if "nbm" in keep.columns:
+            col = keep["nbm"].dropna()
+            if len(col):
+                metrics[SRC_LABEL["nbm"]] = _metrics(col.astype(float), o.reindex(col.index).astype(float))
         last = keep.sort_index().tail(window_days)
         span = sel[sel["triplet"] == trip]["end_ts"]
 
         def series(src):
             return [None if src not in last.columns or pd.isna(last.loc[i, src]) else round(float(last.loc[i, src]), 2) for i in last.index]
         files[trip.replace(":", "_") + ".json"] = {
-            "triplet": trip, "d": days, "n": n, "span": [str(span.min().date()), str(span.max().date())], "common_n": int(len(common)), "metrics": metrics,
-            "daily": {"dates": [str(i.date()) for i in last.index], "obs": [round(float(o.get(i)), 2) for i in last.index], "nbm": series("nbm"), "ndfd": series("ndfd")}}
+            "triplet": trip, "d": days, "n": n, "span": [str(span.min().date()), str(span.max().date())], "metrics": metrics,
+            "daily": {"dates": [str(i.date()) for i in last.index], "obs": [round(float(o.get(i)), 2) for i in last.index], "nbm": series("nbm")}}
         index["stations"][trip]["ready"] = True
     # regional scorecard over all sites (same minima on days and pairs)
     index["scorecard"].update(days=all_days, pairs=int(allp.groupby("_src").size().max()))
     if _ready(all_days, index["scorecard"]["pairs"], min_days, min_pairs):
         rows = []
-        for src in ("nbm", "ndfd"):
-            if src in both.columns:
-                col = both[src].dropna()
-                if len(col):
-                    rows.append({"source": SRC_LABEL[src], **_metrics(col.astype(float), obs.reindex(col.index).astype(float))})
+        if "nbm" in both.columns:
+            col = both["nbm"].dropna()
+            if len(col):
+                rows.append({"source": SRC_LABEL["nbm"], **_metrics(col.astype(float), obs.reindex(col.index).astype(float))})
         index["scorecard"].update(ready=True, rows=rows)
     return index, files
 
@@ -342,8 +348,9 @@ def ci_run(archive_dir: Path, out_models: Path, cfg: dict | None, published: str
         summary = run(Path(archive_dir), Path(tmp), cfg, 20, vdir)
     index = json.loads((vdir / "verification.json").read_text(encoding="utf-8"))
     est = ready_estimate(index, newest, min_days, min_pairs)
+    nbm_n = (summary.get("by_source") or {}).get("nbm") or {"pairs": 0, "days": 0}             # run.json is public: NBM counts only
     info = {"generated_at": now.strftime("%Y-%m-%dT%H:%MZ"), "key": key, "newest_obs": newest.strftime("%Y-%m-%dT%H:%MZ"), "obs_age_h": round(age_h, 1),
-            "pairs": summary["pairs"], "days": summary["days"], "span": summary["span"], "exclusions": summary["exclusions"], "outage_excluded": summary["outage_excluded"],
+            "pairs": nbm_n["pairs"], "days": nbm_n["days"], "span": summary["span"], "exclusions": public_exclusions(summary["exclusions"]), "outage_excluded": summary["outage_excluded"],
             "min_days": min_days, "min_pairs": min_pairs, **est, **({"warning": warning} if warning else {})}
     write_json(vdir / "run.json", info)
     return out({"new": True, **info})

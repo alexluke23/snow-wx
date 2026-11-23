@@ -65,3 +65,41 @@ def test_about_keeps_the_text_that_left_the_charts():
                    "Below the line precipitation falls as rain", "6.5 °C per km", "no control member", "never interpolated", "within ±25% of the median total",
                    "Dense below 10:1, Medium 10–15, Blower 15 and up", "narrower last bar"):
         assert phrase in about, phrase
+
+
+# ---------------------------------------------------------------- dev23: the verification panel is NBM only too (NDFD stays in the archive, never on the surface)
+NDFD_WORDS = re.compile(r"ndfd|nws official|nws \(|the nws forecast|national digital forecast", re.I)
+
+
+def test_verification_panel_markup_has_no_ndfd_or_nws_forecast_wording():
+    ui = (WEB / "js" / "verification-ui.js").read_text(encoding="utf-8")
+    code = re.sub(r"//[^\n]*", "", ui)                                                     # comments may explain the history; strings and code may not name it
+    assert not NDFD_WORDS.search(code), NDFD_WORDS.search(code)
+    area = (WEB / "js" / "area.js").read_text(encoding="utf-8")
+    chart = area[area.index("function verifyChart"):area.index("function snowLevelChart")]
+    assert not NDFD_WORDS.search(chart) and "d.ndfd" not in chart
+    about = (WEB / "about.html").read_text(encoding="utf-8")
+    sec = about[about.index('<section id="scorecard"'):about.index("</section>", about.index('<section id="scorecard"'))]
+    assert not NDFD_WORDS.search(sec)
+
+
+def test_verification_payload_has_no_ndfd_even_when_the_archive_has_ndfd_rows(tmp_path):
+    """the archive keeps NDFD rows (fixture below has them); the files the panel reads (verification.json, per-site files, run.json) must carry none of it"""
+    import json
+    from datetime import datetime, timezone
+
+    from pipeline import verify
+    from tests.test_verify_ui import make_archive
+    arch = tmp_path / "arch"
+    arch.mkdir()
+    make_archive(arch, 16, 2)
+    assert (arch / "ndfd-202612.csv.gz").exists()                                              # NDFD really is in the archive
+    out = tmp_path / "models"
+    res = verify.ci_run(arch, out, {"verification": {}, "verification_ui": {"min_days": 14, "min_pairs": 30}}, now=datetime(2026, 12, 20, 15, tzinfo=timezone.utc))
+    assert res["new"] is True and res["stations_ready"] == 1
+    files = sorted((out / "verify").rglob("*.json"))
+    assert {f.name for f in files} == {"verification.json", "run.json", "1000_OR_SNTL.json"}
+    for f in files:
+        txt = f.read_text(encoding="utf-8")
+        assert not NDFD_WORDS.search(txt) and '"nws' not in txt.lower(), f.name
+        assert "ndfd" not in json.dumps(json.loads(txt)).lower(), f.name

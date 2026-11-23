@@ -1,5 +1,5 @@
 """dev18 Part 3: the public verification documents (pipeline/verify.py `public_docs` / `publish`) behind config verification_ui. Fixture archives only.
-Results stay hidden until a SNOTEL site has >= min_days observation days AND >= min_pairs pairs; the flag is OFF; metrics are bias / MAE / hit rate for >= 1 in, NBM vs NDFD."""
+Results stay hidden until a SNOTEL site has >= min_days observation days AND >= min_pairs pairs; the flag is OFF; metrics are bias / MAE / hit rate for >= 1 in, NBM only (dev23: NDFD stays in the archive, never in the panel's files)."""
 import csv
 import gzip
 import json
@@ -81,15 +81,14 @@ def test_enough_data_publishes_metrics_daily_series_and_the_scorecard(tmp_path):
     st = idx["stations"]["1000:OR:SNTL"]
     assert st == {"d": 16, "n": 32, "ready": True} and idx["scorecard"]["ready"] is True and idx["lead_max_h"] == 48
     doc = json.loads((data / "verification" / "1000_OR_SNTL.json").read_text(encoding="utf-8"))
-    nbm, ndfd = doc["metrics"]["NBM expected"], doc["metrics"]["NWS (NDFD)"]
+    assert set(doc["metrics"]) == {"NBM expected"}                                                   # the archive has NDFD rows too: they are never published
+    nbm = doc["metrics"]["NBM expected"]
     assert nbm["bias_in"] == 0.5 and nbm["mae_in"] == 0.5 and nbm["n"] == 16                         # one forecast per day: the latest issued (lead 32 h), not the 100-h one
-    assert ndfd["bias_in"] == -0.25 and ndfd["mae_in"] == 0.25                                       # -0.5 on the two wet days of every four, 0 on dry days (clipped at 0)
     assert nbm["events_1"] == 8 and nbm["hit_1"] == 1.0                                              # obs >= 1 in on 8 of 16 days; NBM (obs + 0.5) caught all of them
-    assert ndfd["hit_1"] == 1.0                                                                      # NDFD says 1.5 on the 2-in days and 2.5 on the 3-in days: also all caught
     d = doc["daily"]
-    assert len(d["dates"]) == len(d["obs"]) == len(d["nbm"]) == len(d["ndfd"]) == 16 and d["obs"][:4] == [0.0, 2.0, 0.0, 3.0] and d["nbm"][:4] == [0.5, 2.5, 0.5, 3.5]
+    assert len(d["dates"]) == len(d["obs"]) == len(d["nbm"]) == 16 and "ndfd" not in d and d["obs"][:4] == [0.0, 2.0, 0.0, 3.0] and d["nbm"][:4] == [0.5, 2.5, 0.5, 3.5]
     sc = {r["source"]: r for r in idx["scorecard"]["rows"]}
-    assert set(sc) == {"NBM expected", "NWS (NDFD)"} and sc["NBM expected"]["n"] == 16
+    assert set(sc) == {"NBM expected"} and sc["NBM expected"]["n"] == 16
 
 
 def test_stale_station_files_are_removed_on_republish(tmp_path):

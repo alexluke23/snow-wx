@@ -122,6 +122,11 @@ forecast at a SNOTEL site with the observed 24-h depth change (3-h median, clipp
 (config; the NRCS outage, ending at the first confirmed live recovery 2026-11-18 00:45Z) and observations with fewer than 20 hourly reports (stale/carried/patchy),
 and counts what it dropped. Temperature is not scored (the archive has no temperatures). First look: `docs/verification_first_look.md`.
 
+## NBM only on the surface (dev23, owner decision Nov 21)
+The archive keeps its NDFD rows (`ndfd-*.csv.gz`) and the local scorer (`pipeline verify`: `scores_by_*.csv`, README) still scores them for the owner's own use. What the panel and the about.html scorecard read is NBM only:
+`models/verify/verification.json`, `verification/<site>.json` and `run.json` carry no NDFD / "NWS" label, number, series or exclusion count (`verify.public_docs`, `verify.public_exclusions`); `run.json` `pairs`/`days` count NBM only. Guard: `tests/test_lean_charts.py` (markup and payload) and the browser check `verifyui`.
+The deployed site no longer contains `data/ndfd/` either (`update-site.yml` removes the folder after the archive step; the NDFD fetch in `models.yml` and the archive are untouched).
+
 ## Daily scores in CI (dev21)
 `.github/workflows/verify.yml` runs daily at 15:25 UTC (and by hand). It downloads the archive CSVs (closed months come from its Actions cache), runs
 `python -m pipeline verify-ci` (`verify.ci_run`: THE SAME `run()` as above, so the same outage window and the same 20-hourly-reports rule) and publishes

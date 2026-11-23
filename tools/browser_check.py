@@ -1848,9 +1848,9 @@ def check_verify_ui(b: Browser, base: str, log):
     meta = json.loads(original) if original else {}
     trip = "1308:UT:SNTL"                                           # Alta's nearest SNOTEL site (Atwater)
     dates = [f"2026-12-{d:02d}" for d in range(1, 21)]
-    doc = {"triplet": trip, "d": 20, "n": 40, "span": [dates[0], dates[-1]], "common_n": 20,
-           "metrics": {"NBM expected": {"n": 20, "bias_in": 0.12, "mae_in": 0.4, "events_1": 8, "hit_1": 0.75}, "NWS (NDFD)": {"n": 20, "bias_in": -0.2, "mae_in": 0.3, "events_1": 8, "hit_1": 0.5}},
-           "daily": {"dates": dates, "obs": [0, 2.5, 0, 1.2] * 5, "nbm": [0.1, 2.0, 0.4, 1.5] * 5, "ndfd": [0, 1.5, 0, 0.8] * 5}}
+    doc = {"triplet": trip, "d": 20, "n": 40, "span": [dates[0], dates[-1]],
+           "metrics": {"NBM expected": {"n": 20, "bias_in": 0.12, "mae_in": 0.4, "events_1": 8, "hit_1": 0.75}},
+           "daily": {"dates": dates, "obs": [0, 2.5, 0, 1.2] * 5, "nbm": [0.1, 2.0, 0.4, 1.5] * 5}}
     vd = src / "models" / "verify"                                  # dev21: the verify product tar lands in build/models/verify/
     vd.mkdir(parents=True, exist_ok=True)
     vdir = vd / "verification"
@@ -1900,15 +1900,18 @@ def check_verify_ui(b: Browser, base: str, log):
             _draw_all(b)
             r = panel()
             res[f"ready{width}"] = r
-            need(not r["hidden"] and r["chart"] and r["rows"] >= 2 and r["caveats"] >= 3, f"ready state at {width}px: {r}")
+            need(not r["hidden"] and r["chart"] and r["rows"] == 1 and r["caveats"] >= 3, f"ready state at {width}px: {r}")
             need("NBM's expected 24-h snowfall ran 0.12 in above" in r["summary"] and "SNOTEL site nearest this ski area" in r["summary"], f"summary sentence: {r['summary']}")
             need("lower bound" in b.eval("document.getElementById('verif-sec').textContent"), "the lower-bound caveat is missing")
+            panel_html = b.eval("document.getElementById('verif-sec').innerHTML")            # dev23: NBM only: no NDFD / "NWS (...)" label, column, legend entry or sentence
+            need(not re.search(r"NDFD|NWS \(|the NWS forecast|NWS official", panel_html), f"verification panel still mentions NDFD/NWS at {width}px")
             need(not r["hscroll"], f"sideways scroll at {width}px: {r}")
         need(b.eval("!!document.querySelector('#verif-sec details.chart-table')"), "View as table toggle missing")
         # 4. about.html scorecard
         b.open(f"{base}/about.html", width=375, wait=3)
         sc = b.eval("(() => { const s = document.getElementById('scorecard'); return {hidden: s.hidden, text: s.textContent.replace(/\\s+/g, ' ').slice(0, 900), hscroll: document.documentElement.scrollWidth > innerWidth + 2}; })()")
         need(not sc["hidden"] and "NBM expected" in sc["text"] and "lower bound" in sc["text"] and not sc["hscroll"], f"scorecard: {sc}")
+        need(not re.search(r"NDFD|NWS \(", b.eval("document.getElementById('scorecard').textContent")), "the scorecard must not mention NDFD")
         setup(True, {"d": 6, "n": 24}, scorecard_ready=False)
         b.open(f"{base}/about.html", width=1280, wait=3)
         need("Collecting data: 6 of 14 days, 24 of 30" in b.eval("document.getElementById('scorecard-body').textContent"), "scorecard collecting state")
@@ -2049,7 +2052,7 @@ def check_mobile_sweep(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips, "alertcls": check_alert_cls, "slrchart": check_slr_chart, "lean": check_lean_modules,
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips, "alertcls": check_alert_cls, "slrchart": check_slr_chart, "lean": check_lean_modules, 
           **{f"failure{k}": functools.partial(check_failure_modes, shard=(k, 3)) for k in (1, 2, 3)}}
 FULL_RUN = [n for n in CHECKS if n != "failure"]          # the full run uses the three failure shards (same coverage, parallel)
 

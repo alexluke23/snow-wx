@@ -712,17 +712,16 @@ What actually happened (snow measured/seen, where, photos or links welcome):
 
   function verifyChart(el, doc, where, index) {
     const d = doc.daily, num = (arr) => arr.filter((v) => v !== null && v !== undefined);
-    const ymax = Math.max(0.5, ...d.obs, ...num(d.nbm), ...num(d.ndfd)) * 1.12;
+    const ymax = Math.max(0.5, ...d.obs, ...num(d.nbm)) * 1.12;
     const traces = [
       { type: "bar", x: d.dates, y: d.obs, name: "Observed (SNOTEL depth gain)", marker: { color: "#aab4bf" }, hovertemplate: "Observed %{y:.2f} in<extra></extra>" },
       { type: "scatter", mode: "markers", x: d.dates, y: d.nbm, name: "NBM expected", marker: { color: C.OI.blue, size: 8, symbol: "circle" }, hovertemplate: "NBM %{y:.2f} in<extra></extra>" },
-      { type: "scatter", mode: "markers", x: d.dates, y: d.ndfd, name: "NWS (NDFD)", marker: { color: C.OI.orange, size: 8, symbol: "diamond" }, hovertemplate: "NWS %{y:.2f} in<extra></extra>" },
     ];
     C.plot(el, traces, C.layout(250, { margin: { t: 40 }, showlegend: true, legend: { orientation: "h", x: 0, y: 1.16, font: C.font(C.tick(), C.INK) }, bargap: 0.35,
       annotations: [C.axisTitle("24-h snow (in), one window per day (12Z to 12Z)")], xaxis: { type: "date", tickformat: "%b %-d", fixedrange: true, tickfont: C.font(C.tick(), C.INK), showgrid: false },
       yaxis: C.yaxis({ range: [0, ymax] }) }));
     C.summary(el, VerificationUI.sentence(doc, where));
-    C.tableToggle(el, `Observed and forecast 24-hour snow (in) at ${where.name}`, ["Window end (12Z)", "Observed", "NBM expected", "NWS (NDFD)"], VerificationUI.dailyRows(doc));
+    C.tableToggle(el, `Observed and forecast 24-hour snow (in) at ${where.name}`, ["Window end (12Z)", "Observed", "NBM expected"], VerificationUI.dailyRows(doc));
   }
 
   function snowLevelChart(el, fc, keys, tz) {
