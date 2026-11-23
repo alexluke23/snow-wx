@@ -2086,7 +2086,65 @@ def check_no_ndfd(b: Browser, base: str, log):
             stash.rename(nd)
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips, "alertcls": check_alert_cls, "slrchart": check_slr_chart, "lean": check_lean_modules, "nondfd": check_no_ndfd,
+def check_root_base(b: Browser, base: str, log):
+    """dev23 Part 6 (W1 staging prep): the SAME site works when served from the ROOT of a host (a `*.pages.dev` or custom domain) instead of `/snow-wx/`. A trimmed copy of the build is
+    generated with config site.base_path "/" (pages, sitemap, canonical, PWA manifest + service worker, 404 base) and served at the root: no request names the old folder, the obs map, Finder,
+    My mountains and a prerendered nested area page (ski/<state>/<id>/) load without JS errors or failed local requests, `area.html#id` redirects to the path page, and the sitemap /
+    canonical / manifest / service worker follow the config value. Nothing here touches the live site or any account."""
+    import shutil
+    sys.path.insert(0, str(REPO))
+    from pipeline import pages as pages_mod, pwa as pwa_mod
+    from pipeline.__main__ import fill_404_base
+    from pipeline.common import load_config
+    src = Path(base_dir_holder["path"])
+    fav, origin = "alta-ski-area", "https://staging.example.test"
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        for f in src.iterdir():
+            if f.name in ("data", "models"):
+                continue
+            (shutil.copytree if f.is_dir() else shutil.copy)(f, t / f.name)
+        (t / "data").mkdir(exist_ok=True)
+        for f in (src / "data").iterdir():                      # all small data; the per-area point files (65 MB) are trimmed to one area + the layer index
+            if f.name not in ("points", "ndfd"):
+                (shutil.copytree if f.is_dir() else shutil.copy)(f, t / "data" / f.name)
+        for rel in ("points/summary.json", f"points/{fav}.json", "points/layers"):
+            if (src / "data" / rel).exists():
+                (t / "data" / rel).parent.mkdir(parents=True, exist_ok=True)
+                (shutil.copytree if (src / "data" / rel).is_dir() else shutil.copy)(src / "data" / rel, t / "data" / rel)
+        cfg = load_config()
+        cfg["site"] = {**cfg["site"], "origin": origin, "base_path": "/"}
+        need(pages_mod.run(cfg, t, force=True) == 0 and pwa_mod.run(cfg, t, force=True) == 0, "pages / pwa build failed for base_path '/'")
+        fill_404_base(t, cfg)
+        sm = (t / "sitemap.xml").read_text(encoding="utf-8")
+        locs = re.findall(r"<loc>([^<]+)</loc>", sm)
+        need(locs and all(u.startswith(origin + "/") and "snow-wx" not in u for u in locs), f"sitemap does not follow base_path '/': {locs[:3]}")
+        page = (t / "ski" / "ut" / fav / "index.html").read_text(encoding="utf-8")
+        need(f'rel="canonical" href="{origin}/ski/ut/{fav}/"' in page, "canonical does not follow base_path '/'")
+        need('href="/css/style.css"' in page and f'href="/area.html#{fav}"' in page and "snow-wx" not in page, "prerendered page links must be root-relative without the old folder")
+        man = json.loads((t / "manifest.json").read_text(encoding="utf-8")) if (t / "manifest.json").exists() else {}
+        need(man.get("scope") == "/" and man.get("start_url", "").startswith("/"), f"manifest scope/start_url: {man.get('scope')} {man.get('start_url')}")
+        need('const BASE = "";' in (t / "sw.js").read_text(encoding="utf-8"), "service worker BASE must be empty at the root")
+        need('<base href="/">' in (t / "404.html").read_text(encoding="utf-8"), "404 base href must be /")
+        with serve(t) as tbase:
+            seen = 0
+            for pg in ("index.html", "finder.html", "mine.html", f"ski/ut/{fav}/", "about.html"):
+                b.open(f"{tbase}/{pg}", width=1280, wait=6)
+                if pg.startswith(("ski", "area", "index")):
+                    _draw_all(b)
+                old = [u for u in b.requests if "snow-wx" in u]
+                need(not old, f"{pg}: requested the old folder: {old[:3]}")
+                missing = [c for c in b.console if "404" in c and ("127.0.0.1" in c or "/data/" in c)]
+                need(not missing, f"{pg}: failed local requests: {missing[:3]}")
+                need(not b.errors, f"{pg}: JS errors: {b.errors}")
+                need(b.eval("!!document.querySelector('h1, h2')"), f"{pg}: nothing rendered")
+                seen += len(b.requests)
+            b.open(f"{tbase}/area.html#{fav}", width=1280, wait=6)
+            need(b.eval("location.pathname") == f"/ski/ut/{fav}/", f"area.html#{fav} did not redirect to the path page: {b.eval('location.href')}")
+            log(f"  rootbase: sitemap {len(locs)} urls, 5 pages + the #id redirect, {seen} requests, none for the old folder")
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips, "alertcls": check_alert_cls, "slrchart": check_slr_chart, "lean": check_lean_modules, "nondfd": check_no_ndfd, "rootbase": check_root_base,
           **{f"failure{k}": functools.partial(check_failure_modes, shard=(k, 3)) for k in (1, 2, 3)}}
 FULL_RUN = [n for n in CHECKS if n != "failure"]          # the full run uses the three failure shards (same coverage, parallel)
 
