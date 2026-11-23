@@ -4,7 +4,6 @@ published or not yet released; and the upload/cleanup shell step ends with statu
 import ast
 import os
 import re
-import shutil
 import stat
 import subprocess
 import sys
@@ -15,6 +14,7 @@ import pytest
 import yaml
 
 from pipeline import ecmwf as E
+from tests._shell import BASH, SKIP_REASON
 
 
 @pytest.fixture(autouse=True)
@@ -177,7 +177,6 @@ def test_cli_with_the_flag_off_does_nothing_and_says_so(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------- the upload / cleanup step under `bash -e` with a fake gh
-BASH = shutil.which("bash")
 FAKE_GH = r"""#!/bin/bash
 # fake gh: state in $FAKE_DIR (assets.txt = what the release lists, calls.txt = every call)
 echo "gh $*" >> "$FAKE_DIR/calls.txt"
@@ -218,7 +217,7 @@ def run_upload(tmp_path, assets):
     return r, deleted, left, calls
 
 
-@pytest.mark.skipif(not BASH, reason="bash not available")
+@pytest.mark.skipif(not BASH, reason=SKIP_REASON)
 @pytest.mark.parametrize("assets,deleted", [
     ([], []),                                               # no old assets
     ([NEW], []),                                            # only the new asset (a re-run of the same cycle)
@@ -235,7 +234,7 @@ def test_upload_step_ends_with_status_0_and_deletes_only_old_ecmwf_assets(tmp_pa
     assert any(c.startswith("gh release upload model-maps ecmwf-2026111812-abcd1234.tar --clobber") for c in calls)
 
 
-@pytest.mark.skipif(not BASH, reason="bash not available")
+@pytest.mark.skipif(not BASH, reason=SKIP_REASON)
 def test_the_old_shell_form_really_did_end_with_status_1(tmp_path):
     """the bug the fix addresses: when the loop is the LAST statement of the step, `[ test ] && cmd` leaves the loop (and so the whole step script) at status 1
     as soon as the last item fails the test (set -e does not fire inside an && list, but the script's exit status is the loop's): the step goes red and the redeploy is skipped"""

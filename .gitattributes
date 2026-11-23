@@ -1,0 +1,14 @@
+# Line endings: text files are LF in the repo and in the working tree (Windows checkouts too),
+# so workflow shell snippets, tests that compare file text, and hashes behave the same everywhere.
+* text=auto
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.sh   text eol=lf
+*.py   text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.html text eol=lf
+*.css  text eol=lf
+*.toml text eol=lf
+.gitattributes text eol=lf
