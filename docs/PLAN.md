@@ -60,7 +60,7 @@ users (Sno-Parks), meteorologists.
 
 ---
 
-## 2. Status (Nov 20 2026, through dev21)
+## 2. Status (Nov 21 2026, through dev22; dev23 in progress)
 
 - **Live:** https://alexluke23.github.io/snow-wx/ — repo `alexluke23/snow-wx` (custom domain: W1).
 - **Done:** M0–M5, M3.5, M3.6, M4.5 Sno-Parks, M9-prep archive (running), "My mountains", NBM forecast overlays, dev10 basemap, **dev11–dev14** ("likely" p25–p75 wording, one powder-quality definition, W3, status page),
@@ -74,7 +74,8 @@ users (Sno-Parks), meteorologists.
   **dev21** (merged, PR #30): **verification scores in CI** (`verify.yml`, daily; panel still behind its flag; minima projected ~Nov 30), **NOAA GEFS plume live** (`gefs.yml`), Safari/iPhone guards,
   model chips, alert-banner CLS fix, WebKit/Firefox smoke suite (`tools/xbrowser_smoke.py`), `pipeline archive-check`.
   **scrub-business** (branch): business planning moved out of the repo (local, gitignored `private/`); guard test `tests/test_no_business_content.py`.
-  **dev22** (branch): NBM only (NWS official toggle removed), lean chart modules + About "Reading the charts", snow-ratio chart redesign (drawn only where precipitation is likely), ECMWF freshness states (latest / late / out of date) + per-cycle attempt log + hourly attempts, M11 ML snow-ratio research (`docs/specs/snow-ratio-ml.md`, `tools/slr_baseline.py`).
+  **dev22** (merged, PR #32): NBM only (NWS official toggle removed), lean chart modules + About "Reading the charts", snow-ratio chart redesign (drawn only where precipitation is likely), ECMWF freshness states (latest / late / out of date) + per-cycle attempt log + hourly attempts, M11 ML snow-ratio research (`docs/specs/snow-ratio-ml.md`, `tools/slr_baseline.py`).
+  **dev23** (branch): reliability round: tests find a working bash on Windows (`tests/_shell.py`) + `.gitattributes` (LF); NBM snow-ratio percentiles (`slr_p25/p50/p75`) added to the forecast archive (M11 prep); verification panel is NBM only; NDFD files no longer deployed (`update-site.yml`, one step); **external scheduler built, not deployed** (`infra/scheduler/`, Cloudflare Worker); W1 staging prep (`pipeline r2-plan`, config-driven stub target, root-base browser check).
 - **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas, Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
 - **Known issues:** the NRCS AWDB (SNOTEL) outage of Nov 16–18 is over (first confirmed live 00:45Z Nov 18); **M9 excludes SNOTEL obs from 2026-11-16 12Z through 2026-11-18 00:45Z** (`config/settings.yml`
   `verification.snotel_outage`). Obs map Lighthouse mobile 71–91 (bimodal; compare with interleaved runs, median of ≥ 3 ≥ 85); site ≈ 220 MB / 5.7 k files.
@@ -115,6 +116,7 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
 | Nov 19 | **dev19 (owner brief):** ECMWF goes through a resilient fetcher with mirror failover; a step that cannot be fetched is a GAP (all members + HRES, never interpolated), a run needs >= 90 % of the steps and the first 120 h, else it exits 0 with `new=false`. Plotly is self-hosted (privacy: no CDN request). Hazard popups never call api.weather.gov from the browser. Webcam links that cannot be verified are removed, not guessed. |
 | Nov 19 | **dev20 (owner brief):** the site name is config-driven (`site.name`/`site.tagline` placeholders; set by owner at W1); share cards only with `pages` AND `og_images` on; AIFS shown as an experimental line, kept OUT of the agreement badge unless `aifs.in_badge`; the browser suite never depends on live data (frozen fixtures). |
 | Nov 21 | **dev22 (owner feedback round):** the site is **NBM only**: the "NWS official" (NDFD) toggle, its state/URL/storage keys and wording are gone (NWS alerts, hazards, AFDs, avalanche links and NOAA/NWS attribution stay; the NDFD fetch and the archive's NDFD rows are untouched and the browser no longer requests `data/ndfd/`). Chart modules are lean (title, one takeaway, chart, legend, View as table, one source/issue-time line, "How it works" link to About "Reading the charts"). The snow-ratio chart is drawn only where precipitation is likely, one closed band per run, hatched dry strips. Model-run freshness is judged against when the NEXT run is due: latest / late / out of date (`web/js/freshness.js`; lags measured: ECMWF ENS +7.75 h, HRES +7.57 h, GEFS +5.65 h). `ecmwf.yml` now attempts hourly around the measured release (GitHub drops most cron events here). |
+| Nov 21 | **dev23 (owner brief):** hide NDFD scores in the verification panel (NBM only on the surface; the archive keeps NDFD); stop deploying `data/ndfd/` (one workflow step; fetch and archive unchanged); build the external scheduler as code only (the owner deploys it); archive NBM SLR p25/p50/p75 additively (native hourly value at the window end hour, never derived across windows). |
 | Nov 20 | **dev21 (owner brief):** two more owner-authorized workflows, `verify.yml` and `gefs.yml` (model on `ecmwf.yml`, publish product tars that update-site already unpacks; no edit to existing workflows); GEFS on; model chips change the drawing only (badge and table use every model); the verification panel stays OFF until the owner flips it. |
 | Nov 16 | **Composite ranges are never shown:** where a 24/48/72 h total would add several 6 h percentile windows (fallback cycles), show the expected total only; points JSON marks totals `native: true/false`. Archive columns unchanged (they never carry composite ranges). Lighthouse target: median of ≥ 3 interleaved runs ≥ 85. |
 | Nov 16 | Model-map snowfall colors stay as is for now (backlog §8.4). **Guard:** points JSON and the forecast archive keep their existing fields (p10/p50/p90, P(≥4/8/12″), 24/48/72 h). |
@@ -132,7 +134,7 @@ Full history (Nov 6–8) is in `docs/ARCHIVE.md`. Standing decisions from that h
 - **Pipeline health:** a failed or stale run notifies the owner (email/push) and
   the public data-status page shows last-success time per source. Trust requires
   knowing when *we* are stale.
-- Schedules are best-effort on GitHub; if gaps persist add an external `workflow_dispatch` trigger (owner decision).
+- Schedules are best-effort on GitHub; the external `workflow_dispatch` trigger is built (`infra/scheduler/`, Cloudflare Worker, NOT deployed: owner steps in its README); the workflows keep their own crons as a backup.
 - Size budget: points ≈ 600 areas × ≤ 150 KB ≈ 90 MB in R2 (not in the site bundle).
 
 ---

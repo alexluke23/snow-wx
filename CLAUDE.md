@@ -68,6 +68,7 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
   `pipeline/cache.py` — data_cache pruning at the start of every run.
 - `config/models.yml` + `pipeline/models/` — model maps (see below); `web/models.html`
   + `web/js/models.js` — loop viewer.
+- `infra/scheduler/` — Cloudflare Worker that dispatches the five workflows on time (built dev23, NOT deployed; `cd infra/scheduler && node --test`; owner steps in its README).
 - `.github/workflows/update-site.yml` (hourly obs + deploy) and `models.yml` (model maps, NBM points, NOHRSC
   and NDFD matrix entries).
 
@@ -180,7 +181,8 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 ## TODO / session handoff (keep current; newest state wins)
 Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
 
-**Current state (Nov 20 2026: main has dev13-dev21 + scrub-business; branch dev22 in progress; owner summary: docs/STATE_SNAPSHOT.md)**
+**Current state (Nov 21 2026: main has dev13-dev22; branch dev23 in progress; owner summary: docs/STATE_SNAPSHOT.md)**
+- **dev23 (branch):** `tests/_shell.py` finds a bash that really runs (the WSL stub in System32 does not): workflow-snippet tests use it and skip, never fail; `.gitattributes` forces LF. Archive NBM files have 3 new columns `slr_p25/p50/p75` (`archive.NBM_COLS`; NDFD keeps `FORECAST_COLS`; old files load everywhere as blanks; `archive-check` accepts both headers and prints the fill rate). Verification payload (`verification.json`, `verification/<site>.json`, `run.json`) is NBM only (`verify.public_docs`). `update-site.yml` has one extra step that deletes `build/data/ndfd` after the archive step (the NDFD fetch and archive are unchanged; guards `tests/test_ndfd_not_deployed.py`, browser check `nondfd`). `pipeline r2-plan` prints an R2 sync plan (never uploads; `r2.enabled` false); `pipeline stub` reads `site.stub_target_origin` (empty = writes nothing); browser check `rootbase` builds with `site.base_path: "/"`. Browser suite: 38 checks in the full run (35 named, `failure` split in 3 shards).
 - **dev22 (branch):** NBM ONLY (the "NWS official" toggle, its state and `data/ndfd/` browser fetches are gone; the NDFD fetch and archive rows stay: guard `tests/test_lean_charts.py`); lean chart modules (takeaway + chart + legend + table + one `.note.src` source line + `how()` link;
   all explanations in About "Reading the charts"; `C.summary(el, short, aria)`, `C.legend`); snow-ratio chart per run (`web/js/charts/segments.js`, browser check `slrchart`); freshness `web/js/freshness.js` (latest / late / out of date, lags measured) + `pipeline/ecmwf_attempts.py` + `ecmwf.yml` hourly attempts
   (the ONLY .github edit, schedule + comment; a proposed extra publish step was denied by the tool classifier and is NOT applied); `tools/page_metrics.py` (area-page height / CLS on frozen fixtures), `tools/slr_baseline.py` + `docs/specs/snow-ratio-ml.md` (research only).
