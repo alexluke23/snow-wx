@@ -2052,7 +2052,41 @@ def check_mobile_sweep(b: Browser, base: str, log):
     need(not b.errors, f"JS errors: {b.errors}")
 
 
-CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips, "alertcls": check_alert_cls, "slrchart": check_slr_chart, "lean": check_lean_modules, 
+def check_no_ndfd(b: Browser, base: str, log):
+    """dev23 Part 4: the deployed site no longer contains data/ndfd/ (update-site.yml removes it after the forecast-archive step). With that folder REMOVED from the site copy, every page kind
+    loads without a request to anything called ndfd, without a failed local request (no 404 in the console) and without JS errors; the status page still lists the NDFD fetch (from meta.json)."""
+    import shutil
+    src = Path(base_dir_holder["path"])
+    nd = src / "data" / "ndfd"
+    stash = src / "data" / "_ndfd_stash"
+    shutil.rmtree(stash, ignore_errors=True)
+    had = nd.exists()
+    if had:
+        nd.rename(stash)
+    try:
+        pages = ["index.html", "index.html#v=depth_24h&map=7/40.6/-111.6&s=1308:UT:SNTL", "area.html#alta-ski-area", "area.html#snotel-1308-UT-SNTL", "area.html#sp-wing-mountain",
+                 "finder.html", "mine.html", "models.html", "status.html", "about.html", "sources.html"]
+        seen = 0
+        for pg in pages:
+            b.open(f"{base}/{pg}", width=1280, wait=6)
+            if pg.startswith(("area", "index")):
+                _draw_all(b)
+            reqs = [u for u in b.requests if "ndfd" in u.lower()]
+            need(not reqs, f"{pg}: requested NDFD files: {reqs[:3]}")
+            missing = [c for c in b.console if "404" in c and ("127.0.0.1" in c or "localhost" in c or "/data/" in c)]
+            need(not missing, f"{pg}: failed local requests: {missing[:3]}")
+            need(not b.errors, f"{pg}: JS errors: {b.errors}")
+            seen += len(b.requests)
+        b.open(f"{base}/status.html", width=1280, wait=6)
+        txt = b.eval("document.body.innerText")
+        need("NDFD fetch" in txt, "status page lost the NDFD fetch row (it is read from meta.json, not from the removed files)")
+        log(f"  nondfd: {len(pages)} pages, {seen} requests, none for ndfd")
+    finally:
+        if had:
+            stash.rename(nd)
+
+
+CHECKS = {"basemap": check_basemap, "fallback": check_fallback, "layout": check_layout, "search": check_search, "charts": check_charts, "snoparks": check_snoparks, "forecast": check_forecast_overlays, "mine": check_mine, "panel": check_panel, "snotel": check_snotel_outage, "finder": check_finder_filters, "hazards": check_hazards, "status": check_status, "pwa": check_pwa, "storm": check_storm, "hazpop": check_hazard_popup, "spmobile": check_snopark_finder_mobile, "mmodel": check_multimodel, "showall": check_finder_show_all, "ensemble": check_ensemble, "mobile": check_mobile_sweep, "models": check_models_layout, "webcams": check_webcams, "privacy": check_privacy, "analytics": check_analytics, "csp": check_csp, "verifyui": check_verify_ui, "failure": check_failure_modes, "keyboard": check_keyboard, "noidle": check_no_idle, "mmchips": check_mm_chips, "alertcls": check_alert_cls, "slrchart": check_slr_chart, "lean": check_lean_modules, "nondfd": check_no_ndfd,
           **{f"failure{k}": functools.partial(check_failure_modes, shard=(k, 3)) for k in (1, 2, 3)}}
 FULL_RUN = [n for n in CHECKS if n != "failure"]          # the full run uses the three failure shards (same coverage, parallel)
 

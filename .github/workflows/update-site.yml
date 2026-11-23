@@ -99,6 +99,12 @@ jobs:
         shell: bash -el {0}
         run: python -m pipeline archive --data build/data
 
+      - name: Leave the NDFD forecast files out of the deployed site
+        # Owner decision Nov 21 2026: the site shows NBM only and nothing the browser requests points at data/ndfd/ (about 1,446 files, 17 MB;
+        # tests/test_ndfd_not_deployed.py + the browser check `nondfd`). The build (status row) and the archive step above have already used them;
+        # only the folder that gets uploaded and deployed loses them. The NDFD fetch (models.yml) and the archive rows are unchanged.
+        run: rm -rf build/data/ndfd
+
       - uses: actions/configure-pages@v6
 
       - uses: actions/upload-pages-artifact@v5
