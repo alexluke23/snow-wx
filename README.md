@@ -14,7 +14,8 @@ Open snow forecasts and observations for western US ski areas, built for skiers,
 
 > **Nov 2026:** the model-map viewer and the Sno-Park pages are being removed (decision of Nov 23), and the project is
 > moving from GitHub Actions + GitHub Pages to GitLab + Cloudflare (`docs/specs/platform-transition.md`).
-> Start with [`docs/INDEX.md`](docs/INDEX.md) and [`docs/PLAN.md`](docs/PLAN.md).
+> New here? [`docs/ONBOARDING.md`](docs/ONBOARDING.md). Doc map: [`docs/INDEX.md`](docs/INDEX.md). Plan: [`docs/PLAN.md`](docs/PLAN.md);
+> timeline and action items: [`docs/ROADMAP.md`](docs/ROADMAP.md). AI agents: [`AGENTS.md`](AGENTS.md).
 
 ---
 
@@ -77,6 +78,7 @@ pipeline/        Python: one module per data source; NBM (nbm/), plumes (ecmwf.p
 web/             the website (HTML/CSS/JS, no build step; Plotly, Leaflet, MapLibre self-hosted in web/vendor/)
 tests/           offline unit tests
 tools/           browser checks, fixtures, NBM inventories, rehearsals
+AGENTS.md        protocol for AI agents (imported by CLAUDE.md); .claude/ holds project skills and review subagents
 CLAUDE.md        context for Claude Code; CONTRIBUTING.md for the team workflow
 ```
 

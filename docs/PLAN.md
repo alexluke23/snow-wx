@@ -20,6 +20,10 @@ read_when: start of every session
 |---|---|
 | Every session | **this file** |
 | Doc map (status, owner, when to read) | `docs/INDEX.md` |
+| Agent operating protocol (all AI agents) | `AGENTS.md`; skills in `.claude/skills/`, review subagents in `.claude/agents/` |
+| Timeline, phases, action items (A-NN), owner dependencies | `docs/ROADMAP.md` |
+| How the system fits together; data contracts | `docs/ARCHITECTURE.md` |
+| New to the team; terms | `docs/ONBOARDING.md`; `docs/GLOSSARY.md` |
 | What is live, flags, known issues | `docs/STATUS.md` |
 | Every decision with its date (newest first) | `docs/DECISIONS.md` |
 | Prioritised work (code-review findings + open items, grouped into merge requests) | `docs/BACKLOG.md` |
@@ -51,7 +55,7 @@ read_when: start of every session
 
 A free, open-data snow forecasting site for western US ski areas: NBM point forecasts for every ski area with probabilities, snow level and snow ratio, **model plumes** (HRRR, RRFS, GFS, ECMWF HRES + ENS, AIFS experimental, GEFS), SNOTEL observations, avalanche context, NWS alerts and public verification.
 
-**Priority now:** code-review safety and data-loss fixes (`docs/BACKLOG.md` MR 1–4) → scope trim, with plume sampling decoupled from map rendering first (MR 6) → platform Phase 0–1 (`platform-transition.md` §10) = W1 hosting → W2 pages → W4 PWA → NBM + plume UI passes → W6 alerts. Details in §8.2.
+**Priority now:** code-review safety and data-loss fixes (`docs/BACKLOG.md` MR 1–4) → platform Phase 0–1 (GitLab, scheduler, W1 hosting → W2 pages → W4 PWA) → plume sampling decoupled from map rendering (MR 6) → scope trim (Jan 4–8) → pipeline on Cloudflare + NBM and plume UI passes → W6 alerts. Dates and owners: `docs/ROADMAP.md`; summary in §8.2.
 
 **Hard rules for all code**
 1. Safety info (avalanche danger, NWS alerts, snow level/rain-at-base, data freshness) is never gated or hidden.
@@ -114,20 +118,20 @@ Every decision, newest first, with superseded rows marked: `docs/DECISIONS.md`. 
 
 Done milestones: `docs/archive/ARCHIVE.md`. Work items and their order: `docs/BACKLOG.md`.
 
-### 8.2 The 12-week plan — Nov 16 2026 → Feb 15 2027 (engineering)
+### 8.2 The 12-week plan — Nov 23 2026 → Feb 15 2027 (engineering)
+
+Dates, owners and every action item (`A-NN`): **`docs/ROADMAP.md`** (it wins on dates). Summary:
 
 **◇ = drop first if behind.** Peak-traffic windows: Thanksgiving (Nov 26), holidays (Dec 24–Jan 2), Presidents' Day weekend
 (Feb 13–15). **Deploy freezes:** Thanksgiving week, **Dec 23–Jan 2**, Feb 13–15 (fixes only). Owner-side tasks are tracked privately.
 
-| Sprint | Dates | Engineering |
+| Phase | Dates | Engineering |
 |---|---|---|
-| **S1 Foundations** | Nov 16–29 | Review MR 1–4 (safety display, safety data on fetch failure, archive durability, no silent empty deploy) **before Thanksgiving traffic**. Platform Phase 0 (GitLab, D1 inventory, CI tests). W5a analytics + failure alerts. |
-| **S2 Trim + hosting** | Nov 30–Dec 13 | MR 5–7 (6-h window fix, plume sampling without maps, pinned environment) → **scope trim**. **W1** on Workers Static Assets + R2 (domain set by owner). **W2** ~160 prerendered ski-area pages (after H8). |
-| **S3 PWA + NBM UI** | Dec 14–27 | **W4** PWA (after M16). **NBM visualization pass** on the area page (split `area.js` first). ◇ obs-map performance pass. |
-| **S4 Plumes + pipeline move** | Dec 28–Jan 10 | **Plume UI pass** (MR 9 first: gaps, GEFS, ECMWF partials). Platform Phase 2 shadow runs from Jan 3. **Verification panel v0**. |
-| **S5 Alerts** | Jan 11–24 | **W6** alerts backend: magic-link accounts, preset email alert, web push. Pipeline cutover job by job. |
-| **S6** | Jan 25–Feb 7 | WX API v1. Scope otherwise set by owner. ◇ **W7** wind-exposure flag (informational). |
-| **Wrap** | Feb 8–15 | Stabilize for Presidents' Day weekend; retire GitHub (platform Phase 3); no risky deploys. |
+| **A Stabilise** | Nov 23–Dec 6 | MR 1, 4, 5 by Nov 25 (safety display, no silent empty deploy, 6-h window fix); MR 2, 3, 7, 8, 10 + PR B by Dec 4; GitLab + CI tests; D1 inventory; scheduler live after M14/M10. |
+| **B New origin** | Dec 7–22 | R2 dual-write; **W1** on Workers Static Assets (domain set by owner by Dec 4); **W2** ~160 pages (after H8); **W4** PWA (after M16); MR 6 plume sampling without maps; MR 9; split `area.js`. |
+| *Freeze* | Dec 23–Jan 2 | On-call only. |
+| **C Trim + move** | Jan 4–31 | **Scope trim** (Jan 4–8); container prerequisites + image; shadow runs ≥ 7 days; cutover job by job; **NBM visualization pass**; **plume UI pass**; verification panel v0; M12 R0 kick-off. |
+| **D Alerts + retire GitHub** | Feb 1–12 | WX API v1; **W6** alerts; retire GitHub (redirect stub only). Freeze Feb 13–15. |
 
 **If behind, cut in this order:** W7 → storm-total tracker → obs-map perf pass → W6 (shift alerts to the off-season).
 **Never cut:** safety fixes, W1, W2, W4, analytics, pipeline monitoring, NBM + plume UI.

@@ -15,12 +15,30 @@ Every Markdown doc in the repo: where it is, whether it is current, who owns it 
 |---|---|---|---|
 | [`README.md`](../README.md) | current | T | first time in the repo: what the site is, setup, run, test |
 | [`CLAUDE.md`](../CLAUDE.md) | current | T | Claude Code reads it every session (rules, commands, gotchas) |
+| [`AGENTS.md`](../AGENTS.md) | current | T | every AI agent, every session (imported by CLAUDE.md): never-do list, stop-and-ask, checks, MR template |
 | [`CONTRIBUTING.md`](../CONTRIBUTING.md) | current | T | ownership, branches, merge requests, freezes, docs rules |
+| [`ONBOARDING.md`](ONBOARDING.md) | current | T | first week on the team: access, setup, reading order, first items, working with Claude Code |
+| [`ROADMAP.md`](ROADMAP.md) | current | T | timeline, phases, action items (A-NN) with owners and dates, owner dependencies |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | current | T | data flow, CLI, data products and contracts, front end, target architecture |
+| [`GLOSSARY.md`](GLOSSARY.md) | current | T | weather, data and project terms |
 | [`PLAN.md`](PLAN.md) | current | T | every session: hard rules, current decisions, roadmap |
 | [`STATUS.md`](STATUS.md) | current | T | what is live, flags on/off, known issues |
 | [`DECISIONS.md`](DECISIONS.md) | current | T | the date and reason behind a rule; adding a decision |
 | [`BACKLOG.md`](BACKLOG.md) | current | T | picking or closing work (review findings, merge-request order) |
 | [`DESIGN.md`](DESIGN.md) | current | W | charts, legends, colours, layout, accessibility |
+
+## Agent tooling (`.claude/`)
+
+| File | Use |
+|---|---|
+| [`skills/snow-wx-hard-rules`](../.claude/skills/snow-wx-hard-rules/SKILL.md) | hard-rules check before any user-visible or range change |
+| [`skills/snow-wx-backlog-fix`](../.claude/skills/snow-wx-backlog-fix/SKILL.md) | work a backlog/review item end to end |
+| [`skills/snow-wx-nbm-change`](../.claude/skills/snow-wx-nbm-change/SKILL.md) | NBM fetch, decode, windows, point maths |
+| [`skills/snow-wx-plume-chart`](../.claude/skills/snow-wx-plume-chart/SKILL.md) | multi-model and ensemble charts |
+| [`skills/snow-wx-docs-update`](../.claude/skills/snow-wx-docs-update/SKILL.md) | docs after a change; docs checks |
+| [`skills/snow-wx-pipeline-cutover`](../.claude/skills/snow-wx-pipeline-cutover/SKILL.md) | move a job to Cloudflare with shadow run + parity |
+| [`agents/safety-reviewer.md`](../.claude/agents/safety-reviewer.md) | read-only PASS/FAIL review of safety and range changes |
+| [`agents/docs-keeper.md`](../.claude/agents/docs-keeper.md) | checks docs match a change |
 
 ## Specs (`docs/specs/`)
 

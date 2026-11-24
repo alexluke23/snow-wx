@@ -17,7 +17,7 @@ One prioritised list: the Nov 23 code review (`docs/reviews/2026-11-code-review.
 
 ## 1. Merge-request order (from the review)
 
-Do MR 1–4 before the Thanksgiving traffic; MR 6 before the scope trim; MR 7 and M15 before any container or R2 work.
+MR 1, 4 and 5 by Wed Nov 25 (before Thanksgiving traffic); MR 2, 3, 7, 8, 10 and PR B by Fri Dec 4; MR 6 before the scope trim; MR 7 and M15 before any container or R2 work. Dates and owners: `docs/ROADMAP.md` (action items A-02 … A-27).
 
 | MR | Name | Items | Owner | Effort |
 |---|---|---|---|---|

@@ -9,6 +9,7 @@ read_when: working on the GitLab/Cloudflare move, D1/R2, the WX API, search, the
 
 > **Version 1.2, Nov 23 2026.** Written for the team of 3 developers moving Snow-Wx from a solo GitHub project to its own platform (GitLab + Cloudflare).
 > **v1.1 scope update (team decision, Nov 23):** model maps removed; Sno-Parks removed; forecast pages for **ski areas only (~160)**; **SNOTEL kept as observations**; UI focus is **NBM visualizations + model plumes**. The model *point sampling* behind the plumes (HRRR, RRFS, GFS, ECMWF, GEFS) stays. Numbers below are updated for ~160 forecast points (was ~1,444).
+> **Dates and owners for every step: `docs/ROADMAP.md`** (it wins on dates).
 > **v1.2 (Nov 23, after the code review):** Phase 0 now starts with the review's safety and data-loss fixes; the scheduler is deployed only after review M14/M10 are fixed; forecasts at SNOTEL sites stay computed and archived (H6). Work items and their order: `docs/BACKLOG.md`.
 > Builds on `PLAN.md` v1.3, `docs/archive/STATE_SNAPSHOT-2026-11-21.md`, `docs/specs/hosting-seo.md`, `docs/specs/alerts-backend.md` and the team's architecture sketch (`basic_architecture_plan.png`).
 > **[verify]** = re-check at the source before you spend money or sign up. Cloud prices and limits change often. Figures here were checked on Nov 23 2026.
@@ -438,7 +439,7 @@ Peak-traffic windows and freezes from `PLAN.md` §8.2 still apply: **Thanksgivin
 | 0.5 | D1 inventory + split + migrations (§3.5) | Dev B | Schema in repo; staging + prod DBs |
 | 0.6 | `.gitlab-ci.yml` with pytest + browser `--quick`; self-hosted runner registered | Dev A | MRs show a green test check (also closes the "Checks 0" item in §8.4) |
 | 0.7 | Merge **PR B** (frozen fixtures + `live_smoke.py`); drop the Models page from the smoke list | Dev C | Browser suite green without live data |
-| 0.8 | **Scope trim** (`PLAN.md` §3 Nov 23): remove Models page + map frames, Sno-Parks, SNOTEL-site forecast pages; **first decouple plume sampling from map rendering (review H5, MR 6)**; keep all SNOTEL obs and the SNOTEL-site forecasts for verification (H6); redirects for old links | Dev A (pipeline) + Dev C (web) | `PLAN.md` §8.3 "Scope trim" criteria met; before/after file count reported. **Do this before Phase 1** so less moves to Cloudflare. |
+| 0.8 | **Scope trim** (`PLAN.md` §3 Nov 23): remove Models page + map frames, Sno-Parks, SNOTEL-site forecast pages; **first decouple plume sampling from map rendering (review H5, MR 6)**; keep all SNOTEL obs and the SNOTEL-site forecasts for verification (H6); redirects for old links | Dev A (pipeline) + Dev C (web) | `PLAN.md` §8.3 "Scope trim" criteria met; before/after file count reported. **Scheduled Jan 4–8** (`docs/ROADMAP.md` A-28), after MR 6; W1 goes first so the new origin is live before the holidays. |
 
 ### Phase 1: Hosting on Cloudflare = W1 (Dec 1 – Dec 20)
 
@@ -466,7 +467,7 @@ Peak-traffic windows and freezes from `PLAN.md` §8.2 still apply: **Thanksgivin
 | 2.5 | Archive → Parquet in `snowwx-archive`; `verify` reads Parquet | Dev A | Verification scores match the old CSV path |
 | 2.6 | Monitoring: failed/late cycle → email/push to on-call dev; status page reads D1 `source_health` | Dev B | Test alert received |
 
-### Phase 3: API, alerts, leaving GitHub (Feb 1 – Feb 28)
+### Phase 3: API, alerts, leaving GitHub (Feb 1 – Feb 12)
 
 | # | Task | Owner | Done when |
 |---|---|---|---|

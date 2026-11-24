@@ -8,6 +8,15 @@ archived (verification needs them).
 **Hosting today:** GitHub Actions builds static JSON/PNG + HTML and deploys to GitHub Pages. **Moving to** GitLab +
 Cloudflare (Workers Static Assets, R2, D1, Containers/Workflows, WX API Worker): `docs/specs/platform-transition.md`.
 
+## Agent protocol (imported; applies to every session)
+@AGENTS.md
+
+Project skills in `.claude/skills/` (use them; they encode the rules below): `snow-wx-hard-rules` (safety/percentile check
+before any UI, summary or range change), `snow-wx-backlog-fix` (working a review finding end to end), `snow-wx-nbm-change`
+(NBM fetch/decode/points), `snow-wx-plume-chart` (multi-model + ensemble charts), `snow-wx-docs-update` (docs after a
+change), `snow-wx-pipeline-cutover` (moving a job to Cloudflare). Review subagents in `.claude/agents/`: `safety-reviewer`,
+`docs-keeper`.
+
 ## Read first, and only what the task needs
 - Every session: `docs/PLAN.md` (rules, current decisions, roadmap). Doc map: `docs/INDEX.md`.
 - Then ONLY the spec for the task in `docs/specs/` (table "Where things live" in PLAN.md).

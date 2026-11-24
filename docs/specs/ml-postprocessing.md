@@ -23,7 +23,7 @@ read_when: before any ML, SNOTEL QC or NBM backfill work
   - **NBM version changes:** v5.0 went operational **May 5 2026** and changed the winter guidance. Most of the archive is v4.x, and there is no full winter of operational v5.0 yet.
   - **Ski areas aren't observed:** models train at SNOTEL sites and must transfer to ski-area points (§6.5).
 - **Approach:** start with strong simple baselines (per-site quantile mapping, censored shifted gamma), then a **pooled gradient-boosting quantile model** across all stations. Validate by **season and by held-out site**, scored mainly with **CRPS**, reliability and p25–p75 coverage.
-- **Timeline:** build the data lake + QC this winter (no site change). Train and evaluate in the 2027 off-season. Show an **experimental line in 2027–28** behind a flag. Promote only after a season of public verification.
+- **Timeline** (dates in `docs/ROADMAP.md`): build the data lake + QC from January to mid-March (no site change). Train and evaluate in the 2027 off-season. Show an **experimental line in 2027–28** behind a flag. Promote only after a season of public verification.
 
 ---
 
@@ -208,7 +208,7 @@ Ski-area base/summit points have no observations, so:
 
 | Stage | What | Gate to the next stage |
 |---|---|---|
-| **R0 Data lake** (Dec 2026–Feb 2027) | Backfill NBM point extracts; pull hourly SNOTEL history; build QC v1 + gold set; Parquet in R2 | QC acceptance (§4.4) |
+| **R0 Data lake** (kick-off Jan 2027, gate Mar 15 2027; `docs/ROADMAP.md` A-39, A-44) | Backfill NBM point extracts; pull hourly SNOTEL history; build QC v1 + gold set; Parquet in R2 | QC acceptance (§4.4) |
 | **R1 Baselines** (Mar–May 2027) | Score raw NBM vs QC'd SNOTEL by version/region; per-site quantile mapping + CSGD | Published internal report. **If NBM is already well calibrated and the baselines gain nothing, narrow scope to SLR** |
 | **R2 ML candidates** (May–Aug 2027) | Pooled LightGBM quantile; components vs direct snowfall; leave-site-out | CRPSS > 0 vs best baseline, out of sample, in most regions |
 | **R3 Experimental line** (2027–28 season) | `ml_adjusted.enabled=false` by default; turned on for staff, then a labelled public "Experimental: Snow-Wx adjusted" line beside NBM on native windows. Shows training sample size, region and last verification score | One full season of live, out-of-sample verification |

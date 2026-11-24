@@ -1,7 +1,8 @@
 # Contributing to Snow-Wx
 
-How the team of 3 developers works together. Platform details (GitLab, Cloudflare, environments) are in
-`docs/specs/platform-transition.md`; the work list is `docs/BACKLOG.md`.
+How the team of 3 developers works together. New here: `docs/ONBOARDING.md`. Platform details (GitLab, Cloudflare,
+environments): `docs/specs/platform-transition.md`. Work list: `docs/BACKLOG.md`. Dates and action items: `docs/ROADMAP.md`.
+AI agents follow `AGENTS.md` (same rules, plus a never-do list); use the skills in `.claude/skills/` and the review subagents in `.claude/agents/`.
 
 ## Ownership
 
