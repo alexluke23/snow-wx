@@ -1,4 +1,13 @@
+---
+status: retired
+owner: team
+last_reviewed: 2026-11-23
+read_when: history only
+---
+
 # Sno-Parks & winter recreation points: sources (M4.5 research, Nov 8 2026)
+
+> **RETIRED Nov 23 2026** with the Sno-Park feature (`docs/specs/retired/sno-parks.md`). Kept for history only.
 
 Goal (PLAN.md §5.6): western Sno-Parks and winter trailheads (snowmobile, XC ski, snowshoe,
 sled/tubing) as a new point type `snopark`. Preference: public-domain, key-free sources;

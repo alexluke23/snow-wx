@@ -1,4 +1,13 @@
+---
+status: current
+owner: api-infra
+last_reviewed: 2026-11-23
+read_when: running the W1 domain cutover
+---
+
 # W1 cutover checklist (rehearsed Nov 19 2026, dev18; awaiting the real domain)
+
+> **Nov 23 2026:** the deploy target is now **Cloudflare Workers + Static Assets** (not Pages) and git moves to GitLab; read with `docs/specs/platform-transition.md` Phase 1. Where this checklist says "Cloudflare Pages" or a GitHub workflow edit, use Workers Builds / the GitLab and Cloudflare equivalents. Code-review blockers for W1: M17 (CSP), H8 (before `pages.enabled`), M16 (before `pwa.enabled`).
 
 Rehearsal evidence: `python tools/w1_rehearsal.py --origin https://snowwx.example --base ""` (and `--base /app`): 15 of 15 checks pass offline (tests/test_stub.py runs both). It builds the site for a placeholder domain with the W2 pages and W4 PWA forced on and checks that
 **nothing hard-codes `github.io`** (grep over every built html/js/json/xml/txt file; links to the code repository are allowed), sitemap / robots / canonical / `og:url` / JSON-LD / manifest / service-worker base / `pwa-config.js` / the 404 `<base>` / the `#id` redirect map all follow `site.origin` + `site.base_path`,
@@ -25,7 +34,7 @@ Still hard-coded in the repo (all intended): `config/settings.yml` `site.origin`
 - [ ] `python tools/browser_check.py --build build` against a local copy, then the same checks against the live URL (parity check spec in `hosting-seo.md`: 30 sampled URLs, GitHub Pages vs new origin).
 - [ ] `python -m pipeline linkcheck --build build --outbound --data` (internal links, robots/sitemap/canonical, every outbound link).
 - [ ] First build after the cutover: `restore` log shows stations restored (or "no copy" on purpose); the monitor job reads the new `meta.json`; status page loads; `data/meta.json` is the last file written.
-- [ ] Lighthouse (median of 3 interleaved runs, mobile): obs map and area page not worse than today (`docs/budgets_baseline.md`).
+- [ ] Lighthouse (median of 3 interleaved runs, mobile): obs map and area page not worse than today (`docs/ops/budgets_baseline.md`).
 - [ ] Search Console: submit `sitemap.xml`; confirm the stub's canonical/redirects; remove `noindex` from the legal pages only after sign-off.
 - [ ] Update the privacy page host sentence ("served from GitHub Pages (planned: Cloudflare)") and regenerate: `python tools/gen_site_pages.py`; add the analytics provider host if enabled (tests fail until you do).
 - [ ] Feedback address (`site.feedback_email`) still reads from config; no address in any page.

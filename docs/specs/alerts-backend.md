@@ -1,7 +1,16 @@
+---
+status: current
+owner: api-infra
+last_reviewed: 2026-11-23
+read_when: working on the alerts Worker, accounts, alert rules or push/email delivery
+---
+
 # Spec: Alerts backend (W6)
 
+> **Nov 23 2026 — target stack** (`docs/specs/platform-transition.md` §3, §6): user data in the D1 database `snowwx-app` (separate from the rebuildable catalog DB, nightly export to R2); the evaluator runs after each points run and fans out through **Queues**; email via Cloudflare Email Service or another provider [evaluate]; web push for installed PWAs, native push later. The D1/KV free-plan question is answered there. The offline skeleton below stays the acceptance list.
+
 > Read when working on the Worker, accounts, alert rules or push/email delivery.
-> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `PLAN.md`.
+> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `docs/PLAN.md`; doc map `docs/INDEX.md`.
 > Section numbers (§) are kept from the original single plan so cross-references still work.
 
 ---
@@ -13,9 +22,9 @@ Smallest thing that works:
   each user's rules after every points run and sends **email + web push**.
 - **Identity:** passwordless email magic link; no passwords.
 - **Rules:** "area X, window 24 h/72 h, P(≥ N in) ≥ p, or snow level below Y"; a
-  free preset ("≥ 50% chance of ≥ 8 in at my favorites"), custom thresholds in the
-  supporter tier. Rate-limit (≤ 1 alert/area/storm).
-- **Entitlements:** payment-provider webhook sets `tier` on the account.
+  free preset ("≥ 50% chance of ≥ 8 in at my favorites"), custom thresholds (who gets them is
+  set by owner). Rate-limit (≤ 1 alert/area/storm).
+- **Entitlements:** if any, set by owner (a webhook would set `tier` on the account).
 - **Compliance:** double opt-in, one-click unsubscribe, physical address in
   email (CAN-SPAM); SMS later only with 10DLC registration and STOP handling (§10).
 

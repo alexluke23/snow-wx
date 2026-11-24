@@ -1,4 +1,13 @@
+---
+status: current
+owner: api-infra
+last_reviewed: 2026-11-23
+read_when: measuring sizes, runtimes or Lighthouse against the baseline
+---
+
 # Budgets baseline (Nov 20 2026, dev21 update of the dev18-dev20 baseline; for the W1 Cloudflare move)
+
+> **Nov 23 2026:** baseline from the GitHub Pages setup, kept as history for the move to Cloudflare Workers + Static Assets. Model-map and Sno-Park rows will disappear with the scope trim; re-measure after it.
 
 Numbers measured on the current GitHub Pages setup, so the Cloudflare Pages + R2 move has something to compare against. Sources: the local build (`build/`, one full `pipeline build` of Nov 18 plus the dev18 pages), the public GitHub Actions API (40 most recent completed runs per workflow, read Nov 19 2026 01:55 UTC),
 dev14's production-size measurement (`docs/specs/hosting-seo.md`), local Lighthouse runs (below). Re-measure with the commands in the last section.

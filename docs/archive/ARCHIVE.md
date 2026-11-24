@@ -1,3 +1,10 @@
+---
+status: reference
+owner: team
+last_reviewed: 2026-11-23
+read_when: only when a task asks for history
+---
+
 # Snow-Wx — Archive (history; not read by default)
 
 > Completed work and older decisions moved out of `PLAN.md` to keep it lean. Read only when you need history.
@@ -340,3 +347,192 @@ Decision rows (dev15–dev17):
 Former §2 "Known issues" text: NRCS AWDB (SNOTEL) outage over. Last good run before it ≈ 11:25 UTC Nov 16; first failing run seen 22:07 UTC Nov 16; still down 02:21 UTC Nov 17. Recovery time was unconfirmed;
 first confirmed live 00:45Z Nov 18 (owner checked the Actions logs). The archive's 821 stations at 2026-11-17 12Z may be carried-forward data. No Data-health issue was opened: the monitor (merged 13:26 UTC Nov 17) probably
 started after recovery, or history was lost; dev15 hardened the bootstrap. Handling: probe, last good copy <= 48 h flagged stale, auto-recovery.
+
+---
+
+## Moved on Nov 23 2026 (docs reorganisation, branch `docs/reorg-2026-11`)
+
+Text moved out of `docs/PLAN.md` v1.1 and `CLAUDE.md` when they were slimmed. Kept word for word for history; current state is in `docs/STATUS.md`, decisions in `docs/DECISIONS.md`, work in `docs/BACKLOG.md`.
+
+### PLAN v1.1 §2 Status (as of Nov 21 2026) (Nov 21 2026, through dev22; dev23 in progress)
+
+- **Live:** https://alexluke23.github.io/snow-wx/ — repo `alexluke23/snow-wx` (custom domain: W1).
+- **Done:** M0–M5, M3.5, M3.6, M4.5 Sno-Parks, M9-prep archive (running), "My mountains", NBM forecast overlays, dev10 basemap, **dev11–dev14** ("likely" p25–p75 wording, one powder-quality definition, W3, status page),
+  **dev15/16** (monitor bootstrap, W4 PWA built but off, storm totals, hazard text, M7 precipitation by model, M9 scorer), **dev17** (merged: `hazard_text.json`, ECMWF built, W7/W6 skeletons built but off, overlay stale/flag),
+  **dev18** (merged): **ECMWF live** (standalone `ecmwf.yml`, monitored source, member count read from the data), models-page layout shift fixed (fixture frames), agreement badge "Little precipitation expected" + day-type calibration,
+  webcam LINKS (60 areas), Sources / disclaimer / privacy / terms drafts, cookieless analytics (off), `linkcheck`, `404.html`, draft Cloudflare `_headers` + CSP check, verification UI (behind `verification_ui.enabled=false`). Details: `docs/ARCHIVE.md`.
+  **dev19** (merged): **ECMWF fetch resilience** (shared `pipeline/fetch_resilient.py`: backoff + jitter, Retry-After, mirror failover AWS regional -> Google -> ECMWF portal, graceful degradation with `steps_missing`, per-cycle resume cache restored/saved by `ecmwf.yml`, fetch health on the status page), webcam link corrections + dead-link removal,
+  **Plotly self-hosted** (`web/vendor/plotly-2.35.2/`; no third-party script host left in the browser), hazard popups served only from our own files (the browser-side api.weather.gov fetch is gone; the pipeline fills missing alert texts).
+  **dev20** (merged): ECMWF mirror preference + 2-cycle cache bound; browser suite ~32 -> ~5 min (parallel isolated workers, frozen inputs, `--quick`); share cards (`pipeline og`, OFF);
+  **ECMWF AIFS line** (on, experimental, out of the badge); `docs/STATE_SNAPSHOT.md` (owner notes).
+  **dev21** (merged, PR #30): **verification scores in CI** (`verify.yml`, daily; panel still behind its flag; minima projected ~Nov 30), **NOAA GEFS plume live** (`gefs.yml`), Safari/iPhone guards,
+  model chips, alert-banner CLS fix, WebKit/Firefox smoke suite (`tools/xbrowser_smoke.py`), `pipeline archive-check`.
+  **scrub-business** (branch): business planning moved out of the repo (local, gitignored `private/`); guard test `tests/test_no_business_content.py`.
+  **dev22** (merged, PR #32): NBM only (NWS official toggle removed), lean chart modules + About "Reading the charts", snow-ratio chart redesign (drawn only where precipitation is likely), ECMWF freshness states (latest / late / out of date) + per-cycle attempt log + hourly attempts, M11 ML snow-ratio research (`docs/specs/snow-ratio-ml.md`, `tools/slr_baseline.py`).
+  **dev23** (branch): reliability round: tests find a working bash on Windows (`tests/_shell.py`) + `.gitattributes` (LF); NBM snow-ratio percentiles (`slr_p25/p50/p75`) added to the forecast archive (M11 prep); verification panel is NBM only; NDFD files no longer deployed (`update-site.yml`, one step); **external scheduler built, not deployed** (`infra/scheduler/`, Cloudflare Worker); W1 staging prep (`pipeline r2-plan`, config-driven stub target, root-base browser check).
+- **Product:** obs map (SNOTEL 836, ASOS 544, avalanche, NOHRSC + NBM overlays); ~607 forecast points (ski areas, Sno-Parks) + 837 SNOTEL sites, NBM to day 10–11, NDFD, alerts, AFDs; Powder Finder; model maps on `models.yml`.
+- **Known issues:** the NRCS AWDB (SNOTEL) outage of Nov 16–18 is over (first confirmed live 00:45Z Nov 18); **M9 excludes SNOTEL obs from 2026-11-16 12Z through 2026-11-18 00:45Z** (`config/settings.yml`
+  `verification.snotel_outage`). Obs map Lighthouse mobile 71–91 (bimodal; compare with interleaved runs, median of ≥ 3 ≥ 85); site ≈ 220 MB / 5.7 k files.
+
+### PLAN v1.1 §8.2 sprint table (before the Nov 23 re-plan) — Nov 16 2026 → Feb 15 2027 (engineering)
+
+**◇ = drop first if behind.** Peak-traffic windows: Thanksgiving (Nov 26), holidays (Dec 24–Jan 2), Presidents' Day weekend
+(Feb 13–15). **Deploy freeze Dec 23–Jan 2** (fixes only). Owner-side tasks are tracked privately.
+
+| Sprint | Dates | Dev (Claude Code) |
+|---|---|---|
+| **S1 Foundations** | Nov 16–29 | **W1** domain + Cloudflare Pages + R2 + redirect stub (domain set by owner at W1; check file-count/size; parity test). **W5a** cookieless analytics + pipeline-failure alerts. Refresh §2 status. |
+| **S2 Indexable + summaries** | Nov 30–Dec 13 | **W2** prerendered area pages, sitemap, canonical, OG cards (top 60). **W3** Daily Snow summaries v1 + tests. |
+| **S3 PWA** | Dec 14–27 | **W4** PWA (manifest, SW, offline favorites, staleness, install coach, "My mountains" start page). **M4.5** Sno-Parks (if not done) on the new URL scheme. ◇ obs-map performance pass. |
+| **S4 Multi-model** | Dec 28–Jan 10 | **M7** HRRR/RRFS/GFS/NBM plumes + model-agreement badge. **M8-lite** ECMWF IFS point sampling + attribution. **Verification panel v0** (~7 weeks of archive). |
+| **S5 Free alerts** | Jan 11–24 | **W6** alerts backend: magic-link accounts, free preset email alert, web push for installed PWAs. ◇ storm-total tracker. |
+| **S6** | Jan 25–Feb 7 | Scope set by owner. ◇ **W7** wind-exposure flag (informational). |
+| **Wrap** | Feb 8–15 | Stabilize for Presidents' Day weekend; no risky deploys. |
+
+**If behind, cut in this order:** W7 → storm-total tracker → obs-map perf pass →
+M8-lite → W6 (shift alerts to the off-season). **Never cut:** W1, W2, W3, W4,
+analytics, pipeline monitoring.
+
+
+### PLAN v1.1 §8.4 Backlog (dev18 reconciliation) — reconciled with the code (dev18, Nov 19 2026)
+
+Key: ✅ built and live · ⏸ built, behind a flag or waiting on the owner · ◐ partly built · ○ open. (dev17 found the NBM overlays already existed: this table is the audit.)
+
+| Item | State | What the code has / what is missing |
+|---|---|---|
+| Storm-total tracker (SNOTEL 24/48/72 h/7 d, NOHRSC) | ✅ | dev15: area page + map variables |
+| NBM forecast overlays on the obs map | ✅ | `overlays.js`, 9 layers, stale-grey, `forecast_overlays.enabled` (dev17 audit) |
+| Powder-quality surfaces / Daily Snow summaries (W3) | ✅ | dev14; open: "Low confidence" rule, meta description (needs W2) |
+| "My mountains" refinements | ○ | page exists (`mine.html`); no refinement was ever specified: drop unless the owner lists some |
+| Mobile performance pass (obs map) | ◐ | canvas symbols, deferred OSM reference layer, preconnect, tile fallback done; Lighthouse mobile 71–91 (bimodal); remaining ideas: smaller first payload |
+| Webcams (links only) | ◐ | dev18 Part 1 (`config/webcams.yml` + area-page row); embeds stay out |
+| Resort-reported snowfall | ○ | licensing research only (`docs/sources_resort_snowfall.md`); build waits for a written answer |
+| Obs time slider (24–72 h) | ○ | not started |
+| Slope-angle / aspect layer (3DEP) | ○ | not started (W7 flag uses model wind, not terrain aspect) |
+| More observation networks (MADIS cat. 3, RWIS, center telemetry) | ○ | research licences first; **ask before building** |
+| Model-map snowfall colors → NWS table | ○ | owner deferred (low priority; model maps use their own table) |
+| PMTiles backup of the OSM reference layer | ○ | not started |
+| W2 prerendered pages + sitemap/robots | ⏸ | `pipeline/pages.py`, `pages.enabled=false`; not wired into update-site; OG cards not built |
+| W4 PWA | ⏸ | `pwa.enabled=false` until the W1 domain; real-device tests open |
+| W5 analytics | ◐ | status page, feedback links, monitor issues ✅; cookieless analytics: dev18 Part 2c (provider chosen by the owner) |
+| W6 alerts backend | ⏸ | offline skeleton + tests (`alerts_backend.enabled=false`); 10 owner decisions in the spec |
+| W7 wind-exposure flag | ⏸ | built, `wind_exposure.enabled=false`; needs the reviewer checklist |
+| M7/M8 multi-model + ECMWF | ✅ | HRES line + ENS plume; **live since dev18** (`ecmwf.yml`); NOAA GEFS plume ✅ live from dev21 (`gefs.yml`, `gefs.enabled=true`) |
+| M9 verification | ◐ | archive running, scorer built (`pipeline verify`), **daily CI scores from dev21** (`verify.yml` -> `models/verify/`), UI behind `verification_ui.enabled=false`; minima ~Nov 30 |
+| M6 interactive model layers + HRRR pressure levels | ○ | last |
+
+### CLAUDE.md "Model maps" (Phase 2; low priority, see PLAN §8; spec: now `docs/specs/retired/model-maps.md`)
+- Flow: `fetch.py` (Herbie, `priority=["aws"]` = NODD only; one byte-range download per
+  product and forecast hour; ecCodes decode cropped to the maps' lat/lon bounds) →
+  `run.derive_frame` (in fhour order; QPF windows by differencing run-total APCP;
+  snowfall accumulated per step) → `.npz` per frame → process pool `plot.render_task`.
+- `plot.Canvas` is built once per (grid, domain) per worker: figure, basemap, and a
+  precomputed pixel→grid bilinear sampling map. Shading = `map_coordinates` + `imshow`
+  in the map projection; per-image artists are removed after each save. Fixed pixel
+  size per domain; PNGs quantized to 128 colors.
+- Output: `<out>/<model>/<YYYYMMDDHH>/<field>/<domain>/fNNN.png` + `<out>/<model>/index.json`;
+  `build` merges all into `build/models/index.json` (catalog the viewer reads).
+- CI: `models.yml` (cron 55 1-22/3) renders each model in a matrix job, tars
+  `<model>/` to `<model>-<cycle>.tar` on the `model-maps` prerelease (race-safe create,
+  deletes only that model's older assets), then dispatches `update-site.yml`, which
+  downloads the newest tar per model before every build. `--published` makes runs
+  with nothing new exit 0 without output.
+- Adding a model: add it to `config/models.yml` (products, moisture `dpt|rh`,
+  vorticity `native|compute`, levels, cycles, fhours, domains, fields), run a quick
+  local render and look at every PNG, then add it to the matrix in `models.yml`.
+- Known limitations / future work:
+  - Kuchera Tmax and the wet-bulb-zero height use only 1000/925/850/700/500 mb (+2 m),
+    so a shallow warm nose can be missed and WBZ is interpolated across ~5000-ft gaps.
+    Future: pull TMP/DPT from the HRRR prs file at 25-mb spacing.
+  - WBZ uses Stull (2011) Tw (fit near 1000 hPa; biased slightly warm aloft in dry
+    air). WBZ is capped at the model's lowest 0 °C height (physically Tw <= T); the
+    cap fixed WBZ > freezing level in NM precip on 2026-11-07.
+  - Snow level shading is drawn only where WBZ is above ground; elsewhere one flat
+    "at/below ground" color. Freezing-level contours use HGT:highest tropospheric
+    freezing level (HRRR's lowest 0C isotherm follows valley cold pools).
+  - Snowfall uses CPOFP (frozen %) at the end of each step for the whole step.
+  - WBZ cross-check vs RRFS native `HGT:lowest level of the wet bulb zero`
+    (gh/lowestLevelWetBulb0), RRFS 12Z 7 Nov 2026, f000–f048, western crop:
+    precipitating points: computed − native median about −190 ft (per-hour −155 to −200,
+    IQR about −390 to −10 ft); terrain > 5000 ft: median −180 ft but varies by time of
+    day (IQR about ±600 ft); all above-ground points: about +300 ft (dry air aloft, Stull
+    runs warm). At/below-ground classification agrees on 92–99.7% of points.
+    The 0 °C cap barely changes RRFS (it has 925 mb heights).
+  - Model-map snowfall colors still use the older NWS-style table; align them to `colors.js`
+    in a future model-map session (owner decision, deferred).
+
+### CLAUDE.md "Ski areas and point forecasts" (full text before Nov 23) (M1/M2; spec: docs/specs/data-pipeline.md)
+- `python -m pipeline catalog` (on demand; needs build/data/snotel|asos.geojson from a
+  `build`) → `data/ski_areas.json` (committed, ODbL) + `data/ski_areas_verify.csv`.
+  Seeds: OpenSkiMap ski_areas + lifts GeoJSON (cached in data_cache/openskimap, ~140 MB).
+  Base = lowest lift bottom terminal, skipping lifts that start > `transport_drop_m`
+  below the lowest run (city trams/valley gondolas); summit = highest lift top
+  terminal (lift-served, not hike-to). Elevations = USGS 3DEP ImageServer getSamples,
+  checked against OpenSkiMap's per-vertex z (`verify`: ok | dem-only | review).
+  Joins: region (config boxes), tz + NWS grid (api.weather.gov /points), avalanche
+  zone (point in polygon; `zone_id` = avalanche.org feature id, now kept in
+  avalanche.geojson), nearest SNOTEL/ASOS, NBM i/j + cell elevation (3DEP mean over
+  the 2.5-km cell; NBM files have no terrain). Slow lookups cached in data_cache/catalog
+  (3DEP ~1 s per point, cell stats ~10 s each). Fixes go in `config/ski_areas.yml`.
+- `python -m pipeline points` → `build/data/points/<id>.json` + `summary.json`
+  (CI: `points` entry in the models.yml matrix → `points-<cycle>.tar` on the
+  model-maps release → update-site unpacks it into build/data). Code: `pipeline/nbm/`
+  (inventory parse/select, fetch+decode+sample) and pure `pipeline/points.py`.
+- NBM inventory: see **docs/nbm_inventory.md** (all 24 cycles, regenerate with
+  `tools/nbm_inventory.py YYYYMMDD`). Layouts differ by cycle — never assume one:
+  01/07/13/19Z core has ASNOW 6/24/48/72-h percentiles + exceedances, SNOWLVL and SNOWLR
+  percentiles to ~f263, hourly files to f264, no qmd; 00/06/12/18Z have snowfall
+  percentiles only to f048/f054 but carry qmd (QPF percentiles; day blocks vary by cycle:
+  18Z f072 has only 2-3 day). Selection is rule-based (`inventory.classify/select`): only
+  windows ending at the file's own hour count (later files repeat earlier windows with
+  other values). Cycle order (S4): newest complete 01/07/13/19Z → previous full-suite
+  (≤ 12 h old) → 00/06/12/18Z. Full-suite f264 lands ~1.7 h after init (points cron
+  55 2,8,14,20); qmd lands ~7.5 h after its cycle, so liquid (QPF) percentiles come from the
+  newest synoptic cycle with complete qmd (`liquid_source`, usually 7 h older; labelled
+  `liquid_cycle`). Exceedance probabilities: NBM's own fields (`exceed` per point,
+  `exceed_summary.json`); consistent with the percentiles (docs/nbm_prob_consistency_*.md). Missing
+  messages are missing data (`required_keys` counted; fail > 20 %; summary.json `quality`).
+  Percentiles match the GSL NBM 1-D viewer exactly at the nearest cell (KMLP, KSMP; see
+  docs/nbm_inventory.md); its exceedance probabilities are not reproducible.
+  SNOWLVL is metres MSL; SNOWLR is populated in dry hours too (valid percentiles at 99.6 % of cell-hours; zeros only in ~38 warm, low cells, Nov 17 check).
+  ecCodes names these `unknown`. **core GRIB uses alternativeRowScanning** (odd rows
+  stored reversed; qmd does not): index with `run.flat_index`. Check decodes against the
+  NBS text bulletins (`blend.YYYYMMDD/HH/text/blend_nbstx.tHHz`: TMP, Q06, SLV).
+- Methods (pure, tested): lapse 6.5 °C/km grid→point (cap 4000 ft); P(snow) = P(snow
+  level < point) from p10/50/90 (det ±800 ft ramp later); 12-h day/night periods 00Z–12Z /
+  12Z–00Z for temps and snow type; snow charts use 12Z–12Z days.
+  **Snow ranges come only from native NBM snowfall percentile windows** (S10/dev11: 25/75 by day,
+  10/50/90 for 24/48/72 h; liquid ranges from QPF percentiles). Never add, scale or interpolate percentiles
+  across windows. The older 7/10-day ranges that added block percentiles rank by rank (wider than true) are
+  being removed (owner decision Nov 16: show expected totals only; remove any remaining uses).
+  Sanity vs NDFD: `python -m pipeline.nbm.sanity`.
+
+### CLAUDE.md "TODO / session handoff" (as of Nov 21 2026) (keep current; newest state wins)
+Milestones live in docs/PLAN.md §8; this list is the fine-grained handoff. Per-session history lives in docs/ARCHIVE.md.
+
+**Current state (Nov 21 2026: main has dev13-dev22; branch dev23 in progress; owner summary: docs/STATE_SNAPSHOT.md)**
+- **dev23 (branch):** `tests/_shell.py` finds a bash that really runs (the WSL stub in System32 does not): workflow-snippet tests use it and skip, never fail; `.gitattributes` forces LF. Archive NBM files have 3 new columns `slr_p25/p50/p75` (`archive.NBM_COLS`; NDFD keeps `FORECAST_COLS`; old files load everywhere as blanks; `archive-check` accepts both headers and prints the fill rate). Verification payload (`verification.json`, `verification/<site>.json`, `run.json`) is NBM only (`verify.public_docs`). `update-site.yml` has one extra step that deletes `build/data/ndfd` after the archive step (the NDFD fetch and archive are unchanged; guards `tests/test_ndfd_not_deployed.py`, browser check `nondfd`). `pipeline r2-plan` prints an R2 sync plan (never uploads; `r2.enabled` false); `pipeline stub` reads `site.stub_target_origin` (empty = writes nothing); browser check `rootbase` builds with `site.base_path: "/"`. Browser suite: 38 checks in the full run (35 named, `failure` split in 3 shards).
+- **dev22 (branch):** NBM ONLY (the "NWS official" toggle, its state and `data/ndfd/` browser fetches are gone; the NDFD fetch and archive rows stay: guard `tests/test_lean_charts.py`); lean chart modules (takeaway + chart + legend + table + one `.note.src` source line + `how()` link;
+  all explanations in About "Reading the charts"; `C.summary(el, short, aria)`, `C.legend`); snow-ratio chart per run (`web/js/charts/segments.js`, browser check `slrchart`); freshness `web/js/freshness.js` (latest / late / out of date, lags measured) + `pipeline/ecmwf_attempts.py` + `ecmwf.yml` hourly attempts
+  (the ONLY .github edit, schedule + comment; a proposed extra publish step was denied by the tool classifier and is NOT applied); `tools/page_metrics.py` (area-page height / CLS on frozen fixtures), `tools/slr_baseline.py` + `docs/specs/snow-ratio-ml.md` (research only).
+  GitHub delivers few cron events here (6 of ~46 hourly runs): never assume a scheduled job ran.
+- **dev21 (merged, PR #30):** TWO new owner-authorized workflows (the only `.github/` change): `verify.yml` (daily 15:25 UTC: archive CSVs -> `pipeline verify-ci` = the same
+  `verify.run` -> `verify-<YYYYMMDDHH>-<hash>.tar` on model-maps -> update-site's existing unpack -> `build/models/verify/`; the panel reads `models/verify/` (`VerificationUI.BASE`), flag
+  `verification_ui.enabled` still OFF; switch `verification.ci_enabled`; NEVER an index.json in models/verify: the model catalog collects */index.json) and `gefs.yml` (06:10/08:10/18:10/20:10
+  UTC from MEASURED S3 release times; `gefs.enabled: true`; resume cache `data_cache/gefs/<cycle>`; too many missing members = new=false). Monitored sources `verify` (50 h) and `gefs` (30 h).
+  Safari: idle/observer guards use `typeof x === "function"` (never `"x" in window`); model chips on Precipitation by model (`#mm-chips`, sessionStorage; badge/table use every model);
+  area-page alert CLS fixed (the summary's mailto link reserves its space); tap targets >= 40 px at phone width also in WebKit/Firefox. `pipeline archive-check` (archive integrity).
+  Cross-browser smoke (optional): `C:/miniforge3/envs/pw/python.exe tools/xbrowser_smoke.py` (Playwright 1.49.1 WebKit + Firefox in the separate `pw` env; ~1 min; screenshots in data_cache/xbrowser).
+- **dev20 (merged):** ECMWF mirror preference + 2-cycle cache; AIFS line (`aifs.enabled: true`, `in_badge: false`; AIFS tp in MM, IFS tp in METRES); share cards `pipeline og` (OFF); browser suite rework.
+  Tests must never write the real data_cache (autouse fixtures patch `E.REPO_ROOT` / `G.REPO_ROOT`).
+- **dev19 (merged):** `pipeline/fetch_resilient.py` (shared `Fetcher`: backoff + jitter, Retry-After, mirror failover AWS regional -> Google -> ECMWF portal); a missing step is a GAP, never
+  interpolated; ECMWF resume cache restored/saved by `ecmwf.yml`. **Plotly self-hosted** (`web/vendor/plotly-2.35.2/`, hash pinned). No browser call to api.weather.gov.
+- main has dev13-dev20 (ECMWF LIVE since dev18 via `ecmwf.yml`; member counts are read from the data, never hard-coded). dev18 extras: models-page fixture frames (`tools/model_fixture.py`),
+  webcam LINKS, Sources register (`config/sources.yml` -> `web/sources.html` via `tools/gen_site_pages.py`), DRAFT legal pages, `pipeline linkcheck`, W1 rehearsal tools.
+- **Built but OFF (never enable from a dev session):** `wind_exposure.enabled` (W7), `alerts_backend.enabled` (W6), `analytics.enabled`, `verification_ui.enabled`, `pages.enabled`, `pwa.enabled` (W1 first).
+- Browser suite (dev20/21): `tools/browser_check.py` 32 checks (dev21: `noidle`, `mmchips`, `alertcls`) (the full run splits `failure` into failure1-3), 4 parallel workers (`--jobs`), each check in its own Chrome profile + server port on a
+  private build copy with FROZEN inputs (`tools/browser_fixtures.py`: recorded alert snapshot shifted to "active now"; third-party hosts answered from `tests/fixtures/browser/`, anything
+  else refused). Full run ~5-6 min; `--quick` (8 checks) ~1.5 min for per-item runs. No fixed sleeps: `open()` waits for the page's READY signal then for quiet (`settle`); background
+  work with no page signal (service worker, analytics queue) must be POLLED, never slept on. Re-record fixtures only with `tools/browser_fixtures.py record` (network once).
+- Open: W3 meta description (W2) + Low-confidence rule; `HEALTHCHECK_URL` secret; W1 then enable pwa/pages; real-device PWA tests; M9: verify.yml publishes daily, the minima (14 days, 30 pairs) are projected for about Nov 30, then the owner flips verification_ui.enabled; owner: analytics provider, legal review, W6 decisions, W7 reviewer.
+

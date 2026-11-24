@@ -1,7 +1,16 @@
+---
+status: current
+owner: pipeline
+last_reviewed: 2026-11-23
+read_when: working on pipeline/summary.py or config/summary_rules.yml
+---
+
 # Spec: Daily Snow summaries (W3)
 
+> **Nov 23 2026 (code review):** **M1** — say the actual window ("from Tue 5 AM to Wed 5 AM"), not "next 24 h", and take p50 and the range from the same native window. **H1** makes the powder-type and wind-affected inputs wrong past f036 on 01/07/13/19Z until fixed. The "Low confidence" rule is now buildable (M7 live). Weekly review log: `docs/ops/summary_review.md`.
+
 > Read when working on `pipeline/summary.py` and `config/summary_rules.yml`.
-> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `PLAN.md`.
+> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `docs/PLAN.md`; doc map `docs/INDEX.md`.
 > Section numbers (§) are kept from the original single plan so cross-references still work.
 
 ---
@@ -53,6 +62,6 @@ A deterministic rules engine, **not** an LLM, run in the points pipeline.
 - **Quality loop:** a **"Report a bad summary"** link (area card and My mountains) opens a prefilled e-mail (place, page,
   tag, rule ids, text). **Weekly review (10 min, owner):** every Monday pick 10 places (the 5 busiest ski areas plus 5 from the
   inbox or at random), compare each summary with the NWS AFD/forecast discussion and the previous week's observed SNOTEL/NOHRSC
-  totals, and write one line per summary in `docs/summary_review.md` (date, place, rule ids, "ok / too bold / too timid / wrong",
+  totals, and write one line per summary in `docs/ops/summary_review.md` (date, place, rule ids, "ok / too bold / too timid / wrong",
   note). Tune `config/summary_rules.yml` only after the same miss appears twice; record the change in PLAN §3. Not built yet: the
   "Low confidence" rule (needs M7 model agreement) and the `<meta description>` (W2).

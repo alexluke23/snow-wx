@@ -1,3 +1,10 @@
+---
+status: reference
+owner: pipeline
+last_reviewed: 2026-11-23
+read_when: reference for its topic only
+---
+
 # Resort-reported snowfall: licence terms (research only, Nov 18 2026)
 
 > Purpose: record whether Snow-Wx can show **resort-reported** new-snow totals (PLAN §8.4). **Nothing here was scraped or integrated**: desk research from public documentation

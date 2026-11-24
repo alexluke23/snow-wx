@@ -1,7 +1,16 @@
+---
+status: current
+owner: pipeline
+last_reviewed: 2026-11-23
+read_when: working on wind flags (safety-sensitive: never an avalanche rating)
+---
+
 # Spec: Wind-exposure flag (W7, stretch)
 
+> **Nov 23 2026:** ski-area summits only (Sno-Parks removed, so checklist item 8 is settled). Code review **H1**: "wind-affected" is never set past f036 on the production cycles until the 6-h window lookup is fixed — fix before enabling.
+
 > Read when working on wind flags. Safety-sensitive: never present as an avalanche rating.
-> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `PLAN.md`.
+> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `docs/PLAN.md`; doc map `docs/INDEX.md`.
 > Section numbers (§) are kept from the original single plan so cross-references still work.
 
 ---

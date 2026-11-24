@@ -1,7 +1,16 @@
+---
+status: retired
+owner: team
+last_reviewed: 2026-11-23
+read_when: history only
+---
+
 # Spec: Sno-Parks & winter recreation points (M4.5)
 
+> **RETIRED Nov 23 2026** (team decision; `docs/DECISIONS.md`). The site covers ski areas only. Remove the `snopark` point type, `data/rec_points.json`, Sno-Park pages, the Finder type filter, the obs-map layer and the Sno-Park Finder; redirect old links to the Finder. Archive rows already written stay. Kept for history only.
+
 > Read when working on the recreation catalog and its forecast pages.
-> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `PLAN.md`.
+> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `docs/PLAN.md`; doc map `docs/INDEX.md`.
 > Section numbers (§) are kept from the original single plan so cross-references still work.
 
 ---

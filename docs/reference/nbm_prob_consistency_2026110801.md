@@ -1,3 +1,10 @@
+---
+status: reference
+owner: pipeline
+last_reviewed: 2026-11-23
+read_when: reference for its topic only
+---
+
 # NBM probability vs percentile consistency
 
 NBM 2026110801: probability fields vs percentile-implied P(>x), western US cells (every 2nd)

@@ -1,3 +1,12 @@
+---
+status: current
+owner: team
+last_reviewed: 2026-11-23
+read_when: working on a finding (index and status: docs/BACKLOG.md)
+---
+
+> Added to the repo unchanged, apart from this note. **Correction:** the summary's "atomic writes (M17)" refers to finding **M15** (M17 is the CSP finding). "The PLAN v1.4 and `platform-transition.md` v1.1 shared with the review" are now committed (`docs/PLAN.md`, `docs/specs/platform-transition.md`), which closes L1. Status of every finding: `docs/BACKLOG.md`.
+
 # Snow-Wx code review, November 2026
 
 Written for: the three developers taking over Snow-Wx (pipeline / API + infra / web + mobile).

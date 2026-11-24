@@ -1,3 +1,10 @@
+---
+status: reference
+owner: pipeline
+last_reviewed: 2026-11-23
+read_when: reference for its topic only
+---
+
 # NBM vs GSL NBM 1-D viewer, 01Z 8 Nov 2026 (tools/nbm_validate_gsl.py; raw comparison table)
 
 | Window | Valid | Station | Field | ours | GSL | diff |

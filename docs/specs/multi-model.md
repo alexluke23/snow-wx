@@ -1,7 +1,16 @@
-# Spec: Multi-model comparison (M7 + M8)
+---
+status: current
+owner: pipeline
+last_reviewed: 2026-11-23
+read_when: working on per-model sampling, plumes, the agreement badge, ECMWF or GEFS
+---
+
+# Spec: Multi-model comparison and plumes (M7 + M8)
+
+> **Nov 23 2026: focus area.** UI work concentrates on NBM visualizations and these plumes. Rules confirmed by the code review (`docs/BACKLOG.md`): **a missing step is a gap** — never bridged by a line or interpolated in the badge (M6; dev19 rule); a failed GEFS message is missing, not "no snow" (M7); partial ECMWF cycles are not re-published (M9); **every model line shows its own run time** (N2); the badge needs ≥ 3 models, so the trim must keep HRRR/RRFS/GFS sampling through a sample-only job (H5); AIFS stays out of the badge.
 
 > Read when working on per-model sampling, the model selector, agreement badge or ECMWF.
-> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `PLAN.md`.
+> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `docs/PLAN.md`; doc map `docs/INDEX.md`.
 > Section numbers (§) are kept from the original single plan so cross-references still work.
 
 ---
@@ -14,12 +23,13 @@ confidence signal powder chasers want.
   **[verify]**), RRFS (to ~84 h), GFS (to day 10+), **ECMWF IFS** (open data,
   0.25°; 0.1° available since Oct 20 2026) and later AIFS single/ensemble. Sampled
   from the *existing* model pipeline at every area's base/summit — no third-party
-  API.
+  API. (Today the HRRR/RRFS/GFS sampling runs inside the model-map render loop; it must become a sample-only job before map
+  rendering is deleted — review H5.)
 - **Apples-to-apples:** compare **liquid equivalent (SWE/QPF of snow)**
   cumulatively per model on one chart; toggle to inches using the NBM SLR median
   (label "inches assume NBM SLR"). Models' native snowfall products differ — do not
   mix them silently.
-- **UI:** (1) a **model selector** (NBM · NWS · HRRR · RRFS · GFS · ECMWF) on the
+- **UI:** (1) a **model selector** (NBM · HRRR · RRFS · GFS · ECMWF; NWS/NDFD removed in dev22) on the
   existing charts; (2) a **plume/lines chart** "Precipitation by model" with direct
   labels (§6-B); (3) a **Model agreement** badge — "High / Medium / Low" from a
   documented spread metric (e.g., share of models within ±25% of the median over
@@ -30,7 +40,7 @@ confidence signal powder chasers want.
   statement on charts/about.html **[verify exact current wording]**.
 - **Verification hook:** the archive also stores each model, enabling a public
   "which model did best this season, by region" scorecard (M9) — highly shareable.
-- Later (M10): ensemble members (GEFS, ECMWF ENS/AIFS ENS) as a true plume.
+- Ensemble plumes: ECMWF ENS live since dev18, NOAA GEFS live since dev21; AIFS ENS later.
 
 ### M7 build (dev16)
 - **Sampling:** `pipeline/models/multimodel.py` `PrecipSampler` records, for every ski area's SUMMIT coordinates, the run-total liquid precipitation (APCP since init, in; the array

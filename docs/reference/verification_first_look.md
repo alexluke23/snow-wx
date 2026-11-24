@@ -1,3 +1,10 @@
+---
+status: reference
+owner: pipeline
+last_reviewed: 2026-11-23
+read_when: reference for its topic only
+---
+
 <!-- First look, Nov 17 2026, produced by: python -m pipeline verify --dir <archive> --out <dir>. Preliminary: 4 observation days. -->
 # Forecast verification (M9-prep)
 

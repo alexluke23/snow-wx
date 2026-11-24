@@ -1,4 +1,13 @@
+---
+status: current
+owner: web-mobile
+last_reviewed: 2026-11-23
+read_when: working on sources/credits, legal drafts, analytics, link check or headers
+---
+
 # Launch-readiness package (dev18 Part 2)
+
+> **Nov 23 2026:** hosting target is Cloudflare Workers + Static Assets (`docs/specs/platform-transition.md`), not Pages. Code review: the draft CSP misses the NOAA hazards host (**M17**); the area-page footer lacks avalanche.org and USDA NRCS credit, SNOTEL obs charts lack a source/time line, prerendered pages lack the ODbL credit (**N1**). Tracked in `docs/BACKLOG.md`.
 
 Status: built and tested on branch dev18. Everything here is OFF or DRAFT where an owner decision or a lawyer is needed. Pages carry `noindex` until the owner signs the legal drafts.
 

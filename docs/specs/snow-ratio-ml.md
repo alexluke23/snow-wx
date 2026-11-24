@@ -1,4 +1,13 @@
+---
+status: current
+owner: pipeline
+last_reviewed: 2026-11-23
+read_when: before any snow-ratio modelling work
+---
+
 # Spec: M11 machine-learned snow-to-liquid ratio (research; no site change)
+
+> **Nov 23 2026:** M11 is now the SLR part of the wider **M12 ML post-processing program** (`docs/specs/ml-postprocessing.md`), which adds QPF, snowfall and the SNOTEL QC system. The gates below still apply to SLR. Ski-area forecasts are ~160 points after the Nov 23 scope trim; NBM forecasts at SNOTEL sites are still computed and archived (they are this track's ground-truth pairs).
 
 > Status (dev22): **S0 research done**. Nothing here is on the site and nothing is switched on. Sections 1-5 and 7 were NOT supplied with the dev22 brief (it said "content below" but
 > none followed): they are drafted from the brief's own wording and marked *(draft: replace with the owner's Project copy)*. Section 6 is the dev22 finding.

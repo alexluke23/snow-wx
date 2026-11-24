@@ -1,7 +1,16 @@
+---
+status: retired
+owner: team
+last_reviewed: 2026-11-23
+read_when: history only
+---
+
 # Spec: Model maps (low maintenance until Track 3 / M6)
 
+> **RETIRED Nov 23 2026** (team decision; `docs/DECISIONS.md`). The Models page, map-frame rendering, M6 interactive layers and the synoptic-charts tab are removed or cancelled. **Not retired:** the HRRR/RRFS/GFS/ECMWF/GEFS point sampling that feeds the plumes (`docs/specs/multi-model.md`). Kept for history only.
+
 > Read only when touching models.html, model-map CI or the interactive layer system.
-> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `PLAN.md`.
+> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `docs/PLAN.md`; doc map `docs/INDEX.md`.
 > Section numbers (§) are kept from the original single plan so cross-references still work.
 
 ---

@@ -1,4 +1,13 @@
+---
+status: current
+owner: pipeline
+last_reviewed: 2026-11-23
+read_when: working on the forecast archive or M9 verification
+---
+
 # Forecast archive (M9 prep)
+
+> **Nov 23 2026 (code review):** **C1** — replacing a monthly file with `gh release upload --clobber` can delete the only copy; fix before anything else touches the archive. **M13** — archive outages alert no one. **M2** — lead buckets are labelled one day late (fix before the panel ships). **H6** — scores use only NBM forecasts at SNOTEL sites, so those stay computed and archived after the scope trim. After the platform move the archive goes to R2 (versioned), later Parquet (`docs/specs/platform-transition.md` §3.3).
 
 Snow-Wx keeps every NBM and NWS (NDFD) snowfall forecast it publishes, plus the SNOTEL
 observations needed to score them, so verification (PLAN.md M9) can start with a
@@ -120,7 +129,7 @@ print(both.groupby(pd.cut(both.lead_h, [0, 24, 48, 96, 168, 264]))[["det", "d_de
 forecast at a SNOTEL site with the observed 24-h depth change (3-h median, clipped at 0; a lower bound of snowfall) and writes `scores_by_lead.csv`,
 `scores_by_state_days12.csv`, `scores_by_elevation_days12.csv`, `summary.json` and a `README.md`. It EXCLUDES observations whose 24-h window overlaps `verification.snotel_outage`
 (config; the NRCS outage, ending at the first confirmed live recovery 2026-11-18 00:45Z) and observations with fewer than 20 hourly reports (stale/carried/patchy),
-and counts what it dropped. Temperature is not scored (the archive has no temperatures). First look: `docs/verification_first_look.md`.
+and counts what it dropped. Temperature is not scored (the archive has no temperatures). First look: `docs/reference/verification_first_look.md`.
 
 ## NBM only on the surface (dev23, owner decision Nov 21)
 The archive keeps its NDFD rows (`ndfd-*.csv.gz`) and the local scorer (`pipeline verify`: `scores_by_*.csv`, README) still scores them for the owner's own use. What the panel and the about.html scorecard read is NBM only:

@@ -1,6 +1,6 @@
 # snow-wx external scheduler (Cloudflare Worker)
 
-**Status: built and tested, NOT deployed.** GitHub drops most scheduled workflow runs on this repository (Nov 19-20 2026: about 6 of 46 hourly `update-site` runs, 1 `ecmwf` run, none for `gefs` / `verify`); a manual "Run workflow" always works. This Worker does the manual dispatch for us, on time.
+**Status: built and tested, NOT deployed.** **Before deploying (code review, Nov 23 2026):** fix M14 (each slot must dispatch its own inputs, and queued-safe workflows may be dispatched while a run is active) and M10 (validate `workflow_dispatch` inputs) — `docs/BACKLOG.md`. After the GitLab move this Worker becomes the Cron → Workflows entry point (`docs/specs/platform-transition.md` §5.1). GitHub drops most scheduled workflow runs on this repository (Nov 19-20 2026: about 6 of 46 hourly `update-site` runs, 1 `ecmwf` run, none for `gefs` / `verify`); a manual "Run workflow" always works. This Worker does the manual dispatch for us, on time.
 
 ## What it does
 One cron trigger fires every 10 minutes (UTC). For each workflow whose slot passed in the last 20 minutes (at least 4 minutes ago, so GitHub's own event can still arrive first) it asks GitHub for the workflow's latest 5 runs. It dispatches (`POST /repos/alexluke23/snow-wx/actions/workflows/<file>/dispatches`, `ref: main`) **only if** no run of that workflow is queued or in progress **and** none was created since the slot. So a slot is dispatched at most once; if GitHub's own schedule already ran it, the Worker does nothing.

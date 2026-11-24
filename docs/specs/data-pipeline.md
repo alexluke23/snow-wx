@@ -1,7 +1,16 @@
+---
+status: current
+owner: pipeline
+last_reviewed: 2026-11-23
+read_when: working on pipeline/catalog.py, pipeline/nbm/, pipeline/points.py, pipeline/snotel.py or pipeline/monitor.py
+---
+
 # Spec: Catalog, NBM point forecasts, NWS layer
 
-> Read when working on `pipeline/catalog.py`, `pipeline/nbm/`, `pipeline/nws.py`, `pipeline/points.py`.
-> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `PLAN.md`.
+> **Nov 23 2026:** ski areas only (Sno-Parks removed); SNOTEL-site forecasts kept for verification, pages removed. Known defects from the code review, tracked in `docs/BACKLOG.md`: **H1** (6-h window lookup past f036 on 01/07/13/19Z), **M3** (missing snow level → P(snow) = 1.0), **M4** (global quality gate), **M18** (one bad record stops the points run), **L2** (coordinates rounded to 2 decimals), **H4/M13** (monitoring gaps).
+
+> Read when working on `pipeline/catalog.py`, `pipeline/nbm/`, `pipeline/alerts.py`, `pipeline/afd.py`, `pipeline/points.py`.
+> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `docs/PLAN.md`; doc map `docs/INDEX.md`.
 > Section numbers (§) are kept from the original single plan so cross-references still work.
 
 ---
@@ -33,14 +42,18 @@ grid_x, grid_y}` for base & summit, `nbm_grid {i, j, elev_ft}` for base & summit
 - **Elevation handling** (documented on about.html): sample base and summit at
   their own coordinates; lapse-rate adjust temperature (6.5 °C/km start);
   P(snow at base/summit) from snow-level percentiles; flag mixed/rain.
-- **Periods:** 6 AM–6 PM / 6 PM–6 AM local; p50 with 10–90 range per period and
-  for 24 h / 72 h / 7 d / 10 d.
+- **Periods:** 12-h day/night periods 00Z–12Z / 12Z–00Z (labelled in local time) for temperatures and snow type; snow charts use
+  12Z–12Z days. **Ranges come only from native NBM percentile windows:** "likely" p25–p75 by day (native 24 h) and 10/50/90 on native
+  24/48/72 h totals; 7/10-day totals show the expected amount only (Nov 16); a total that would need several windows shows the expected
+  amount with `native: false` and no range. Never add, scale or interpolate percentiles across windows.
 - **Powder quality** (documented heuristic, not an accuracy claim): ONE definition, `config/settings.yml` `powder_quality`
   (`dense_below: 10`, `blower_at: 15`; mirrored by `web/js/colors.js` `POWDER_Q`, a test keeps them equal): SLR median ≥ 15
   "Blower", 10–15 "Medium", < 10 "Dense"; add "wind-affected" when summit gusts ≥ 30 mph during snowfall. The same three
   classes drive the SLR/powder panel, the Finder and My mountains "Type", the W3 rules and about.html.
 - Output: `data/points/<id>.json` (hourly + period summaries) and
-  `data/points/summary.json`. Target < 150 KB per area.
+  `data/points/summary.json`. Target < 150 KB per area. After the platform move these go to R2 (`docs/specs/platform-transition.md` §3.3).
+  **SNOTEL-site forecasts (`snotel-<triplet>`) keep being computed and archived after the Nov 23 trim** (their pages go; verification and
+  M11/M12 score only these points: review H6).
 
 ### 5.2b SNOTEL observations and outages (`pipeline/snotel.py`)
 Source: NRCS AWDB **REST** API (`wcc.sc.egov.usda.gov/awdbRestApi/services/v1`; the SOAP web service is being phased out).
@@ -58,7 +71,10 @@ Per run: a one-station health probe (10 s), then stations per state and hourly/d
   and the young station files (`SITE_ORIGIN` / `site.origin`) before every build; no secrets, no extra assets. Timestamps are
   preserved, so a stale copy can never be re-stamped fresh (test: five failed runs, `obs_time`/files unchanged, age grows).
   While stale, the 24 h / 72 h changes are hidden once the data are older than that window.
-- NBM/NDFD forecasts at SNOTEL sites use the committed `data/snotel_points.json`, not AWDB.
+- NBM/NDFD forecasts at SNOTEL sites use the committed `data/snotel_points.json`, not AWDB (kept for verification after Nov 23).
+- **Known gap (review H3):** `restore` brings back SNOTEL only. A failed alerts, avalanche or AFD fetch on a fresh runner publishes pages
+  with that safety information missing and no notice. Fix: restore last-good copies (stale-flagged) and show "not available" with the
+  center/NWS link (`docs/BACKLOG.md` MR 2).
 
 ### 5.2c Data-health monitoring (`pipeline/monitor.py`, W5a slice)
 - `meta.json` per source: `last_success_at`, `consecutive_failures`, `outage_since`. Limits per source in config
@@ -92,12 +108,12 @@ Per run: a one-station health probe (10 s), then stations per state and hourly/d
   3. **Second GitHub scheduled workflow (`watchdog.yml`, every 6 h, offset):** cheap and secret-free, but it shares GitHub's
      scheduler, so it only protects against a failure of one workflow, not of the scheduler.
 
-### 5.3 NWS official layer (NDFD + alerts + discussion)
+### 5.3 NWS layer (alerts, discussion; NDFD archive only)
 `api.weather.gov` with our User-Agent; `/points` lookups cached in the catalog.
 Per run: gridpoints raw layers for base & summit (dedupe shared cells). One
 `/alerts/active` call per run → zone match → banner on the area page. Latest AFD
-per WFO (issue time + link; public domain). Always an "NWS official" toggle/
-column beside NBM — never silently mixed. Credit NOAA/NWS; never imply NWS
+per WFO (issue time + link; public domain). Since dev22 the site is **NBM only**: NDFD is fetched and archived for verification but not shown
+(no toggle; `data/ndfd/` no longer deployed since dev23). Credit NOAA/NWS; never imply NWS
 endorsement or use NWS logos.
 
 ### NBM forecast overlays on the obs map: audit (dev17)

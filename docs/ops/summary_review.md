@@ -1,3 +1,10 @@
+---
+status: current
+owner: pipeline
+last_reviewed: 2026-11-23
+read_when: doing the weekly Daily Snow summary review
+---
+
 # Daily Snow summary — weekly review log (W3 quality loop)
 
 Process: `docs/specs/daily-summaries.md` §5.7 (Quality loop). Every Monday, 10 places (5 busiest ski areas + 5 from the

@@ -1,7 +1,16 @@
+---
+status: current
+owner: web-mobile
+last_reviewed: 2026-11-23
+read_when: working on the manifest, service worker, offline UX or install flow
+---
+
 # Spec: Offline-first PWA (W4)
 
+> **Nov 23 2026 (code review M16):** safety data — NWS alerts, avalanche ratings and the freshness clock — must be **network-first with a timeout**, using the cache only when offline and labelled with its age; today they are stale-while-revalidate. Fix before `pwa.enabled`. Sno-Park (`rec_points`) entries leave the caches with the scope trim. Native apps later wrap the same build (`platform-transition.md` §8).
+
 > Read when working on manifest, service worker, offline UX or install flow.
-> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `PLAN.md`.
+> Part of Snow-Wx docs v1.0 (Nov 15 2026). Index and priorities: `docs/PLAN.md`; doc map `docs/INDEX.md`.
 > Section numbers (§) are kept from the original single plan so cross-references still work.
 
 ---
@@ -16,8 +25,7 @@
 - **Offline UX (safety-critical):** banner "Offline — data from 5:12 AM (3 h
   41 m old)"; amber > 6 h; red > 24 h with "Check the avalanche center forecast
   when you have signal". Never present stale data as current.
-- **"Save for offline"**: prefetch favorites (cap ~5 free / more for supporters
-  is fine) with a storage estimate. Budget ≤ 25 MB for 5 favorites.
+- **"Save for offline"**: prefetch favorites (cap ~5; any other cap set by owner) with a storage estimate. Budget ≤ 25 MB for 5 favorites.
 - **iOS notes:** web push works only for sites **installed to the Home Screen**
   (iOS 16.4+, Safari), so the install funnel doubles as the alerts funnel;
   storage and background behavior are less forgiving than Android — test on real
@@ -40,8 +48,8 @@
   config and `js/pwa.js` (inert without that config).
 - **Caches:** `snowwx-shell-<hash>` (versioned precache of our html/css/js + Leaflet, ~0.6 MB; the version is a hash of those files, old versions are deleted on
   activate), `snowwx-data-v1` (stale-while-revalidate: summary.json, ski_areas/rec/snotel_points, alerts + avalanche indexes, `snotel.geojson`, and ONLY the
-  favorites' `points/<id>.json` + `ndfd/<id>.json`; `meta.json` is network-first so the freshness clock is honest), `snowwx-lib-v1` (the Plotly basic bundle
-  from cdn.plot.ly, 1.07 MB raw / 355 KB gzip, CORS, cache-first). Map tiles and any other third-party URL are never touched.
+  favorites' `points/<id>.json` + `ndfd/<id>.json`; `meta.json` is network-first so the freshness clock is honest), `snowwx-lib-v1` (the Plotly basic bundle,
+  self-hosted under `vendor/` since dev19, 1.07 MB raw / 355 KB gzip, cache-first). Map tiles and any other third-party URL are never touched.
 - **Staleness banner (`js/pwa.js`):** age of `meta.json` `generated_at`. Offline: "Offline — data from Tue 6:09 PM (1 h 30 min old)." (blue); > 6 h amber
   "It may be out of date."; > 24 h red "…check the avalanche center forecast when you have signal."; offline with no saved clock: red "treat everything as out of date".
   Online data older than 6 h also shows the banner. Never green, never "current".
