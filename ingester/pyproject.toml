@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snow-wx-ingester"
+version = "0.1.0"
+description = "Fetch snow and weather data and store it as JSON in a local folder or Cloudflare R2"
+requires-python = ">=3.12"
+# The ingester also imports the repository's `pipeline/` and `config/` (not packaged here): run it from the repository root.
+dependencies = [
+    "boto3",
+    "pyyaml",
+    "requests",
+    "pandas",
+    "numpy",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,5 +1,11 @@
 # Generated site and data (published by GitHub Actions, never committed)
 build/
+test-output/
+# local ingest stage + store (python -m ingester; config ingest.stage_dir / local_store_dir)
+data_out/
+# R2 credentials for Docker secrets (ingester/compose.r2.yaml): never commit
+ingester/secrets/*
+!ingester/secrets/README.md
 
 # Python
 __pycache__/
@@ -21,3 +27,6 @@ Thumbs.db
 
 # Business planning is private and never part of this public repo (local only; keep a backup elsewhere)
 private/
+
+# packaging metadata of the ingester (pip install -e ingester)
+*.egg-info/

@@ -1,0 +1,17 @@
+# Local (no R2): run from anywhere with
+#   docker compose -f ingester/compose.yaml run --rm pipeline ingest run asos --stage /output/stage --dry-run
+# Paths are relative to this folder (the compose project directory).
+services:
+  pipeline:
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    build:
+      context: ..                       # repository root: the image needs pipeline/, config/, data/, web/
+      dockerfile: ingester/Dockerfile
+    environment:
+      HOME: "/tmp/snow-wx-home"
+      XDG_CACHE_HOME: "/tmp/snow-wx-cache"
+      MAMBA_ROOT_PREFIX: "/opt/conda"
+      R2_PUSH: "0"
+    volumes:
+      - ../test-output:/output:Z
+      - ../data_cache:/app/data_cache:Z

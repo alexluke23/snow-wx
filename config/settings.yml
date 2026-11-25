@@ -75,12 +75,22 @@ site:
   stub_target_base_path: ""    # "" = the new site is served from the root of its host
 
 r2:
-  # W1 bulk-data sync PLAN (pipeline/r2_plan.py, `python -m pipeline r2-plan`; docs/specs/hosting-seo.md "R2 sync"). OFF, and there is no upload code anywhere: the command only PRINTS what a sync
+  # W1 bulk-data sync PLAN (pipeline/r2_plan.py, `python -m pipeline r2-plan`; docs/specs/hosting-seo.md "R2 sync"): the command only PRINTS what a sync
   # of build/data/<prefixes> to an R2 bucket would do. bucket = set by owner at W1 (empty here). Do not enable anything from a dev session.
+  # The actual upload code is `python -m ingester ... --store r2` (see `ingest:` below); it never runs unless asked for explicitly.
   enabled: false
   bucket: ""
   prefixes: [points]
   key_prefix: "data/"
+
+ingest:
+  # Data-only ingest (`python -m ingester`, docs/specs/ingest-r2.md): sources -> stage_dir (data/ + models/) -> derive -> store.
+  # The default store is a local folder with exactly the R2 key layout (<layout>/data/..., <layout>/models/..., <layout>/_manifest.json).
+  # R2 is used only with `--store r2` (or INGEST_STORE=r2) and R2_* credentials from the environment / Docker secrets; never from this file.
+  stage_dir: data_out/stage
+  local_store_dir: data_out/store
+  layout: v1
+  archive: false            # true = also copy each CHANGED object to archive/runs/<stamp>/ (doubles writes for changed files)
 
 og_images:
   # Share-card images 1200x630 (pipeline/og.py, `python -m pipeline og`): one per ski area + a generic Sno-Park and site card. OFF; pages.py
