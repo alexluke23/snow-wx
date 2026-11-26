@@ -213,8 +213,8 @@ def with_history(entry: dict, prev: dict | None) -> dict:
             "outage_since": prev.get("outage_since") or at}
 
 
-def run_obs(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
-    session = make_session(cfg)
+def run_obs(cfg: dict, outdir: Path, only: list[str] | None = None, session=None) -> int:
+    session = session or make_session(cfg)
     status = {}
     prev_sources = read_meta(outdir).get("sources") or {}
     for name, func in SOURCES.items():
@@ -257,6 +257,15 @@ def build_site(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
     shutil.copytree(web, outdir, dirs_exist_ok=True)
     code = run_obs(cfg, outdir / "data", only)
     fill_404_base(outdir, cfg)
+    derive_outputs(cfg, outdir)
+    return code
+
+
+def derive_outputs(cfg: dict, outdir: Path) -> None:
+    """Cross-source files computed from what is already in outdir/data and outdir/models (no network, no website files):
+    repo catalogs, webcams, search index, map points, model catalog, ridge + multimodel merges, then meta.json product status.
+    Shared by `build` (website) and `python -m ingester` (data only)."""
+    (outdir / "data").mkdir(parents=True, exist_ok=True)
     # Static catalogs that live in the repo (built on demand, e.g. `pipeline catalog`).
     for name in ("ski_areas.json", "rec_points.json"):
         src = REPO_ROOT / "data" / name
@@ -282,7 +291,22 @@ def build_site(cfg: dict, outdir: Path, only: list[str] | None = None) -> int:
     except Exception:
         logging.getLogger("snow-wx").exception("model catalog failed")
     write_meta(cfg, outdir / "data", product_status(outdir, cfg))
-    return code
+
+
+def run_ecmwf(cfg: dict, session, out: Path, *, cycle: datetime | None = None, force: bool = False,
+              published: str | None = None, github_output: str | None = None) -> dict:
+    """ECMWF run with its attempt log (data_cache/ecmwf/attempts.json): every attempt is logged next to the cache, the copy for the
+    site (out/ecmwf/attempts.json) only when a run publishes. A failure is logged, then raised."""
+    from . import ecmwf
+    from . import ecmwf_attempts as EA
+    croot, started = ecmwf.REPO_ROOT / "data_cache" / "ecmwf", datetime.now(timezone.utc)
+    try:
+        res = ecmwf.run(cfg, session, out, cycle=cycle, force=force, published=published, github_output=github_output)
+    except Exception as exc:  # noqa: BLE001 - the attempt is logged (the status page says why a cycle is missing), then the failure goes on
+        EA.record(croot, None, started, error=f"{type(exc).__name__}: {exc}")
+        raise
+    EA.record(croot, out if res.get("ok") and not res.get("skipped") else None, started, res)
+    return res
 
 
 def _models_args(sub) -> None:
@@ -473,16 +497,8 @@ def main(argv=None) -> int:
         print(json.dumps({k: v for k, v in res.items() if k not in ("attribution", "hours")}))
         return 0 if res.get("ok") or res.get("skipped") else 1
     if args.cmd == "ecmwf":
-        from . import ecmwf
-        from . import ecmwf_attempts as EA
         cyc = datetime.strptime(args.cycle, "%Y%m%d%H").replace(tzinfo=timezone.utc) if args.cycle else None
-        croot, started = ecmwf.REPO_ROOT / "data_cache" / "ecmwf", datetime.now(timezone.utc)
-        try:
-            res = ecmwf.run(cfg, make_session(cfg), Path(args.out), cycle=cyc, force=args.force, published=args.published, github_output=args.github_output)
-        except Exception as exc:  # noqa: BLE001 - the attempt is logged (the status page says why a cycle is missing), then the failure goes on
-            EA.record(croot, None, started, error=f"{type(exc).__name__}: {exc}")
-            raise
-        EA.record(croot, Path(args.out) if res.get("ok") and not res.get("skipped") else None, started, res)     # every attempt is logged next to the cache; the copy for the site only when a run publishes (nothing else is written to --out)
+        res = run_ecmwf(cfg, make_session(cfg), Path(args.out), cycle=cyc, force=args.force, published=args.published, github_output=args.github_output)
         print(json.dumps({k: v for k, v in res.items() if k not in ("attribution", "hours")}))
         return 0 if res.get("ok") or res.get("skipped") else 1
     if args.cmd == "stub":

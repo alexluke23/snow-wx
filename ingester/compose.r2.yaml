@@ -1,0 +1,24 @@
+# R2 push: add this file after compose.yaml (see ingester/README.md).
+services:
+  pipeline:
+    environment:
+      R2_PUSH: "1"
+      R2_ACCOUNT_ID_FILE: "/run/secrets/r2_account_id"
+      R2_ACCESS_KEY_ID_FILE: "/run/secrets/r2_access_key_id"
+      R2_SECRET_ACCESS_KEY_FILE: "/run/secrets/r2_secret_access_key"
+      R2_BUCKET_FILE: "/run/secrets/r2_bucket"
+    secrets:
+      - r2_account_id
+      - r2_access_key_id
+      - r2_secret_access_key
+      - r2_bucket
+
+secrets:
+  r2_account_id:
+    file: ./secrets/r2_account_id.txt
+  r2_access_key_id:
+    file: ./secrets/r2_access_key_id.txt
+  r2_secret_access_key:
+    file: ./secrets/r2_secret_access_key.txt
+  r2_bucket:
+    file: ./secrets/r2_bucket.txt

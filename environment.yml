@@ -13,6 +13,7 @@ dependencies:
   - numpy
   - pandas
   - pytest
+  - boto3
   # Phase 2+: model data and map plotting (installed now so you can explore)
   - xarray
   - eccodes

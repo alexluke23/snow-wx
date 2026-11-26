@@ -60,6 +60,9 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 - `web/` — static site (Leaflet + Plotly from CDN, plain JS, no build step).
   `web/js/colors.js` holds color scales/legends (single definition of the NWS snowfall table).
 - `tests/` — pytest; extend `tests/fakes.py` with canned responses for new sources.
+- `ingester/` — the data-only ingest app (src layout: package in `ingester/src/ingester`, tests in `ingester/tests`, `pyproject.toml`): `python -m ingester run <sources>|--all [--store local|r2|none] [--dry-run]`: stage `data_out/stage` → derive → store
+  (local `data_out/store` by default, R2 only with `--store r2` + R2_* env/Docker secrets). Keys `v1/data/...`, `v1/models/...`, `v1/_manifest.json`. Spec: `docs/specs/ingest-r2.md`.
+  Its Docker files live in the same folder: `ingester/Dockerfile`, `ingester/compose*.yaml`, `ingester/entrypoint.sh`, `ingester/secrets/` (git-ignored credentials), and `ingester/README.md` (how to run it, every option, sources and destinations). Docker builds use the repository root as context.
 - `pipeline/search.py` — header search index (data/search.json); `web/js/search.js` (header + shared ranking).
 - `tools/browser_check.py` — headless-Chrome regression checks (basemap, fallback, layout, search, charts).
 - `pipeline/ecmwf.py` (ECMWF HRES + ENS plume, LIVE via `.github/workflows/ecmwf.yml`), `pipeline/webcams.py` + `config/webcams.yml` (links only), `pipeline/linkcheck.py`, `pipeline/stub.py` (W1 redirect stub), `config/sources.yml` (+ `tools/gen_site_pages.py`), `pipeline/wind_exposure.py` (W7 flag, off), `pipeline/alerts_backend.py` (W6 offline skeleton, off), `docs/workflow_snippets/` (workflow text for

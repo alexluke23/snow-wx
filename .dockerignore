@@ -1,0 +1,15 @@
+build/
+data_cache/
+test-output/
+data_out/
+.git/
+.github/
+.pytest_cache/
+**/__pycache__/
+**/*.pyc
+.vscode/
+private/
+# credentials and compose files of the ingester: never part of the build context
+ingester/secrets/
+ingester/*.yaml
+ingester/README.md
