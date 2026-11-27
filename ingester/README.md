@@ -1,14 +1,21 @@
 # Ingester
 
-The ingester fetches weather and snow data from public sources, organizes it as JSON (and model-map PNGs), and stores
-it either in a local folder or in a Cloudflare R2 bucket.
+The ingester fetches weather and snow data from public sources and stores it, as JSON (and model-map PNGs), either in a
+local folder or in a Cloudflare R2 bucket. It is a standalone app: it builds no website files, and nothing outside this
+folder is needed to run it.
 
 ```
 ingester/
   pyproject.toml        package metadata and dependencies (pip install -e ingester)
-  src/ingester/         the Python package: CLI (__main__.py), sources, stores, publish, runner
-  tests/                offline tests (pytest); fakes.py is a copy of the pipeline's fake HTTP session
-  Dockerfile, compose*.yaml, entrypoint.sh, secrets/   Docker files
+  environment.yml       conda environment (GRIB, cartopy and the other compiled packages)
+  src/ingester/         the package: CLI (__main__.py), run (runner.py), sources registry, stores, publish
+    fetch/              the data-source code, one module per source (copied from the website's pipeline, see below)
+    obs.py              runs the observation sources (alerts, afd, avalanche, hazards, snotel, asos)
+    ecmwf_run.py        ECMWF run with its attempt log
+  config/               settings.yml (the ingest section and each source's settings), models.yml, summary_rules.yml
+  data/                 point lists the forecast sources need: ski_areas.json, rec_points.json, snotel_points.json
+  tests/                offline tests (pytest)
+  Dockerfile, .dockerignore, compose.yaml, entrypoint.sh, secrets/   Docker files
   README.md
 ```
 
@@ -20,70 +27,100 @@ Spec and design notes: `docs/specs/ingest-r2.md`.
 
 ### With Docker (recommended)
 
-Run every command from the repository root. The image needs the whole repository as its build context.
+Every command below is run from the folder you want the output in. The output goes to `output/` in that folder, and
+`output/` and `data_cache/` are created there if they are missing. Replace `/path/to/snow-wx` with where the repository is.
 
-**1. Build the image** (once, and again after code changes):
+#### One-time setup
 
-```sh
-docker build -f ingester/Dockerfile -t snow-wx-ingester .
-```
+1. **Build the image** (again after code changes). The build context is the `ingester/` folder, and the image contains
+   only the ingester:
 
-or, with Compose:
+   ```sh
+   docker compose -f /path/to/snow-wx/ingester/compose.yaml build ingester
+   ```
 
-```sh
-docker compose -f ingester/compose.yaml build pipeline
-```
+2. **Create the R2 secret files** in `ingester/secrets/`, as described in `ingester/secrets/README.md`. They are required
+   for every run, including runs that don't push to R2.
 
-**2. Run it locally, with no credentials** (writes to `test-output/` on your machine):
+3. **Your user ID** (optional). The container gives `output/` and `data_cache/` to user 1000 by default. If your UID
+   and GID differ, export them before running:
 
-```sh
-docker compose -f ingester/compose.yaml run --rm pipeline ingest list
-docker compose -f ingester/compose.yaml run --rm pipeline ingest run asos --stage /output/stage --dry-run
-docker compose -f ingester/compose.yaml run --rm pipeline ingest run asos --stage /output/stage
-```
+   ```sh
+   export LOCAL_UID=$(id -u) LOCAL_GID=$(id -g)
+   ```
 
-Inside the container the command word is `ingest` (it runs `python -m ingester`). The first run writes:
-- `test-output/stage/`: the fetched files, before publishing
-- `test-output/store/`: the local store, with exactly the layout R2 would hold
+#### Run without pushing to R2 (local store only)
 
-**3. Push to R2** (needs credentials, see below). Dry run first, which reads the bucket's manifest and uploads nothing:
+Set `R2_PUSH=0`. Nothing is uploaded, and the results are written to `output/store/` on your machine.
 
 ```sh
-docker compose -f ingester/compose.yaml -f ingester/compose.r2.yaml run --rm pipeline ingest run asos --stage /output/stage --dry-run
+cd ~/ingest-run
+R2_PUSH=0 docker compose -f /path/to/snow-wx/ingester/compose.yaml run --rm ingester ingest run asos --dry-run
+R2_PUSH=0 docker compose -f /path/to/snow-wx/ingester/compose.yaml run --rm ingester ingest run asos
 ```
 
-Then the real push, the same command without `--dry-run`:
+The first command shows what would be stored, without fetching or writing data. The second fetches `asos` and writes it
+to `output/stage/` and `output/store/`.
+
+#### Run and push to R2
+
+`R2_PUSH` defaults to `1`, so the command below uploads changed files to the bucket. Run the dry run first: it reads the
+bucket's manifest and uploads nothing.
 
 ```sh
-docker compose -f ingester/compose.yaml -f ingester/compose.r2.yaml run --rm pipeline ingest run asos --stage /output/stage
+cd ~/ingest-run
+docker compose -f /path/to/snow-wx/ingester/compose.yaml run --rm ingester ingest run asos --dry-run   # R2: reads the manifest, uploads nothing
+docker compose -f /path/to/snow-wx/ingester/compose.yaml run --rm ingester ingest run asos             # R2: uploads changed files
 ```
 
-`compose.r2.yaml` sets `R2_PUSH=1`, which makes the container publish to R2 instead of the local store. Without that
-file, nothing reaches R2.
+The R2 bucket is set by the `r2_bucket` secret. The stage and local store are still written to `output/` on your machine.
 
-The commands above run as your own user, so no `sudo` is needed. The compose file sets `LOCAL_UID`/`LOCAL_GID` to 1000 by default; export your own IDs if yours differ, so the output and secret files stay readable by you:
+#### Other commands
 
 ```sh
-export LOCAL_UID=$(id -u) LOCAL_GID=$(id -g)
+docker compose -f /path/to/snow-wx/ingester/compose.yaml run --rm ingester ingest list                # list sources; never uploads
+docker compose -f /path/to/snow-wx/ingester/compose.yaml run --rm ingester ingest run --all           # every default source (pushes to R2 unless R2_PUSH=0)
+docker compose -f /path/to/snow-wx/ingester/compose.yaml run --rm ingester ingest run asos -o other   # another output folder (see below)
 ```
+
+Inside the container the command word is `ingest` (it runs `python -m ingester`).
+
+The container starts as root for a moment, only to give `output/` and `data_cache/` to your user, and then runs the
+ingester as that user.
+
+- `output/stage/`: the fetched files, before publishing
+- `output/store/`: the local store, with exactly the layout R2 would hold
+
+`-o DIR` (or `--output DIR`, or `--o DIR`) picks another output folder, relative to the folder you run from. Compose mounts
+only `output/` into the container, so with Docker a different folder is written inside the container and is lost when it
+stops. To use another folder with Docker, add a mount for it in `ingester/compose.yaml`.
 
 ### Without Docker
 
-Create the conda environment from `environment.yml` (once), then from the repository root:
+Create the conda environment from `ingester/environment.yml` (once), then install the package:
 
 ```sh
-conda activate snow-wx
-pip install -e ingester          # once: installs the package from ingester/src
+conda env create -f /path/to/snow-wx/ingester/environment.yml
+conda activate ingester
+pip install -e /path/to/snow-wx/ingester      # once: installs the package from ingester/src
 python -m ingester list
 python -m ingester run asos --dry-run
 python -m ingester run asos
 ```
 
 Without the install, point Python at the source folder instead: `PYTHONPATH=ingester/src python -m ingester list`.
-On Windows, call the environment's Python directly, as in `CLAUDE.md`, and install with
-`C:/miniforge3/envs/snow-wx/python.exe -m pip install -e ingester`.
+Run the commands from the folder you want the output in: the output goes to `output/` there (see `-o` below).
 
-Tests (offline, from the repository root): `python -m pytest ingester/tests`.
+Tests (offline): `python -m pytest ingester/tests`.
+
+### Keeping the copied data up to date
+
+The ingester has its own copies of the data-source code (`src/ingester/fetch/`), its settings and its point lists
+(`config/`, `data/`). They were copied from the website's `pipeline/`, `config/` and `data/` folders, which still have
+their own. When a source changes in the website code, copy the module again (keeping the imports relative) and check the
+tests. The point lists are generated by the website side (`python -m pipeline catalog`, `python -m pipeline catalog
+--snotel`): copy `data/ski_areas.json`, `data/rec_points.json` and `data/snotel_points.json` over when they change.
+Until the website reads its data from the store, these copies are maintained by hand.
 
 ---
 
@@ -101,7 +138,7 @@ In the container, use `ingest` in place of `python -m ingester`.
 
 Prints every source, whether it runs by default, and the stage paths it writes.
 
-### `run`: fetch sources, derive, publish
+### `run`: fetch sources, then publish
 
 | Option | What it does |
 |---|---|
@@ -110,7 +147,6 @@ Prints every source, whether it runs by default, and the stage paths it writes.
 | `--cycle YYYYMMDDHH` | model cycle for `points`, `ecmwf`, `gefs` and the maps (default: the newest complete cycle) |
 | `--force` | run `ecmwf` or `gefs` even when they are disabled in config (local tests) |
 | `--workers N` | worker processes for `points` and the maps |
-| `--no-derive` | skip the derived files (`meta.json`, search index, catalogs) |
 
 ### `publish`: upload an existing stage without fetching
 
@@ -123,8 +159,8 @@ Prints every source, whether it runs by default, and the stage paths it writes.
 | Option | What it does |
 |---|---|
 | `--store {local,r2,none}` | where to publish. Default `local`, or the `INGEST_STORE` variable. `none` only fetches into the stage |
-| `--stage PATH` | the working folder (default: `ingest.stage_dir`, `data_out/stage`) |
-| `--local-root PATH` | the local store folder (default: `ingest.local_store_dir`, `data_out/store`) |
+| `-o DIR`, `--output DIR` | the output folder, relative to the folder you launch from (default: `ingest.output_dir`, i.e. `output/`). It holds `stage/` (working files) and `store/` (the local store). `--o` works as a short form |
+| `--local-root PATH` | the local store folder (default: `<output>/store`) |
 | `--bucket NAME` | the R2 bucket (default: `R2_BUCKET`) |
 | `--dry-run` | plan the publish only: nothing is uploaded or deleted. For R2 it still reads the bucket's manifest |
 | `--prune` | delete stored objects inside this run's paths that the stage no longer has. Off by default |
@@ -171,12 +207,11 @@ which the JSON files carry. Avalanche ratings are stored unaltered. Do not add a
 
 ### Local store
 
-The default destination, with the layout described below. Host folder: `test-output/store/` in Docker, or
-`data_out/store/` without it.
+The default destination, with the layout described below: `output/store/` in the folder you launch from.
 
 ### Cloudflare R2
 
-Pushed only with `--store r2` (or `R2_PUSH=1` in the container). The bucket is set by `R2_BUCKET`.
+Pushed with `--store r2` (or `R2_PUSH=1`, the container default). Test runs set `R2_PUSH=0`. The bucket is set by `R2_BUCKET`.
 
 | Object key | Content |
 |---|---|
@@ -190,7 +225,7 @@ copies immutable. Public access (a custom domain, CORS) is set up separately wit
 
 The layout is the same locally and in R2, so the local store is a faithful preview of what R2 will hold.
 
-Settings: `config/settings.yml` section `ingest:` (`stage_dir`, `local_store_dir`, `layout`, `archive`).
+Settings: `config/settings.yml` section `ingest:` (`output_dir`, `layout`, `archive`).
 
 ---
 
@@ -229,11 +264,9 @@ keys; the file it failed to read is not named, so check the file's permissions a
 - **`missing R2 configuration`**: a secret file is empty, unreadable, or not mounted. This shows the container user and
   the size of each secret without printing any values:
   ```sh
-  docker compose -f ingester/compose.yaml -f ingester/compose.r2.yaml run --rm --entrypoint /bin/sh pipeline -c 'id; wc -c /run/secrets/r2_*'
+  docker compose -f ingester/compose.yaml run --rm --entrypoint /bin/sh ingester -c 'id; wc -c /run/secrets/r2_*'
   ```
   Sizes of 0 mean an empty file. "Permission denied" means the SELinux label (see Credentials).
-- **Files in `test-output/` are owned by root**: left over from runs made with `sudo` in the past. Fix once with
-  `sudo chown -R "$(id -u):$(id -g)" test-output`.
 - **A source shows `ok: false`**: its error is in the `sources` block of the JSON output and in `data/meta.json`.
   Other sources still publish.
 - **`snotel` is slow**: that's normal (3–8 minutes). Run it alone when you're testing.

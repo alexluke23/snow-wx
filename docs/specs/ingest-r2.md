@@ -6,11 +6,11 @@ can serve it to the front end. The website build (`python -m pipeline build`) an
 ## Flow
 
 ```
-sources (pipeline/<source>.py, unchanged)  ->  stage folder (data/ + models/, the layout the site uses today)
-   -> derive (pipeline.__main__.derive_outputs: meta.json, search.json, map_points.json, catalogs, ridge/multimodel merges; no network)
-   -> publish (ingester/src/ingester/publish.py) -> store: local folder (default) or R2
+sources (ingester/src/ingester/fetch/, one module per source)  ->  stage folder (data/ + models/)
+   -> publish (ingester/src/ingester/publish.py) -> store: local folder (default) or R2; the manifest keeps each source's status
 ```
 
+- Standalone: the ingester owns its fetch code (`ingester/src/ingester/fetch/`, copies of the website's source modules), its settings (`ingester/config/`) and its point lists (`ingester/data/`). It imports nothing from `pipeline/` and builds no website files (no `meta.json`, search index or catalogs; run status is kept in the store manifest). Copies are kept in step by hand until the website reads from the store.
 - Code: `ingester/src/ingester/store.py` (LocalStore, R2Store, credentials), `ingester/src/ingester/publish.py` (scan, plan, upload order, manifest),
   `ingester/src/ingester/sources.py` (registry: what each source runs and which stage paths it owns), `ingester/src/ingester/runner.py` (one run),
   `ingester/src/ingester/__main__.py` (CLI). Tests: `ingester/tests/test_ingest.py` (offline: its own FakeSession copy in `ingester/tests/fakes.py`, plus a fake S3 client).
@@ -47,14 +47,14 @@ sources (pipeline/<source>.py, unchanged)  ->  stage folder (data/ + models/, th
 
 ```
 python -m ingester list
-python -m ingester run snotel asos                 # -> data_out/stage, published to data_out/store (local)
+python -m ingester run snotel asos                 # -> ./output/stage, published to ./output/store (local); -o DIR changes the folder
 python -m ingester run --all --prune
 python -m ingester run obs --store r2 --dry-run    # reads the R2 manifest, uploads nothing
 python -m ingester run obs --store r2              # needs R2_ACCOUNT_ID (or R2_ENDPOINT), R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
 python -m ingester publish --store r2 --scope data/points
 ```
 
-Docker (see `ingester/README.md`): `docker compose -f ingester/compose.yaml run --rm pipeline` runs `ingest run --all` into `test-output/`; add `-f ingester/compose.r2.yaml` to push
+Docker (see `ingester/README.md`): `docker compose -f ingester/compose.yaml run --rm ingester` runs `ingest run --all` into `output/` in the folder you launch from; it uploads to R2 unless `R2_PUSH=0`
 to R2 with Docker secrets from `ingester/secrets/`.
 
 ## Known limits / next steps

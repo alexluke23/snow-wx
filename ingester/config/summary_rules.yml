@@ -1,0 +1,25 @@
+# Daily Snow summary rules (W3; docs/specs/daily-summaries.md). Versioned and tunable; starting points, to be tuned
+# against verification (M9) and feedback. Rules that use p50 or P(>=X) only fire on NATIVE NBM windows.
+version: 1
+
+# one headline tag by priority (first listed wins); the rest become bullets
+priority: [alert, rain_base, deep_powder, storm_cycle, dry, wind, baseline]     # dry outranks wind (owner Nov 17)
+
+deep_powder:
+  p50_24h_in: 8        # NBM native median (exceedance-window p50) for the first 24 h window
+  p_ge12_pct: 30       # native chance of >= 12 in
+  # snow ratio must reach the shared powder-quality Blower threshold (config/settings.yml powder_quality.blower_at)
+  gust_mph: 25         # summit gusts must stay below this
+
+storm_cycle:
+  p50_72h_in: 18       # native 72 h median; the quoted "likely" range is the native 72 h p25-p75
+
+rain_base:
+  p_snow_max: 0.5      # chance that precipitation falls as snow at the point below this = rain likely
+  min_qpf_in: 0.05
+
+dry_stretch:
+  p50_72h_in: 1
+
+wind:
+  min_snow_72h_in: 3   # only call snow wind-affected when a meaningful amount is expected (expected 72 h total)

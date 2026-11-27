@@ -1,0 +1,23 @@
+# The ingester's own environment (standalone). Used by the Docker image (Dockerfile) and for local runs:
+#   conda env create -f ingester/environment.yml && conda activate ingester
+name: ingester
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - requests
+  - pyyaml
+  - numpy
+  - pandas
+  - boto3
+  - scipy
+  - matplotlib
+  - pillow
+  - shapely
+  - pyproj
+  - netcdf4
+  - eccodes           # GRIB decoding (NBM, ECMWF, GEFS, model maps)
+  - cfgrib
+  - herbie-data       # NOAA model file access (model maps)
+  - cartopy           # map projections (model maps)
+  - pytest

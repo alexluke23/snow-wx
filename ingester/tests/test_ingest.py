@@ -3,6 +3,7 @@
 import io
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -10,7 +11,7 @@ from ingester import publish as P
 from ingester import runner as R
 from ingester.sources import registry, resolve
 from ingester.store import LocalStore, R2Store, r2_credentials, secret
-from pipeline.common import load_config
+from ingester.fetch.common import load_config
 from fakes import FakeResponse, FakeSession
 
 
@@ -182,43 +183,38 @@ def run(cfg, names, stage, store, session=None, **kw):
     return R.run(cfg, resolve(names, False, registry()), stage, store, session=session or FakeSession(), **kw)
 
 
-def test_obs_run_stage_and_store_match_the_site_data(cfg, tmp_path):
-    """Same documents as the website build's data/ folder (minus the web shell), stored byte for byte under v1/data/."""
-    from pipeline.__main__ import derive_outputs, run_obs
+def test_obs_run_stores_the_stage_byte_for_byte(cfg, tmp_path):
+    """Every file the sources wrote is stored under v1/ with the same bytes; the manifest lists them with their hashes."""
     store = LocalStore(tmp_path / "store")
     res = run(cfg, ["snotel", "asos", "avalanche"], tmp_path / "stage", store)
     assert res["ok"] and all(res["sources"][n]["ok"] for n in ("snotel", "asos", "avalanche"))
-    site = tmp_path / "site"
-    run_obs(cfg, site / "data", ["snotel", "asos", "avalanche"], session=FakeSession())
-    derive_outputs(cfg, site)
-    ours = {p.relative_to(tmp_path / "stage").as_posix() for p in (tmp_path / "stage").rglob("*") if p.is_file()}
-    theirs = {p.relative_to(site).as_posix() for p in site.rglob("*") if p.is_file()}
-    assert ours == theirs
-    for rel in ours:
+    files = {p.relative_to(tmp_path / "stage").as_posix() for p in (tmp_path / "stage").rglob("*") if p.is_file()}
+    assert "data/snotel.geojson" in files and "data/asos.geojson" in files
+    for rel in files:
         assert store.get("v1/" + rel) == (tmp_path / "stage" / rel).read_bytes(), rel
     man = P.load_manifest(store)
     assert man["sources"]["snotel"]["ok"] is True
-    meta = json.loads(store.get("v1/data/meta.json"))
-    assert {"snotel", "asos", "avalanche", "points"} <= set(meta["sources"])
+    assert {"v1/" + r for r in files} <= set(man["objects"])
+    assert "v1/data/meta.json" not in man["objects"]               # the ingester writes no website files
 
 
 def test_partial_run_keeps_other_sources_status_and_objects(cfg, tmp_path):
     store = LocalStore(tmp_path / "store")
-    # another job already published NBM points (its own stage)
+    # another job already published NBM points (its own stage) and recorded its status
     other = tmp_path / "points_job"
     write(other / "data" / "points" / "summary.json", json.dumps(
         {"cycle": "2026112413", "generated_at": "2026-11-24T15:00:00Z", "areas": [{}, {}]}))
     write(other / "data" / "points" / "alta.json", '{"a":1}')
-    P.publish(store, other, scope=["data/points"])
+    P.publish(store, other, scope=["data/points"], sources={"points": {"ok": True, "at": "2026-11-24T15:00:00Z"}})
     # a persistent local stage with an OLD points file must not overwrite the newer stored one
     stage = tmp_path / "stage"
     write(stage / "data" / "points" / "alta.json", '{"a":"old"}')
     res = run(cfg, ["asos"], stage, store, prune=True)
     assert res["ok"] and set(res["sources"]) == {"asos"}
     assert store.get("v1/data/points/alta.json") == b'{"a":1}'
-    meta = json.loads(store.get("v1/data/meta.json"))
-    assert meta["sources"]["points"]["ok"] is True and meta["sources"]["points"]["count"] == 2   # read from the store, not "missing"
-    assert meta["sources"]["asos"]["ok"] is True
+    sources = P.load_manifest(store)["sources"]
+    assert sources["points"]["ok"] is True                         # the other job's status is kept
+    assert sources["asos"]["ok"] is True
 
 
 def test_history_survives_a_fresh_stage(cfg, tmp_path):
@@ -226,8 +222,7 @@ def test_history_survives_a_fresh_stage(cfg, tmp_path):
     run(cfg, ["avalanche"], tmp_path / "s1", store, session=FakeSession(fail=["avalanche.org"]))
     res = run(cfg, ["avalanche"], tmp_path / "s2", store, session=FakeSession(fail=["avalanche.org"]))
     assert res["ok"] is False                                      # the only source failed
-    meta = json.loads(store.get("v1/data/meta.json"))
-    assert meta["sources"]["avalanche"]["consecutive_failures"] == 2
+    assert P.load_manifest(store)["sources"]["avalanche"]["consecutive_failures"] == 2
 
 
 class AwdbDown(FakeSession):
@@ -261,3 +256,27 @@ def test_cli_list_and_missing_r2_credentials(monkeypatch, capsys):
         monkeypatch.delenv(n, raising=False)
         monkeypatch.delenv(n + "_FILE", raising=False)
     assert main(["publish", "--store", "r2", "--dry-run"]) == 2      # no credentials: a clear error, nothing touched
+
+
+def test_output_paths_resolve_from_the_launch_folder(monkeypatch, tmp_path):
+    from ingester.__main__ import _resolve, _settings
+    monkeypatch.setenv("INGEST_LAUNCH_DIR", str(tmp_path / "launch"))
+    assert _resolve("output") == tmp_path / "launch" / "output"          # relative: from the launch folder
+    assert _resolve("/abs/dir") == Path("/abs/dir")                    # absolute: used as given
+    monkeypatch.delenv("INGEST_LAUNCH_DIR")
+    monkeypatch.chdir(tmp_path)
+    assert _resolve("mine") == tmp_path / "mine"                       # no container: the current folder
+    assert _settings({"ingest": {"output_dir": "output"}})["output"] == "output"
+    assert _settings({})["output"] == "output"                          # default when the config has no ingest section
+
+
+def test_vendored_config_is_found_and_complete():
+    """The copied fetch code reads its rules and thresholds from the ingester's own config/ (regression: a wrong path
+    made every point's daily summary fail, and a trimmed settings file would silently change the powder thresholds)."""
+    from ingester.fetch import points, summary
+    from ingester.fetch.common import REPO_ROOT
+    assert summary.RULES_PATH == REPO_ROOT / "config" / "summary_rules.yml" and summary.RULES_PATH.exists()
+    rules = summary.load_rules()
+    assert rules["powder_quality"] == {"dense_below": 10, "blower_at": 15, "wind_gust_mph": 30, "min_snow_in": 0.5}
+    points.configure_powder_quality({"powder_quality": rules["powder_quality"]})
+    assert points.POWDER_Q["blower_at"] == 15

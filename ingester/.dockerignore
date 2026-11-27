@@ -1,0 +1,14 @@
+# build context = the ingester folder
+data_cache/
+output/
+__pycache__/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+tests/
+# credentials, compose files and docs: never part of the image
+secrets/
+*.yaml
+!config/*.yaml
+README.md
+.vscode/

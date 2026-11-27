@@ -84,11 +84,11 @@ r2:
   key_prefix: "data/"
 
 ingest:
-  # Data-only ingest (`python -m ingester`, docs/specs/ingest-r2.md): sources -> stage_dir (data/ + models/) -> derive -> store.
+  # Data-only ingest (`python -m ingester`, docs/specs/ingest-r2.md): sources -> output_dir/stage (data/ + models/) -> derive -> output_dir/store.
+  # output_dir is relative to the folder the command is run from (-o / --output overrides it).
   # The default store is a local folder with exactly the R2 key layout (<layout>/data/..., <layout>/models/..., <layout>/_manifest.json).
   # R2 is used only with `--store r2` (or INGEST_STORE=r2) and R2_* credentials from the environment / Docker secrets; never from this file.
-  stage_dir: data_out/stage
-  local_store_dir: data_out/store
+  output_dir: output
   layout: v1
   archive: false            # true = also copy each CHANGED object to archive/runs/<stamp>/ (doubles writes for changed files)
 

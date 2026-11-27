@@ -1,17 +1,42 @@
-# Local (no R2): run from anywhere with
-#   docker compose -f ingester/compose.yaml run --rm pipeline ingest run asos --stage /output/stage --dry-run
-# Paths are relative to this folder (the compose project directory).
+# snow-wx ingester. Run from the folder you want the output in (output/ and data_cache/ are created there as needed).
+# The secret files in ingester/secrets/ are required (see ingester/secrets/README.md).
+#   Normal run (uploads to R2):             docker compose -f /path/to/snow-wx/ingester/compose.yaml run --rm ingester ingest run asos
+#   Test run (local store only, no upload): R2_PUSH=0 docker compose -f /path/to/snow-wx/ingester/compose.yaml run --rm ingester ingest run asos
+# Your UID and GID default to 1000. If yours differ, export them first: export LOCAL_UID=$(id -u) LOCAL_GID=$(id -g)
 services:
-  pipeline:
-    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+  ingester:
     build:
-      context: ..                       # repository root: the image needs pipeline/, config/, data/, web/
-      dockerfile: ingester/Dockerfile
+      context: .                        # this folder only: the ingester is standalone
+      dockerfile: Dockerfile
     environment:
       HOME: "/tmp/snow-wx-home"
       XDG_CACHE_HOME: "/tmp/snow-wx-cache"
       MAMBA_ROOT_PREFIX: "/opt/conda"
-      R2_PUSH: "0"
+      R2_PUSH: "${R2_PUSH:-1}"          # 1 = publish to R2 (default); 0 = local store only
+      INGEST_LAUNCH_DIR: "/launch"
+      # the container starts as root only to give the output and cache folders to this user, then runs as this user
+      LOCAL_UID: "${LOCAL_UID:-1000}"
+      LOCAL_GID: "${LOCAL_GID:-1000}"
+      R2_ACCOUNT_ID_FILE: "/run/secrets/r2_account_id"
+      R2_ACCESS_KEY_ID_FILE: "/run/secrets/r2_access_key_id"
+      R2_SECRET_ACCESS_KEY_FILE: "/run/secrets/r2_secret_access_key"
+      R2_BUCKET_FILE: "/run/secrets/r2_bucket"
+    secrets:
+      - r2_account_id
+      - r2_access_key_id
+      - r2_secret_access_key
+      - r2_bucket
     volumes:
-      - ../test-output:/output:Z
-      - ../data_cache:/app/data_cache:Z
+      # the output and cache folders of the folder you launch from (PWD), relabelled for the container (:Z)
+      - ${PWD}/output:/launch/output:Z
+      - ${PWD}/data_cache:/app/data_cache:Z
+
+secrets:
+  r2_account_id:
+    file: ./secrets/r2_account_id.txt
+  r2_access_key_id:
+    file: ./secrets/r2_access_key_id.txt
+  r2_secret_access_key:
+    file: ./secrets/r2_secret_access_key.txt
+  r2_bucket:
+    file: ./secrets/r2_bucket.txt
