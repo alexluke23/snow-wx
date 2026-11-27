@@ -60,9 +60,12 @@ Ad-hoc scripts that import eccodes/herbie should `import pipeline` first.
 - `web/` — static site (Leaflet + Plotly from CDN, plain JS, no build step).
   `web/js/colors.js` holds color scales/legends (single definition of the NWS snowfall table).
 - `tests/` — pytest; extend `tests/fakes.py` with canned responses for new sources.
-- `ingester/` — the data-only ingest app (src layout: package in `ingester/src/ingester`, tests in `ingester/tests`, `pyproject.toml`): `python -m ingester run <sources>|--all [--store local|r2|none] [--dry-run]`: stage `data_out/stage` → derive → store
-  (local `data_out/store` by default, R2 only with `--store r2` + R2_* env/Docker secrets). Keys `v1/data/...`, `v1/models/...`, `v1/_manifest.json`. Spec: `docs/specs/ingest-r2.md`.
-  Its Docker files live in the same folder: `ingester/Dockerfile`, `ingester/compose*.yaml`, `ingester/entrypoint.sh`, `ingester/secrets/` (git-ignored credentials), and `ingester/README.md` (how to run it, every option, sources and destinations). Docker builds use the repository root as context.
+- `ingester/` — the standalone data-ingest app. It fetches forecast and observation data and stores it as JSON (+ model
+  PNGs) in a local folder or R2. It builds no website files and needs nothing outside its folder: `src/ingester/fetch/`
+  (copies of the source modules), `config/`, `data/` (copies), `environment.yml`, `Dockerfile` (build context = this
+  folder). CLI: `python -m ingester run <sources>|--all [--store local|r2|none] [--dry-run]`; the Docker run is
+  `docker compose -f ingester/compose.yaml run --rm ingester ingest run asos` (test run: prefix `R2_PUSH=0`). Keys `v1/data/...`, `v1/models/...`,
+  `v1/_manifest.json`. Spec: `docs/specs/ingest-r2.md`; the README explains every option.
 - `pipeline/search.py` — header search index (data/search.json); `web/js/search.js` (header + shared ranking).
 - `tools/browser_check.py` — headless-Chrome regression checks (basemap, fallback, layout, search, charts).
 - `pipeline/ecmwf.py` (ECMWF HRES + ENS plume, LIVE via `.github/workflows/ecmwf.yml`), `pipeline/webcams.py` + `config/webcams.yml` (links only), `pipeline/linkcheck.py`, `pipeline/stub.py` (W1 redirect stub), `config/sources.yml` (+ `tools/gen_site_pages.py`), `pipeline/wind_exposure.py` (W7 flag, off), `pipeline/alerts_backend.py` (W6 offline skeleton, off), `docs/workflow_snippets/` (workflow text for

@@ -7,7 +7,7 @@ import math
 from datetime import timedelta
 from urllib.parse import urlparse
 
-from pipeline.common import utcnow
+from ingester.fetch.common import utcnow
 
 
 class FakeResponse:

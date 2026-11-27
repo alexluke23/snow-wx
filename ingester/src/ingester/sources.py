@@ -1,8 +1,8 @@
 """Registry of ingest sources: what each one runs and which stage paths it owns.
 
-Every source wraps the existing pipeline code (`pipeline/<source>.py`), which already keeps fetching separate from the
-pure processing functions; ingest only decides WHERE the output goes. `writes` = stage-relative paths the source
-rewrites on each run: publish uploads (and, with --prune, cleans) only these, plus the derived files.
+Every source runs the vendored fetch code in `ingester/fetch/` (one module per source). Fetching is kept separate from
+the pure processing functions there; ingest only decides WHERE the output goes. `writes` = stage-relative paths the
+source rewrites on each run: publish uploads (and, with --prune, cleans) only these.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-# obs sources run together through pipeline.__main__.run_obs (one meta.json with per-source history)
+# observation sources (run together by ingester/obs.py); stage paths each one writes
 OBS_WRITES = {
     "alerts": ["data/alerts"],
     "afd": ["data/afd"],
@@ -21,26 +21,6 @@ OBS_WRITES = {
     "snotel": ["data/snotel.geojson", "data/snotel"],
     "asos": ["data/asos.geojson"],
 }
-
-# written by the derive step (pipeline.__main__.derive_outputs) from what is already in the stage
-DERIVED_WRITES = ["data/meta.json", "data/ski_areas.json", "data/rec_points.json", "data/webcams.json", "data/search.json",
-                  "data/map_points.json", "data/ridge.json", "data/multimodel.json", "models/index.json"]
-
-# small files the derive step reads from OTHER sources (status lines in meta.json, model catalog, merges).
-# Pulled from the store before derive, so a partial run (e.g. only SNOTEL) does not report the others as missing.
-# Paths are matched against the manifest keys below <layout>/.
-DERIVE_INPUT_PATTERNS = [
-    r"data/meta\.json",
-    r"data/points/summary\.json",
-    r"data/ndfd/index\.json",
-    r"data/nohrsc/index\.json",
-    r"models/[^/]+/index\.json",
-    r"models/[^/]+/precip\.json",
-    r"models/[^/]+/ridge\.json",
-    r"models/ecmwf/aifs/precip\.json",
-    r"models/ecmwf/attempts\.json",
-    r"models/verify/run\.json",
-]
 
 
 @dataclass
@@ -69,17 +49,17 @@ def _code_status(code: int) -> dict:
 
 
 def _ndfd(ctx: Context) -> dict:
-    from pipeline import ndfd
+    from .fetch import ndfd
     return _code_status(ndfd.run(ctx.cfg, ctx.session, ctx.stage / "data" / "ndfd"))
 
 
 def _nohrsc(ctx: Context) -> dict:
-    from pipeline import nohrsc
+    from .fetch import nohrsc
     return _code_status(nohrsc.run(ctx.cfg, ctx.session, ctx.stage / "data" / "nohrsc"))
 
 
 def _points(ctx: Context) -> dict:
-    from pipeline.nbm.run import run_points
+    from .fetch.nbm.run import run_points
     cyc = ctx.cycle.replace(tzinfo=None) if ctx.cycle else None
     return _code_status(run_points(ctx.cfg, ctx.session, ctx.stage / "data" / "points", cycle=cyc,
                                    workers=ctx.workers or 6))
@@ -97,21 +77,21 @@ def _res_status(res: dict) -> dict:
 
 
 def _ecmwf(ctx: Context) -> dict:
-    from pipeline.__main__ import run_ecmwf
+    from .ecmwf_run import run_ecmwf
     cyc = ctx.cycle.replace(tzinfo=timezone.utc) if ctx.cycle else None
     return _res_status(run_ecmwf(ctx.cfg, ctx.session, ctx.stage / "models", cycle=cyc, force=ctx.force))
 
 
 def _gefs(ctx: Context) -> dict:
-    from pipeline import gefs
+    from .fetch import gefs
     cyc = ctx.cycle.replace(tzinfo=timezone.utc) if ctx.cycle else None
     return _res_status(gefs.run(ctx.cfg, ctx.session, ctx.stage / "models", cycle=cyc, force=ctx.force))
 
 
 def _map_runner(model: str) -> Callable[[Context], dict]:
     def run(ctx: Context) -> dict:
-        from pipeline.models.config import load_models_config
-        from pipeline.models.run import run_model
+        from .fetch.models.config import load_models_config
+        from .fetch.models.run import run_model
         cyc = ctx.cycle.replace(tzinfo=None) if ctx.cycle else None
         return _code_status(run_model(load_models_config(), model, ctx.stage / "models", cycle=cyc, workers=ctx.workers))
     return run
@@ -119,7 +99,7 @@ def _map_runner(model: str) -> Callable[[Context], dict]:
 
 def map_models() -> list[str]:
     try:
-        from pipeline.models.config import load_models_config
+        from .fetch.models.config import load_models_config
         return list(load_models_config()["models"])
     except Exception:  # noqa: BLE001 - models.yml unreadable: no map sources, the rest still works
         return []

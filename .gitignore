@@ -3,7 +3,8 @@ build/
 test-output/
 # local ingest stage + store (python -m ingester; config ingest.stage_dir / local_store_dir)
 data_out/
-# R2 credentials for Docker secrets (ingester/compose.r2.yaml): never commit
+output/
+# R2 credentials for Docker secrets (ingester/compose.yaml): never commit
 ingester/secrets/*
 !ingester/secrets/README.md
 

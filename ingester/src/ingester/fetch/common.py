@@ -1,0 +1,146 @@
+"""Shared helpers: config loading, HTTP session, JSON writing."""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import math
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import requests
+import yaml
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+log = logging.getLogger("snow-wx")
+
+# The ingester folder (standalone): config/ and data/ live next to src/. Override with INGEST_HOME.
+REPO_ROOT = Path(os.environ.get("INGEST_HOME") or Path(__file__).resolve().parents[3])
+DEFAULT_CONFIG = REPO_ROOT / "config" / "settings.yml"
+
+
+def load_config(path: str | Path | None = None) -> dict:
+    with open(path or DEFAULT_CONFIG, encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def make_session(cfg: dict) -> requests.Session:
+    """A requests session with polite retries and a descriptive User-Agent."""
+    s = requests.Session()
+    retry = Retry(
+        total=4,
+        backoff_factor=2,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=("GET", "HEAD"),        # dev19: HEAD is idempotent too (the "is this cycle complete" probes used to give up at the first 503)
+        backoff_jitter=0.5,                     # dev19: a little random spread so parallel workers do not all come back at the same moment
+    )
+    s.mount("https://", HTTPAdapter(max_retries=retry))
+    s.mount("http://", HTTPAdapter(max_retries=retry))
+    s.headers["User-Agent"] = cfg.get("http", {}).get("user_agent", "snow-wx")
+    s.request_timeout = cfg.get("http", {}).get("timeout", 60)  # type: ignore[attr-defined]
+    # fail-fast variant for sources that handle an outage themselves (SNOTEL): one quick retry, so a down
+    # service costs seconds, not the minutes the polite retries above would take
+    fast = requests.Session()
+    quick = Retry(total=1, backoff_factor=1, status_forcelist=(429, 500, 502, 503, 504), allowed_methods=("GET",))
+    fast.mount("https://", HTTPAdapter(max_retries=quick))
+    fast.mount("http://", HTTPAdapter(max_retries=quick))
+    fast.headers["User-Agent"] = s.headers["User-Agent"]
+    s.fast = fast  # type: ignore[attr-defined]
+    return s
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def clean(value: Any, ndigits: int = 2) -> Any:
+    """Make values JSON-safe: NaN/inf -> None, round floats."""
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return None
+        return round(value, ndigits)
+    if isinstance(value, dict):
+        return {k: clean(v, ndigits) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [clean(v, ndigits) for v in value]
+    return value
+
+
+def write_json(path: Path, obj: Any, ndigits: int = 2) -> None:
+    """Compact JSON; floats rounded to ndigits (2 suits data values; pass more for
+    coordinates or grid definitions)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(clean(obj, ndigits), f, separators=(",", ":"), allow_nan=False)
+
+
+def feature(lon: float, lat: float, props: dict) -> dict:
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [round(lon, 5), round(lat, 5)]},
+        "properties": props,
+    }
+
+
+def feature_collection(features: list[dict], **extra: Any) -> dict:
+    return {"type": "FeatureCollection", "features": features, **extra}
+
+
+def forecast_areas(repo: Path | None = None) -> list[dict]:
+    """Ski areas plus Sno-Parks / winter recreation points (data/rec_points.json, same record
+    shape: base = trailhead, summit = high terrain). Used by every point product."""
+    import json as _json
+    repo = repo or REPO_ROOT
+    areas = list(_json.loads((repo / "data" / "ski_areas.json").read_text(encoding="utf-8"))["areas"])
+    rp = repo / "data" / "rec_points.json"
+    if rp.exists():
+        areas += _json.loads(rp.read_text(encoding="utf-8"))["areas"]
+    return areas
+
+
+def plural(n: int, word: str) -> str:
+    """'1 ski area', '2 ski areas' (word given in the singular; trailing 's' added)."""
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
+POINT_SIDE_FILES = ("summary.json", "exceed_summary.json", "calibration.json")
+# catalog ids are lowercase slugs ("alta-ski-area", "sp-segelsen-creek-sno-park", "snotel-1000-or-sntl"): anything else
+# (map_points.json, meta.json, ski_areas.json ...) is never a point file
+POINT_FILE_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*\.json$")
+
+
+def stale_point_files(out: Path) -> list[Path]:
+    """JSON files a previous points run wrote into `out` (listed in its summary.json, plus the
+    snotel-* files and the side files), so a mistaken --out (e.g. build/data) never deletes other
+    site data. Nothing is deleted when `out` has no points summary.json."""
+    try:
+        prev = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(prev, dict) or "areas" not in prev or not ("cycle" in prev or "issued" in prev):
+        return []
+    ids = {a.get("id") for a in prev.get("areas", []) if isinstance(a, dict)}
+    return [f for f in out.glob("*.json")
+            if f.name in POINT_SIDE_FILES or f.stem in ids or f.stem.startswith("snotel-")]
+
+
+def orphan_point_files(out: Path, keep: set[str]) -> list[Path]:
+    """Point-forecast files in `out` that this run did NOT write and the previous summary.json does not list:
+    leftovers of an interrupted run, or areas dropped from the catalog before summary.json existed. Only
+    files that look like our own output are returned (`{"id": <file stem>, "points": ..., "issued": ...}`),
+    only directly inside `out`, never anything else (a mistaken --out like build/data is safe)."""
+    found = []
+    for f in out.glob("*.json"):                      # direct children only: layers/, ndfd/ ... are never entered
+        if f.name in keep or f.name in POINT_SIDE_FILES or not POINT_FILE_NAME.match(f.name):
+            continue
+        try:
+            doc = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and doc.get("id") == f.stem and "points" in doc and "issued" in doc:
+            found.append(f)
+    return found
