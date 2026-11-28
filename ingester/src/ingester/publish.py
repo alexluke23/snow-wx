@@ -25,11 +25,39 @@ log = logging.getLogger("snow-wx.ingest")
 
 LAYOUT = "v1"
 MANIFEST = "_manifest.json"
+RUNS_DIR = "_runs"        # one immutable record per publish: per-source status and counts
+CHANGES_DIR = "_changes"  # one immutable record per publish that changed content: which objects changed
 TOP_DIRS = ("data", "models")
 # working files some jobs leave in their output folders; never published
 EXCLUDE_SUFFIXES = (".tmp", ".npz", ".grib2", ".grib", ".idx", ".tar", ".part", ".lock")
 TYPES = {".json": "application/json", ".geojson": "application/geo+json", ".png": "image/png", ".csv": "text/csv",
          ".txt": "text/plain; charset=utf-8", ".svg": "image/svg+xml", ".webp": "image/webp", ".gz": "application/gzip"}
+
+
+# Fields that change on every run without the forecast or observation changing. They are left out of the content hash, so a
+# document whose only change is one of these is not uploaded again (its stored copy keeps the older timestamp; the run log
+# records when each run happened).
+TIME_KEYS = frozenset({"generated_at", "checked_at", "fetched_at", "age_h"})
+
+
+def strip_time(obj):
+    if isinstance(obj, dict):
+        return {k: strip_time(v) for k, v in obj.items() if k not in TIME_KEYS}
+    if isinstance(obj, list):
+        return [strip_time(v) for v in obj]
+    return obj
+
+
+def content_sha256(raw: bytes, name: str) -> str:
+    """Hash of what the document says: canonical JSON without the time-only fields; other files are hashed as bytes."""
+    if name.lower().endswith((".json", ".geojson")):
+        try:
+            doc = json.loads(raw)
+        except ValueError:
+            return hashlib.sha256(raw).hexdigest()
+        canon = json.dumps(strip_time(doc), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canon.encode("utf-8")).hexdigest()
+    return hashlib.sha256(raw).hexdigest()
 
 
 def manifest_key(layout: str = LAYOUT) -> str:
@@ -65,7 +93,8 @@ def scan_stage(stage: Path, scope: list[str] | None = None, layout: str = LAYOUT
                 continue
             raw = path.read_bytes()
             out.append({"key": f"{layout}/{rel}", "path": path, "sha256": hashlib.sha256(raw).hexdigest(),
-                        "size": len(raw), "content_type": content_type(path.name)})
+                        "content_sha256": content_sha256(raw, path.name), "size": len(raw),
+                        "content_type": content_type(path.name)})
     out.sort(key=lambda f: f["key"])
     return out
 
@@ -76,11 +105,13 @@ def _upload_rank(key: str) -> tuple:
 
 
 def plan(files: list[dict], previous: dict, scope_keys: list[str], prune: bool) -> tuple[list[dict], list[dict], list[str]]:
-    """(put, skip, delete). `previous` = manifest objects {key: {sha256, ...}}; `scope_keys` = key prefixes this publish covers."""
+    """(put, skip, delete). `previous` = manifest objects {key: {sha256, content_sha256, ...}}; `scope_keys` = key prefixes this
+    publish covers. A file is skipped when its CONTENT hash matches what is stored (time-only changes are not uploads)."""
     put, skip = [], []
     for f in files:
         old = previous.get(f["key"]) or {}
-        (skip if old.get("sha256") == f["sha256"] else put).append(f)
+        same = bool(old.get("content_sha256")) and old["content_sha256"] == f["content_sha256"]
+        (skip if same else put).append(f)
     put.sort(key=lambda f: _upload_rank(f["key"]))
     delete = []
     if prune:
@@ -130,11 +161,40 @@ def publish(store: Store, stage: Path, *, scope: list[str] | None = None, prune:
     for key in delete:
         store.delete(key)
 
+    # the manifest records what is STORED: uploaded files get their new hashes; skipped files keep their stored entry
     objects = {k: v for k, v in previous.items() if k not in set(delete)}
-    objects.update({f["key"]: {"sha256": f["sha256"], "size": f["size"]} for f in files})
+    objects.update({f["key"]: {"sha256": f["sha256"], "content_sha256": f["content_sha256"], "size": f["size"]} for f in put})
     doc = {"layout": layout, "published_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
            "sources": {**(manifest.get("sources") or {}), **(sources or {})},
            "objects": dict(sorted(objects.items()))}
+    # change log (only when content changed) and run log (every run), both immutable, under the layout
+    def kind(key: str, new_hash: str) -> str:
+        # baseline: no content hash was stored before (a first publish into an empty store, or a manifest written before
+        # content hashes); new: the key did not exist; changed: its content hash differs from the stored one
+        old = (previous.get(key) or {}).get("content_sha256")
+        if old is None:
+            return "baseline" if key in previous or not previous else "new"
+        return "changed"
+
+    changes = [{"key": f["key"], "change": kind(f["key"], f["content_sha256"]),
+                "old_content_sha256": (previous.get(f["key"]) or {}).get("content_sha256"),
+                "new_content_sha256": f["content_sha256"]} for f in put]
+    changes += [{"key": k, "change": "deleted", "old_content_sha256": (previous.get(k) or {}).get("content_sha256"),
+                 "new_content_sha256": None} for k in delete]
+    run_doc = {"run": stamp, "published_at": doc["published_at"], "store": store.describe(), "scope": scope,
+               "sources": sources or {},
+               "counts": {"files": len(files), "baseline": sum(c["change"] == "baseline" for c in changes),
+                          "new": sum(c["change"] == "new" for c in changes),
+                          "changed": sum(c["change"] == "changed" for c in changes), "unchanged": len(skip), "deleted": len(delete)},
+               "archive": result["archive"]}
+    store.put(f"{layout}/{RUNS_DIR}/{stamp}.json", json.dumps(run_doc, indent=1).encode("utf-8"), "application/json", "no-store")
+    if changes:
+        store.put(f"{layout}/{CHANGES_DIR}/{stamp}.json",
+                  json.dumps({"run": stamp, "changes": changes}, indent=1).encode("utf-8"), "application/json", "no-store")
+    result["changes"] = len(changes)
+    result["run_log"] = f"{layout}/{RUNS_DIR}/{stamp}.json"
+    # the manifest is written last: it is the pointer readers use, so it never runs ahead of the data or the logs
     store.put(manifest_key(layout), json.dumps(doc, indent=1).encode("utf-8"), "application/json", "no-store")
+
     log.info("published to %s: %d uploaded, %d unchanged, %d deleted", store.describe(), len(put), len(skip), len(delete))
     return result

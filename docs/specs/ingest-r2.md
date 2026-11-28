@@ -66,3 +66,11 @@ to R2 with Docker secrets from `ingester/secrets/`.
   `ingest run ... --store r2` is an owner step, with the R2 token as an Actions secret.
 - CORS / custom `data.` domain / cache headers per path: see `docs/specs/hosting-seo.md` (W1).
 - The API and front end reading from the store: not started.
+
+## History plan, step 1 (done)
+
+- Content hashes ignore the time-only fields (`publish.TIME_KEYS`). A file whose content is unchanged is not uploaded, and the manifest keeps the hash of what is stored.
+- `v1/_runs/<stamp>.json`: one record per publish (every run, including empty ones), with per-source status and counts.
+- `v1/_changes/<stamp>.json`: one record per publish that changed content, with old and new content hashes. Labels: `baseline` (no earlier content hash), `new`, `changed`. It doesn't yet say by how much a value changed; that comes with the field summaries in step 2.
+- Still no D1 index. The run and change logs are plain JSON in R2 and can be loaded into D1 later, when the API needs queries across history.
+- Next (step 2): forecast issue history per area with the 30-day retention, and per-change field summaries.

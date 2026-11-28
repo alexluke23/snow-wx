@@ -1,5 +1,6 @@
 """Data ingest (python -m ingest): stores, publish planning, partial runs, SNOTEL seeding. Offline: FakeSession + fake S3."""
 
+import hashlib
 import io
 import json
 from datetime import datetime, timezone
@@ -109,18 +110,20 @@ def test_publish_keys_types_order_and_hash_skip(tmp_path):
     res = P.publish(r2, stage)
     assert res["put"] == 5 and res["skip"] == 0
     keys = [k for op, k in c.calls if op == "put"]
-    assert set(keys[:-1]) == {"v1/data/meta.json", "v1/data/points/alta.json", "v1/data/points/summary.json",
+    data_keys = [k for k in keys if not k.startswith("v1/_")]
+    assert set(data_keys) == {"v1/data/meta.json", "v1/data/points/alta.json", "v1/data/points/summary.json",
                               "v1/data/snotel.geojson", "v1/models/hrrr/2026112400/snow/west/f001.png"}
-    # payload, then the index/summary that points at it, then meta.json, then the manifest
-    assert keys.index("v1/data/points/alta.json") < keys.index("v1/data/points/summary.json") < keys.index("v1/data/meta.json")
-    assert keys[-2:] == ["v1/data/meta.json", "v1/_manifest.json"]
+    # payload, then the index/summary that points at it, then meta.json, then the logs, and the manifest last
+    assert data_keys.index("v1/data/points/alta.json") < data_keys.index("v1/data/points/summary.json") < data_keys.index("v1/data/meta.json")
+    assert keys[-1] == "v1/_manifest.json" and any(k.startswith("v1/_runs/") for k in keys[:-1])   # logs before the manifest
     assert c.objects["v1/data/snotel.geojson"]["ContentType"] == "application/geo+json"
     assert c.objects["v1/models/hrrr/2026112400/snow/west/f001.png"]["ContentType"] == "image/png"
     assert c.objects["v1/_manifest.json"]["CacheControl"] == "no-store"
     # second publish: nothing changed -> only the manifest is rewritten
     c.calls.clear()
     res = P.publish(r2, stage)
-    assert (res["put"], res["skip"]) == (0, 5) and [k for _, k in c.calls] == ["v1/_manifest.json"]
+    written = [k for _, k in c.calls]
+    assert (res["put"], res["skip"]) == (0, 5) and [k for k in written if not k.startswith("v1/_")] == [] and written[-1] == "v1/_manifest.json"
     # local store: same keys, same bytes
     P.publish(store, stage)
     assert (tmp_path / "store" / "v1" / "data" / "points" / "alta.json").read_bytes() == (stage / "data" / "points" / "alta.json").read_bytes()
@@ -280,3 +283,93 @@ def test_vendored_config_is_found_and_complete():
     assert rules["powder_quality"] == {"dense_below": 10, "blower_at": 15, "wind_gust_mph": 30, "min_snow_in": 0.5}
     points.configure_powder_quality({"powder_quality": rules["powder_quality"]})
     assert points.POWDER_Q["blower_at"] == 15
+
+
+# ---------- step 1 of the history plan: content hashes, run log, change log ----------
+
+def _doc(path, body):
+    write(path, json.dumps(body))
+
+
+def test_time_only_change_is_not_uploaded_and_the_stored_hash_is_kept(tmp_path):
+    stage, store = tmp_path / "stage", LocalStore(tmp_path / "store")
+    _doc(stage / "data" / "points" / "alta.json", {"id": "alta", "generated_at": "2026-11-27T01:00:00Z", "series": [1, 2]})
+    P.publish(store, stage, scope=["data/points"], now=datetime(2026, 11, 27, 1, tzinfo=timezone.utc))
+    stored_before = store.get("v1/data/points/alta.json")
+    _doc(stage / "data" / "points" / "alta.json", {"id": "alta", "generated_at": "2026-11-27T07:00:00Z", "series": [1, 2]})
+    res = P.publish(store, stage, scope=["data/points"], now=datetime(2026, 11, 27, 7, tzinfo=timezone.utc))
+    assert (res["put"], res["skip"], res["changes"]) == (0, 1, 0)
+    assert store.get("v1/data/points/alta.json") == stored_before            # nothing was uploaded
+    man = P.load_manifest(store)["objects"]["v1/data/points/alta.json"]
+    assert man["sha256"] == hashlib.sha256(stored_before).hexdigest()       # the manifest describes what is stored
+    assert store.get("v1/_runs/20261127T070000Z.json") is not None          # the run is still logged
+    assert store.get("v1/_changes/20261127T070000Z.json") is None           # but no content changed
+
+
+def test_content_change_is_uploaded_and_logged(tmp_path):
+    stage, store = tmp_path / "stage", LocalStore(tmp_path / "store")
+    _doc(stage / "data" / "points" / "alta.json", {"id": "alta", "series": [1, 2]})
+    P.publish(store, stage, scope=["data/points"], now=datetime(2026, 11, 27, 1, tzinfo=timezone.utc))
+    _doc(stage / "data" / "points" / "alta.json", {"id": "alta", "series": [1, 3]})
+    res = P.publish(store, stage, scope=["data/points"], now=datetime(2026, 11, 27, 7, tzinfo=timezone.utc))
+    assert (res["put"], res["changes"]) == (1, 1)
+    change = json.loads(store.get("v1/_changes/20261127T070000Z.json"))["changes"][0]
+    assert change["key"] == "v1/data/points/alta.json" and change["change"] == "changed"
+    assert change["old_content_sha256"] != change["new_content_sha256"]
+    run = json.loads(store.get("v1/_runs/20261127T070000Z.json"))
+    assert run["counts"] == {"files": 1, "baseline": 0, "new": 0, "changed": 1, "unchanged": 0, "deleted": 0}
+
+
+def test_new_and_deleted_objects_are_logged(tmp_path):
+    stage, store = tmp_path / "stage", LocalStore(tmp_path / "store")
+    _doc(stage / "data" / "points" / "alta.json", {"id": "alta"})
+    _doc(stage / "data" / "points" / "vail.json", {"id": "vail"})
+    P.publish(store, stage, scope=["data/points"], now=datetime(2026, 11, 27, 1, tzinfo=timezone.utc))
+    (stage / "data" / "points" / "vail.json").unlink()
+    _doc(stage / "data" / "points" / "bear.json", {"id": "bear"})
+    res = P.publish(store, stage, scope=["data/points"], prune=True, now=datetime(2026, 11, 27, 7, tzinfo=timezone.utc))
+    changes = {c["key"]: c["change"] for c in json.loads(store.get("v1/_changes/20261127T070000Z.json"))["changes"]}
+    assert changes == {"v1/data/points/bear.json": "new", "v1/data/points/vail.json": "deleted"}
+    assert res["changes"] == 2
+
+
+def test_older_manifest_without_content_hashes_is_uploaded_once(tmp_path):
+    stage, store = tmp_path / "stage", LocalStore(tmp_path / "store")
+    _doc(stage / "data" / "points" / "alta.json", {"id": "alta", "generated_at": "x"})
+    P.publish(store, stage, scope=["data/points"])
+    man = json.loads(store.get("v1/_manifest.json"))
+    for v in man["objects"].values():
+        v.pop("content_sha256", None)                                       # what a manifest written before this step looks like
+    store.put("v1/_manifest.json", json.dumps(man).encode(), "application/json")
+    res = P.publish(store, stage, scope=["data/points"])
+    assert res["put"] == 1
+
+
+def test_dry_run_writes_no_logs(tmp_path):
+    stage, store = tmp_path / "stage", LocalStore(tmp_path / "store")
+    _doc(stage / "data" / "points" / "alta.json", {"id": "alta"})
+    P.publish(store, stage, scope=["data/points"], dry_run=True)
+    assert not (tmp_path / "store" / "v1" / "_runs").exists()
+    assert not (tmp_path / "store" / "v1" / "_manifest.json").exists()
+
+
+def test_first_publish_into_an_empty_store_is_baseline(tmp_path):
+    stage, store = tmp_path / "stage", LocalStore(tmp_path / "store")
+    _doc(stage / "data" / "points" / "alta.json", {"id": "alta"})
+    res = P.publish(store, stage, scope=["data/points"], now=datetime(2026, 11, 27, 1, tzinfo=timezone.utc))
+    kinds = [c["change"] for c in json.loads(store.get("v1/_changes/20261127T010000Z.json"))["changes"]]
+    assert kinds == ["baseline"]
+    assert json.loads(store.get("v1/_runs/20261127T010000Z.json"))["counts"]["baseline"] == 1
+
+
+def test_older_manifest_objects_are_baseline_not_changed(tmp_path):
+    stage, store = tmp_path / "stage", LocalStore(tmp_path / "store")
+    _doc(stage / "data" / "points" / "alta.json", {"id": "alta", "series": [1]})
+    P.publish(store, stage, scope=["data/points"])
+    man = json.loads(store.get("v1/_manifest.json"))
+    man["objects"]["v1/data/points/alta.json"].pop("content_sha256")
+    store.put("v1/_manifest.json", json.dumps(man).encode(), "application/json")
+    _doc(stage / "data" / "points" / "alta.json", {"id": "alta", "series": [2]})
+    P.publish(store, stage, scope=["data/points"], now=datetime(2026, 11, 27, 7, tzinfo=timezone.utc))
+    kinds = [c["change"] for c in json.loads(store.get("v1/_changes/20261127T070000Z.json"))["changes"]]
+    assert kinds == ["baseline"]
