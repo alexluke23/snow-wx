@@ -218,12 +218,33 @@ Pushed with `--store r2` (or `R2_PUSH=1`, the container default). Test runs set 
 | `v1/data/...` | the site's data documents: `snotel.geojson`, `points/<area>.json`, `alerts/`, `afd/`, `meta.json`, and so on |
 | `v1/models/...` | model products: ECMWF and GEFS JSON, model-map PNG frames |
 | `v1/_manifest.json` | sha256 and size of every object, and the last run status of each source (`no-store` cache) |
+| `v1/_runs/<stamp>.json` | one record per publish: each source's status, and counts of new, changed, unchanged and deleted objects |
+| `v1/_changes/<stamp>.json` | one record per publish that changed content. Each object is `baseline` (no earlier content hash: a first publish, or a manifest from before content hashes), `new`, or `changed`, with old and new content hashes |
 | `archive/runs/<stamp>/...` | copies of changed objects, only with `--archive` |
 
-Only objects whose content changed are uploaded (sha256 comparison). Cache headers: JSON 60 s, images 1 h, archive
+Only objects whose content changed are uploaded. Content is compared without the time-only fields (`generated_at`, `checked_at`, `fetched_at`, `age_h`), so a run that only refreshes timestamps uploads nothing; its run record still says so. Cache headers: JSON 60 s, images 1 h, archive
 copies immutable. Public access (a custom domain, CORS) is set up separately with the website's hosting work (W1).
 
 The layout is the same locally and in R2, so the local store is a faithful preview of what R2 will hold.
+
+### How change detection and logs work
+
+Every publish compares each file with what is stored, then records what happened.
+
+- **Content hash.** For JSON files, the hash is taken over the document with the time-only fields removed (`generated_at`,
+  `checked_at`, `fetched_at`, `age_h`), with keys sorted. Other files are hashed as bytes. The manifest stores this hash for
+  each object.
+- **Upload only on change.** If an object's content hash matches the stored one, it is skipped and its stored copy is left
+  alone. The manifest keeps describing what is stored, so a skipped file still shows its old timestamp.
+- **Run record** (`v1/_runs/<stamp>.json`). Written on every publish, including runs with no changes. It holds each source's
+  status and the counts: `baseline`, `new`, `changed`, `unchanged`, `deleted`.
+- **Change record** (`v1/_changes/<stamp>.json`). Written only when content changed. It lists each object with its
+  label and its old and new content hashes. The labels are `baseline` (no earlier content hash, from a first publish or a
+  manifest written before hashes), `new` (the key didn't exist), and `changed` (the hash differs). Deleted objects are
+  listed as `deleted`.
+- **Order.** Data files are uploaded first, then the run and change records, and the manifest last.
+
+The change record says which objects changed, not by how much. Field-level summaries come later with the forecast history.
 
 Settings: `config/settings.yml` section `ingest:` (`output_dir`, `layout`, `archive`).
 
