@@ -373,3 +373,200 @@ def test_older_manifest_objects_are_baseline_not_changed(tmp_path):
     P.publish(store, stage, scope=["data/points"], now=datetime(2026, 11, 27, 7, tzinfo=timezone.utc))
     kinds = [c["change"] for c in json.loads(store.get("v1/_changes/20261127T070000Z.json"))["changes"]]
     assert kinds == ["baseline"]
+
+
+# ---------- step 2: forecast issue history, retention, field summaries ----------
+
+from ingester import history as H
+
+
+def _issue(cycle, snow24=0.0, tag="Dry", content="a" * 64):
+    return {"id": "alta", "cycle": cycle, "liquid_cycle": cycle, "issued": cycle, "generated_at": "x",
+            "summary": {"tag": tag, "confidence": "high"},
+            "points": {"summit": {"totals": {"24h": {"snow_in": snow24}, "48h": {"snow_in": 1}, "72h": {"snow_in": 2}}},
+                       "base": {"totals": {"24h": {"snow_in": 0}, "48h": {"snow_in": 0}, "72h": {"snow_in": 0}}}}}
+
+
+def test_watched_changes_lists_only_changed_fields():
+    fields = H.watched_changes(_issue("2026112712", snow24=0.0), _issue("2026112719", snow24=3.5, tag="Heavy snow"))
+    assert fields == {"summary.tag": ["Dry", "Heavy snow"], "points.summit.totals.24h.snow_in": [0.0, 3.5]}
+
+
+def test_retention_keeps_30_days_then_one_issue_per_day():
+    now = datetime(2026, 12, 31, tzinfo=timezone.utc)
+    recent = [{"cycle": f"202612{d:02d}{h:02d}"} for d in range(20, 32) for h in (1, 7, 13, 19)]
+    old = [{"cycle": f"202611{d:02d}{h:02d}"} for d in range(1, 10) for h in (1, 7, 13, 19)]   # more than 30 days old
+    kept, expired = H.retention(old + recent, now)
+    assert all(e in kept for e in recent)
+    kept_old = [e["cycle"] for e in kept if e in old]
+    assert kept_old == [f"202611{d:02d}19" for d in range(1, 10)]          # the newest issue of each old day
+    assert len(expired) == 9 * 3
+
+
+def test_area_history_is_stored_once_per_content_and_indexed(tmp_path):
+    store = LocalStore(tmp_path / "store")
+    now = datetime(2026, 11, 28, 1, tzinfo=timezone.utc)
+    d1 = _issue("2026112712")
+    assert H.update_area_history(store, "v1", "alta", d1, "c1" * 32, now) == {"written": 1, "expired": 0}
+    assert H.update_area_history(store, "v1", "alta", d1, "c1" * 32, now) == {"written": 0, "expired": 0}   # same content: no-op
+    d2 = _issue("2026112719", snow24=3.5)
+    H.update_area_history(store, "v1", "alta", d2, "c2" * 32, now)
+    index = json.loads(store.get("v1/history/points/alta/index.json"))
+    assert [e["cycle"] for e in index["issues"]] == ["2026112712", "2026112719"]
+    assert store.get(index["issues"][1]["key"]) is not None
+
+
+def test_publish_records_history_and_field_changes(tmp_path):
+    stage, store = tmp_path / "stage", LocalStore(tmp_path / "store")
+    _doc(stage / "data" / "points" / "alta.json", _issue("2026112712"))
+    P.publish(store, stage, scope=["data/points"], now=datetime(2026, 11, 28, 1, tzinfo=timezone.utc))
+    run1 = json.loads(store.get("v1/_runs/20261128T010000Z.json"))
+    assert run1["history"] == {"written": 1, "expired": 0}
+    assert not json.loads(store.get("v1/_changes/20261128T010000Z.json"))["changes"][0].get("fields")   # baseline: no field summary
+    _doc(stage / "data" / "points" / "alta.json", _issue("2026112719", snow24=3.5, tag="Heavy snow"))
+    P.publish(store, stage, scope=["data/points"], now=datetime(2026, 11, 28, 7, tzinfo=timezone.utc))
+    change = json.loads(store.get("v1/_changes/20261128T070000Z.json"))["changes"][0]
+    assert change["fields"]["summary.tag"] == ["Dry", "Heavy snow"]
+    assert change["fields"]["points.summit.totals.24h.snow_in"] == [0.0, 3.5]
+    index = json.loads(store.get("v1/history/points/alta/index.json"))
+    assert len(index["issues"]) == 2
+    assert store.get("v1/_manifest.json") and "v1/history/points/alta/index.json" not in P.load_manifest(store)["objects"]
+
+
+def test_history_ignores_folder_summaries_and_non_forecast_files(tmp_path):
+    stage, store = tmp_path / "stage", LocalStore(tmp_path / "store")
+    _doc(stage / "data" / "points" / "summary.json", {"cycle": "2026112712", "points": {}})
+    _doc(stage / "data" / "points" / "alta.json", {"id": "alta"})                 # an area file without a forecast
+    res = P.publish(store, stage, scope=["data/points"])
+    assert res["history"] == {"written": 0, "expired": 0}
+
+
+# ---------- step 3: observation history (SNOTEL and ASOS) ----------
+
+from ingester import obs_history as OH
+
+
+def _station(times, wteq, triplet="1000:OR:SNTL", offset=-8.0):
+    return {"triplet": triplet, "name": "Annie Springs", "utc_offset_h": offset, "times": times,
+            "WTEQ": wteq, "SNWD": [10.0] * len(times), "PREC": [3.9] * len(times), "TOBS": [31.6] * len(times),
+            "SNWD_med3": [9.5] * len(times)}
+
+
+def test_snotel_local_standard_times_become_utc_rows():
+    rows = OH.snotel_rows(_station(["2026-11-27 22:00"], [2.2]))
+    assert rows == {"2026-11-28T06:00Z": {"WTEQ": 2.2, "SNWD": 10.0, "PREC": 3.9, "TOBS": 31.6}}
+
+
+def test_overlapping_windows_add_each_reading_once(tmp_path):
+    store = LocalStore(tmp_path / "store")
+    now = datetime(2026, 11, 28, 1, tzinfo=timezone.utc)
+    w1 = OH.snotel_rows(_station(["2026-11-27 20:00", "2026-11-27 21:00", "2026-11-27 22:00"], [2.0, 2.1, 2.2]))
+    w2 = OH.snotel_rows(_station(["2026-11-27 21:00", "2026-11-27 22:00", "2026-11-27 23:00"], [2.1, 2.2, 2.3]))
+    r1 = OH.update_station(store, "v1", "snotel", "1000:OR:SNTL", "Annie Springs", w1, now)
+    r2 = OH.update_station(store, "v1", "snotel", "1000:OR:SNTL", "Annie Springs", w2, now)
+    assert r1["added"] == 3 and r2["added"] == 1 and r2["revised"] == 0
+    month = json.loads(store.get("v1/history/obs/snotel/1000_OR_SNTL/2026-11.json"))
+    assert len(month["rows"]) == 4 and month["revisions"] == []
+
+
+def test_a_revised_reading_is_updated_and_kept_in_revisions(tmp_path):
+    store = LocalStore(tmp_path / "store")
+    now = datetime(2026, 11, 28, 1, tzinfo=timezone.utc)
+    OH.update_station(store, "v1", "snotel", "1000:OR:SNTL", "Annie", OH.snotel_rows(_station(["2026-11-27 22:00"], [2.2])), now)
+    res = OH.update_station(store, "v1", "snotel", "1000:OR:SNTL", "Annie", OH.snotel_rows(_station(["2026-11-27 22:00"], [2.5])), now)
+    assert res["revised"] == 1 and res["revisions"][0]["old"] == 2.2 and res["revisions"][0]["new"] == 2.5
+    month = json.loads(store.get("v1/history/obs/snotel/1000_OR_SNTL/2026-11.json"))
+    assert month["rows"]["2026-11-28T06:00Z"]["WTEQ"] == 2.5 and month["revisions"][0]["old"] == 2.2
+
+
+def test_months_are_split_and_indexed(tmp_path):
+    store = LocalStore(tmp_path / "store")
+    now = datetime(2026, 12, 1, 1, tzinfo=timezone.utc)
+    rows = OH.snotel_rows(_station(["2026-11-30 22:00", "2026-12-01 01:00"], [1.0, 1.5], offset=0.0))
+    res = OH.update_station(store, "v1", "snotel", "1000:OR:SNTL", "Annie", rows, now)
+    assert res["months_written"] == 2
+    index = json.loads(store.get("v1/history/obs/snotel/1000_OR_SNTL/index.json"))
+    assert index["months"]["2026-11"]["rows"] == 1 and index["months"]["2026-12"]["last"] == "2026-12-01T01:00Z"
+
+
+def test_asos_latest_reports_accumulate_into_history(tmp_path):
+    stage, store = tmp_path / "stage", LocalStore(tmp_path / "store")
+    def asos(valid, temp):
+        return {"features": [{"properties": {"id": "CLM", "name": "Port Angeles", "valid_utc": valid, "temp_f": temp,
+                                              "wind_kt": 5, "precip_today_in": 0.03, "metar": "x"}}]}
+    _doc(stage / "data" / "asos.geojson", asos("2026-11-28T06:53Z", 45.0))
+    P.publish(store, stage, scope=["data/asos.geojson"], now=datetime(2026, 11, 28, 7, tzinfo=timezone.utc))
+    _doc(stage / "data" / "asos.geojson", asos("2026-11-28T07:53Z", 46.0))
+    res = P.publish(store, stage, scope=["data/asos.geojson"], now=datetime(2026, 11, 28, 8, tzinfo=timezone.utc))
+    assert res["obs_history"] == {"added": 1, "revised": 0, "stations": 1}
+    month = json.loads(store.get("v1/history/obs/asos/CLM/2026-11.json"))
+    assert set(month["rows"]) == {"2026-11-28T06:53Z", "2026-11-28T07:53Z"} and "metar" not in month["rows"]["2026-11-28T07:53Z"]
+
+
+def test_publish_logs_observation_revisions_in_the_change_record(tmp_path):
+    stage, store = tmp_path / "stage", LocalStore(tmp_path / "store")
+    _doc(stage / "data" / "snotel" / "1000_OR_SNTL.json", _station(["2026-11-27 22:00"], [2.2]))
+    P.publish(store, stage, scope=["data/snotel"], now=datetime(2026, 11, 28, 1, tzinfo=timezone.utc))
+    _doc(stage / "data" / "snotel" / "1000_OR_SNTL.json", _station(["2026-11-27 22:00"], [2.6]))
+    P.publish(store, stage, scope=["data/snotel"], now=datetime(2026, 11, 28, 2, tzinfo=timezone.utc))
+    change = json.loads(store.get("v1/_changes/20261128T020000Z.json"))["changes"][0]
+    assert change["revisions"][0]["old"] == 2.2 and change["revisions"][0]["new"] == 2.6
+
+
+def test_unchanged_station_without_history_is_recorded_on_the_next_publish(tmp_path):
+    stage, store = tmp_path / "stage", LocalStore(tmp_path / "store")
+    _doc(stage / "data" / "snotel" / "1000_OR_SNTL.json", _station(["2026-11-27 22:00"], [2.2]))
+    P.publish(store, stage, scope=["data/snotel"], history=False, now=datetime(2026, 11, 28, 1, tzinfo=timezone.utc))
+    assert store.get("v1/history/obs/snotel/1000_OR_SNTL/index.json") is None
+    res = P.publish(store, stage, scope=["data/snotel"], now=datetime(2026, 11, 28, 2, tzinfo=timezone.utc))
+    assert res["put"] == 0                                                   # the file did not change...
+    assert res["obs_history"]["added"] == 1                                  # ...but its readings are now recorded
+    assert store.get("v1/history/obs/snotel/1000_OR_SNTL/index.json") is not None
+
+
+# ---------- step 3b: alert history and ECMWF / GEFS plume history ----------
+
+from ingester import alert_history as AH
+
+
+def _alerts(*ids, expires="2026-11-28T17:15:00-07:00"):
+    return {"alerts": {i: {"event": "Winter Storm Warning", "severity": "Severe", "expires": expires} for i in ids}}
+
+
+def test_alert_lifecycle_open_update_close_reopen(tmp_path):
+    store = LocalStore(tmp_path / "store")
+    t1, t2, t3, t4 = (datetime(2026, 11, 28, h, tzinfo=timezone.utc) for h in (1, 2, 3, 4))
+    r = AH.update_alerts(store, "v1", _alerts("a1", "a2"), {"a1": {"description": "heavy"}}, t1)
+    assert r == {"opened": ["a1", "a2"], "closed": [], "updated": []}
+    r = AH.update_alerts(store, "v1", _alerts("a1", expires="2026-11-28T21:00:00-07:00"), {"a1": {"description": "heavy"}}, t2)
+    assert r == {"opened": [], "closed": ["a2"], "updated": ["a1"]}
+    r = AH.update_alerts(store, "v1", _alerts("a1", "a2"), {"a1": {"description": "heavy"}}, t3)
+    assert r["opened"] == ["a2"]                                              # back after being closed
+    index = json.loads(store.get("v1/history/alerts/index.json"))["alerts"]
+    assert index["a2"]["closed_at"] is None and index["a1"]["versions"] == 3     # expiry 17:15, then 21:00, then 17:15 again
+    versions = json.loads(store.get("v1/history/alerts/a1.json"))["versions"]
+    assert [v["fields"]["expires"][11:16] for v in versions] == ["17:15", "21:00", "17:15"]
+
+
+def test_publish_records_alert_changes_and_plume_history(tmp_path):
+    stage, store = tmp_path / "stage", LocalStore(tmp_path / "store")
+    now = datetime(2026, 11, 28, 1, tzinfo=timezone.utc)
+    _doc(stage / "data" / "alerts" / "index.json", _alerts("a1"))
+    _doc(stage / "data" / "alerts" / "details.json", {"a1": {"description": "heavy"}})
+    _doc(stage / "models" / "ecmwf" / "plume" / "alta.json", {"id": "alta", "cycle": "2026112712", "tp": [0.1, 0.2]})
+    res = P.publish(store, stage, scope=["data/alerts", "models/ecmwf"], now=now)
+    assert res["alert_history"] == {"opened": 1, "closed": 0, "updated": 0}
+    assert res["model_history"] == {"written": 1, "expired": 0}
+    assert store.get("v1/history/ecmwf/alta/index.json") is not None
+    change = {c["key"]: c for c in json.loads(store.get("v1/_changes/20261128T010000Z.json"))["changes"]}
+    assert change["v1/data/alerts/index.json"]["alerts"] == {"opened": ["a1"], "closed": [], "updated": []}
+
+
+def test_plume_history_is_stored_per_cycle_and_indexed(tmp_path):
+    store = LocalStore(tmp_path / "store")
+    now = datetime(2026, 11, 28, 1, tzinfo=timezone.utc)
+    H.update_area_history(store, "v1", "alta", {"id": "alta", "cycle": "2026112712", "tp": [0.1]}, "e1" * 32, now, family="ecmwf")
+    H.update_area_history(store, "v1", "alta", {"id": "alta", "cycle": "2026112800", "tp": [0.2]}, "e2" * 32, now, family="ecmwf")
+    index = json.loads(store.get("v1/history/ecmwf/alta/index.json"))
+    assert [e["cycle"] for e in index["issues"]] == ["2026112712", "2026112800"]
+    assert store.get("v1/history/points/alta/index.json") is None            # families stay separate

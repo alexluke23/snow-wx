@@ -74,3 +74,28 @@ to R2 with Docker secrets from `ingester/secrets/`.
 - `v1/_changes/<stamp>.json`: one record per publish that changed content, with old and new content hashes. Labels: `baseline` (no earlier content hash), `new`, `changed`. It doesn't yet say by how much a value changed; that comes with the field summaries in step 2.
 - Still no D1 index. The run and change logs are plain JSON in R2 and can be loaded into D1 later, when the API needs queries across history.
 - Next (step 2): forecast issue history per area with the 30-day retention, and per-change field summaries.
+
+## History plan, step 2 (done)
+
+- `ingester/src/ingester/history.py`: per-area issue history under `v1/history/points/<area>/`, with an `index.json` per area. The index is the record, and history files are not listed in the manifest.
+- Retention: 30 days in full, then the newest issue per UTC day.
+- Change records carry `fields` (old and new) for the watched snow totals and the summary tag and confidence.
+- Deviation from the plan: no `current/` copy. Current documents stay at `v1/data/...`, which already holds one copy per area, so a second copy would double the stored size for no gain.
+- Measured on the `--all` output: 1,444 issues, 68 MB. At four NBM cycles a day, about 270 MB a day before retention, so roughly 8 GB at the 30-day steady state.
+- Not yet: field summaries for sources other than the forecasts; AFD and NOHRSC history (skipped by decision).
+
+## History plan, step 3 (done)
+
+- `ingester/src/ingester/obs_history.py`: SNOTEL and ASOS readings in JSON, one file per station per UTC month, plus a per-station index. Kept indefinitely (remove by hand if needed).
+- SNOTEL readings are added once each, using the time in UTC. Revised values are updated and their old values kept in `revisions`.
+- ASOS: history starts with the first run that includes this step; the feed only has the latest report per station.
+- Measured on the `--all` output: 141,735 readings for 1,383 stations, 18 MB. The first run stores each SNOTEL station's current 7-day window; that is not a backfill.
+- Not yet: alert history, backfill of earlier observations.
+
+## History plan, step 3b (done)
+
+- `ingester/src/ingester/alert_history.py`: `v1/history/alerts/index.json` (every alert ever seen) and one file per alert with its versions. An alert is closed when it leaves the published list and reopened if it returns.
+- ECMWF and GEFS summit plumes: `v1/history/ecmwf|gefs/<area>/`, same family mechanics and 30-day retention as the NBM forecasts (`history.py`, `family` parameter).
+- Measured on the `--all` output: 33 alerts, 160 ECMWF and 160 GEFS plumes, about 6 MB for the first copy.
+- Skipped by decision: AFD and NOHRSC history.
+- Not yet: field summaries for avalanche ratings and SNOTEL in the change log.
