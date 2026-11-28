@@ -244,7 +244,38 @@ Every publish compares each file with what is stored, then records what happened
   listed as `deleted`.
 - **Order.** Data files are uploaded first, then the run and change records, and the manifest last.
 
-The change record says which objects changed, not by how much. Field-level summaries come later with the forecast history.
+Forecast history. Each time an area forecast changes, the previous and new versions are kept:
+
+- `v1/history/points/<area>/<cycle>-<hash>.json`: one NBM issue of an area, as published.
+- `v1/history/points/<area>/index.json`: the area's issues, oldest first, with their cycle, issue time, summary tag and
+  confidence. This is the record readers use. History files are not listed in the manifest, so the manifest doesn't grow.
+- Retention: issues up to 30 days old are kept in full. Older issues are kept only as the newest issue of each UTC day.
+  Expired files are deleted and counted in the run record as `history.expired`.
+- Change records for forecasts also carry `fields`: the old and new values of the watched snow totals (24, 48 and 72 hours,
+  summit and base) and the summary tag and confidence. A baseline record has no `fields`.
+
+Model and alert history (step 3b):
+
+- ECMWF and GEFS summit plumes: `v1/history/ecmwf|gefs/<area>/<cycle>-<hash>.json` and an `index.json` per area, with the
+  same 30-day retention as the NBM forecasts. Each cycle's plume is kept once.
+- Alerts: `v1/history/alerts/index.json` lists every alert seen, with its first and last seen times, its closed time, and its
+  number of versions. `v1/history/alerts/<id>.json` holds the alert's versions, each with the time it was seen, its fields and
+  its description. A version is added only when something changed. An alert is closed when it leaves the published list, and
+  reopened if it returns.
+- Change records list the alerts `opened`, `closed` and `updated` for the alerts file.
+- Alerts and plumes already published before this step have no history until they change. They're not backfilled.
+
+Observation history (step 3). Station readings are kept as JSON, indefinitely:
+
+- `v1/history/obs/<network>/<station>/<YYYY-MM>.json`: one station's readings for one UTC month. `rows` holds each reading
+  by UTC time (the latest value seen); `revisions` holds every change to a stored value, with the old and new values.
+- `v1/history/obs/<network>/<station>/index.json`: the station's months, with row counts and first and last times.
+- SNOTEL: each station file is a rolling 7-day window. A reading is added once, when first seen, so overlapping windows
+  don't duplicate. Times are converted from local standard time to UTC.
+- ASOS: only the latest report per station is published, so ASOS history starts with the first run that includes this step.
+- Change records carry `revisions` for station files whose stored values changed. Run records carry `obs_history`:
+  readings added, revised, and stations written.
+- Nothing is deleted. Remove files by hand if needed.
 
 Settings: `config/settings.yml` section `ingest:` (`output_dir`, `layout`, `archive`).
 
